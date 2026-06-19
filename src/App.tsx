@@ -1,0 +1,761 @@
+import type { Beatmap, ConvertDirection, ExportConfig, PackEntry } from './types/beatmap'
+import { useCallback, useState, useEffect, useRef, startTransition } from 'react'
+import { useConverterStore } from './stores/useConverterStore'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { trackEvent } from '@aptabase/tauri'
+import { Header } from './components/Header'
+import { DropZone } from './components/DropZone'
+import { MetadataPanel } from './components/MetadataPanel'
+import { AudioPlayer } from './components/AudioPlayer'
+import { PreviewOverlay } from './components/PreviewOverlay'
+import { ConvertDialog } from './components/ConvertDialog'
+import { BulkConvertDialog } from './components/BulkConvertDialog'
+import { PackSettingsDialog } from './components/PackSettingsDialog'
+
+function configFromEntry(entry: PackEntry): ExportConfig {
+  const fallback = entry.source_file.split(/[/\\]+/).filter(Boolean).pop()?.replace(/\.[^.]+$/, '') || 'Untitled'
+  return {
+    title: entry.title || fallback,
+    artist: entry.artist,
+    creator: '',
+    difficulty_name: '',
+    source: '',
+    tags: '',
+    audio_filename: '',
+    background_filename: entry.background_filename,
+    banner_filename: null,
+    cdtitle_filename: null,
+    cdtitle_name: '',
+    global_timing_ms: 50,
+    output_format: 'folder',
+    hp_drain: 8,
+    overall_difficulty: 8,
+    preview_time: 0,
+  }
+}
+import { PackBrowser } from './components/PackBrowser'
+import { FallingArrows } from './components/FallingArrows'
+
+async function loadMediaAsDataUrl(sourceDir: string, filename: string | null): Promise<string | null> {
+  if (!filename) return null
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const resolved = await invoke<string>('resolve_file', { sourceDir, filename })
+    return await invoke<string>('read_file_as_data_url', { path: resolved })
+  } catch {
+    return null
+  }
+}
+
+function App() {
+  const {
+    beatmap, direction, mediaUrls,
+    isConverting, exportPath, error, dragging,
+    setSourceFile, setBeatmap, setMediaUrls, setDirection,
+    setConverting, setConvertedContent, setExportPath,
+    setError, setDragging, reset,
+  } = useConverterStore()
+
+  const [lastExportPath, setLastExportPath] = useState<string | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
+  const [switchingDifficulty, setSwitchingDifficulty] = useState(false)
+  const [showConvertDialog, setShowConvertDialog] = useState(false)
+  const [showBulkConvert, setShowBulkConvert] = useState(false)
+  const [showPackSettings, setShowPackSettings] = useState(false)
+  const [packConvertAllMode, setPackConvertAllMode] = useState(false)
+
+  // Pack browsing state
+  const [packFolder, setPackFolder] = useState<string | null>(null)
+  const [packEntries, setPackEntries] = useState<PackEntry[]>([])
+  const [packSelected, setPackSelected] = useState<Set<number>>(new Set())
+  const [packEditing, setPackEditing] = useState<number | null>(null)
+  const [packLoading, setPackLoading] = useState(false)
+  const [packBannerUrl, setPackBannerUrl] = useState<string | null>(null)
+  const [packBannerPath, setPackBannerPath] = useState<string | null>(null)
+  const packConfigsRef = useRef<Map<number, ExportConfig>>(new Map())
+
+  // Shared audio element — owned by App, used by AudioPlayer and PreviewOverlay
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [audioPlaying, setAudioPlaying] = useState(false)
+  const [audioCurrent, setAudioCurrent] = useState(0)
+  const [audioDuration, setAudioDuration] = useState(0)
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'F12') e.preventDefault()
+      if (e.code === 'Space' && beatmap && mediaUrls.audio) {
+        e.preventDefault()
+        if (!showPreview) setShowPreview(true)
+      }
+      if (e.key === 'Escape') setShowPreview(false)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [beatmap, mediaUrls.audio, showPreview])
+
+  const handleSetPreviewTime = useCallback((ms: number) => {
+    const state = useConverterStore.getState()
+    const bm = state.beatmap
+    if (bm) {
+      useConverterStore.setState({
+        beatmap: { ...bm, preview_time: ms },
+        config: { ...state.config, preview_time: ms },
+      })
+    }
+  }, [])
+
+  const handleFileDrop = useCallback(async (path: string) => {
+    setError(null)
+    setConvertedContent(null)
+    setExportPath(null)
+    setSourceFile(path)
+    setLastExportPath(null)
+
+    // Auto-detect direction from file extension
+    const ext = path.split('.').pop()?.toLowerCase() || ''
+    const detected: ConvertDirection =
+      (ext === 'osu' || ext === 'osz') ? 'osu-to-etterna' : 'etterna-to-osu'
+    if (detected !== useConverterStore.getState().direction) {
+      useConverterStore.getState().setDirection(detected)
+    }
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const result = await invoke<Beatmap>('parse_file', { path, direction: detected })
+
+      const [audio, bg, banner] = await Promise.all([
+        loadMediaAsDataUrl(result.source_dir, result.audio_filename),
+        loadMediaAsDataUrl(result.source_dir, result.background_filename),
+        loadMediaAsDataUrl(result.source_dir, result.banner_filename),
+      ])
+      setMediaUrls({ audio, background: bg, banner })
+      setBeatmap(result)
+    } catch (e: unknown) {
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to parse file')
+      setBeatmap(null)
+    }
+  }, [setSourceFile, setBeatmap, setMediaUrls, setConvertedContent, setExportPath, setError])
+
+  const handleConvert = useCallback(() => {
+    if (!beatmap) return
+    setShowConvertDialog(true)
+  }, [beatmap])
+
+  const handleConvertDialogConfirm = useCallback(async (indices: number[]) => {
+    if (!beatmap?.source_file || indices.length === 0) return
+    setShowConvertDialog(false)
+    setConverting(true)
+    setError(null)
+    setLastExportPath(null)
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const cur = useConverterStore.getState().config
+
+      let exportDir: string | null = null
+
+      if (cur.output_format === 'osz' && direction === 'etterna-to-osu') {
+        const { save } = await import('@tauri-apps/plugin-dialog')
+        exportDir = await save({
+          title: 'Export as .osz',
+          defaultPath: `${cur.artist} - ${cur.title} (${cur.creator}).osz`,
+          filters: [{ name: 'osu! beatmap package', extensions: ['osz'] }],
+        })
+      } else {
+        const { open } = await import('@tauri-apps/plugin-dialog')
+        exportDir = await open({
+          directory: true,
+          title: 'Choose export folder',
+        })
+      }
+
+      if (!exportDir) { setConverting(false); return }
+
+      const allPaths: string[] = []
+
+      // OSZ → SM: combine all selected diffs into one .sm
+      const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
+      if (isOsz && direction === 'osu-to-etterna' && indices.length > 1) {
+        const paths = await invoke<string[]>('export_all_beatmaps', {
+          sourceFile: beatmap.source_file,
+          config: cur,
+          outputDir: exportDir,
+          indices,
+        })
+        allPaths.push(...paths)
+      } else {
+        for (const idx of indices) {
+          const bm = await invoke<Beatmap>('select_difficulty', { path: beatmap.source_file, index: idx })
+          const content = await invoke<string>('convert_beatmap', { beatmap: bm, config: cur })
+          const result = await invoke<string>('export_beatmap', { beatmap: bm, config: cur, convertedContent: content, outputDir: exportDir })
+          allPaths.push(result)
+        }
+      }
+
+      setLastExportPath(allPaths.join('\n'))
+      setExportPath(exportDir)
+      trackEvent('conversion_completed', { count: String(indices.length), format: cur.output_format })
+    } catch (e: unknown) {
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Conversion failed'
+      setError(msg)
+      trackEvent('conversion_failed', { error: msg })
+    } finally {
+      setConverting(false)
+    }
+  }, [beatmap, direction, setConverting, setError, setExportPath])
+
+  // ── Pack browsing ──────────────────────────────────────────
+
+  const handleOpenPack = useCallback(async () => {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const folder = await open({ directory: true, title: 'Select pack folder' })
+    if (!folder) return
+    setPackFolder(folder)
+    setPackEditing(null)
+    setPackSelected(new Set())
+    setPackLoading(true)
+    setError(null)
+    setPackBannerUrl(null)
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const entries = await invoke<PackEntry[]>('scan_pack', { folder })
+      setPackEntries(entries)
+    } catch (e: unknown) {
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to scan pack')
+      setPackFolder(null)
+      setPackLoading(false)
+      return
+    }
+    // Load pack banner separately so a failure doesn't undo the pack
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const banner = await invoke<string | null>('find_pack_banner', { folder })
+      if (banner) {
+        setPackBannerPath(banner)
+        const url = await invoke<string>('read_file_as_data_url', { path: banner })
+        setPackBannerUrl(url)
+      }
+    } catch {
+      // banner is optional
+    } finally {
+      setPackLoading(false)
+    }
+  }, [setError])
+
+  const handlePackEditSong = useCallback(async (index: number) => {
+    const entry = packEntries[index]
+    if (!entry) return
+
+    // Save current config if switching from another song
+    if (packEditing !== null) {
+      const cur = useConverterStore.getState().config
+      packConfigsRef.current.set(packEditing, { ...cur })
+    }
+
+    setPackEditing(index)
+    setError(null)
+
+    // Clear previous song immediately to prevent flash
+    useConverterStore.getState().setBeatmap(null)
+    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null })
+    const audio = audioRef.current
+    if (audio) {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+    }
+    setAudioPlaying(false)
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const bm = await invoke<Beatmap>('parse_file', {
+        path: entry.source_file,
+        direction: 'etterna-to-osu',
+      })
+
+      // Load media
+      const [newAudio, bg] = await Promise.all([
+        loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
+        loadMediaAsDataUrl(bm.source_dir, bm.background_filename),
+      ])
+      useConverterStore.getState().setMediaUrls({ audio: newAudio, background: bg, banner: null })
+      useConverterStore.getState().setBeatmap(bm)
+
+      // Restore any saved config for this song (after setBeatmap resets it)
+      const saved = packConfigsRef.current.get(index)
+      if (saved) {
+        useConverterStore.getState().updateConfig(saved)
+      }
+    } catch (e: unknown) {
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to load song')
+      setPackEditing(null)
+    }
+  }, [packEntries, packEditing, audioRef, setAudioPlaying, setError])
+
+  const handlePackBack = useCallback(() => {
+    // Save current config
+    if (packEditing !== null) {
+      const cur = useConverterStore.getState().config
+      packConfigsRef.current.set(packEditing, { ...cur })
+    }
+    setPackEditing(null)
+    useConverterStore.getState().setBeatmap(null)
+    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null })
+    const audio = audioRef.current
+    if (audio) {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+    }
+    setAudioPlaying(false)
+  }, [packEditing, audioRef, setAudioPlaying])
+
+  const handlePackClose = useCallback(() => {
+    if (packEditing !== null) {
+      const cur = useConverterStore.getState().config
+      packConfigsRef.current.set(packEditing, { ...cur })
+    }
+    setPackFolder(null)
+    setPackEntries([])
+    setPackEditing(null)
+    setPackSelected(new Set())
+    setPackBannerUrl(null)
+    packConfigsRef.current.clear()
+    reset()
+  }, [packEditing, reset])
+
+  const handleSelectAll = useCallback((select: boolean) => {
+    startTransition(() => {
+      if (select) {
+        setPackSelected(new Set(packEntries.map((_, i) => i)))
+      } else {
+        setPackSelected(new Set())
+      }
+    })
+  }, [packEntries])
+
+  const handlePackConvert = useCallback(async () => {
+    if (packSelected.size === 0 || isConverting) return
+    setPackConvertAllMode(false)
+    setShowPackSettings(true)
+  }, [packSelected, isConverting])
+
+  const handlePackConvertAll = useCallback(async () => {
+    if (packEntries.length === 0 || isConverting) return
+    setPackConvertAllMode(true)
+    setShowPackSettings(true)
+  }, [packEntries, isConverting])
+
+  const runPackConversion = useCallback(async (settings: { mode: string; creator: string; hp_drain: number; overall_difficulty: number }) => {
+    const indices = packConvertAllMode
+      ? packEntries.map((_, i) => i)
+      : [...packSelected]
+
+    if (indices.length === 0) return
+    setConverting(true)
+    setError(null)
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const { open } = await import('@tauri-apps/plugin-dialog')
+
+      const packFolderName = packFolder ? packFolder.split(/[/\\]+/).filter(Boolean).pop() || 'pack' : 'pack'
+      const useOsz = settings.mode === 'osz'
+
+      const exportDir = await open({
+        directory: true,
+        title: useOsz ? 'Choose where to save the .osz' : 'Choose export folder',
+      })
+      if (!exportDir) { setConverting(false); return }
+
+      const workDir = useOsz
+        ? `${exportDir}/__henkan_pack_${packFolderName}`
+        : `${exportDir}/${packFolderName}`
+
+      const allPaths: string[] = []
+
+      for (const idx of indices) {
+        const entry = packEntries[idx]
+        if (!entry) continue
+        const savedCfg = packConfigsRef.current.get(idx)
+        const cfg = {
+          ...(savedCfg || configFromEntry(entry)),
+          output_format: 'folder' as const,
+          creator: settings.creator || (savedCfg || configFromEntry(entry)).creator,
+          hp_drain: settings.hp_drain,
+          overall_difficulty: settings.overall_difficulty,
+        }
+        const paths = await invoke<string[]>('export_all_beatmaps', {
+          sourceFile: entry.source_file,
+          config: cfg,
+          outputDir: workDir,
+          packName: packFolderName,
+        })
+        allPaths.push(...paths)
+      }
+
+      // Pack-identifying dummy .osu (just shows the pack banner in song select)
+      const firstEntry = packEntries[indices[0]]
+      const firstCfg = packConfigsRef.current.get(indices[0]) || configFromEntry(firstEntry)
+      await invoke<string>('create_dummy_diff', {
+        title: packFolderName,
+        creator: settings.creator || firstCfg.creator,
+        packBannerPath,
+        outputDir: workDir,
+      })
+
+      if (useOsz) {
+        const oszPath = `${exportDir}/${packFolderName}.osz`
+        await invoke<string>('zip_folder', { folderPath: workDir, outputPath: oszPath })
+        setLastExportPath(oszPath)
+        setExportPath(oszPath)
+      } else {
+        setLastExportPath(allPaths.join('\n'))
+        setExportPath(exportDir)
+      }
+      trackEvent('pack_conversion_completed', { count: String(indices.length), mode: settings.mode })
+    } catch (e: unknown) {
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Pack conversion failed'
+      setError(msg)
+      trackEvent('pack_conversion_failed', { error: msg })
+    } finally {
+      setConverting(false)
+    }
+  }, [packEntries, packSelected, packConvertAllMode, packFolder, packBannerPath, setConverting, setError, setExportPath])
+
+  const handlePackSettingsCancel = useCallback(() => {
+    setShowPackSettings(false)
+  }, [])
+
+  const handleSelectDifficulty = useCallback(async (index: number) => {
+    if (!beatmap?.source_file) return
+    setError(null)
+    setSwitchingDifficulty(true)
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const bm = await invoke<Beatmap>('select_difficulty', { path: beatmap.source_file, index })
+
+      // Update beatmap + config first (preserves user-customized fields, syncs rest from new beatmap)
+      useConverterStore.getState().updateBeatmapDifficulty(bm)
+
+      // Load media using config values — now correctly reflects user customizations
+      // while falling back to the new difficulty's defaults for non-customized fields
+      const cfg = useConverterStore.getState().config
+      const [audio, bg, banner] = await Promise.all([
+        loadMediaAsDataUrl(bm.source_dir, cfg.audio_filename || bm.audio_filename),
+        loadMediaAsDataUrl(bm.source_dir, cfg.background_filename || bm.background_filename),
+        loadMediaAsDataUrl(bm.source_dir, cfg.banner_filename || bm.banner_filename),
+      ])
+      useConverterStore.getState().setMediaUrls({ audio, background: bg, banner })
+    } catch (e: unknown) {
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to select difficulty')
+    } finally {
+      setSwitchingDifficulty(false)
+    }
+  }, [beatmap, setError])
+
+  const handleChangeFile = useCallback(async (field: string, _current: string | null): Promise<void> => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const selected = await open({
+        multiple: false,
+        filters: [
+          { name: 'Media files', extensions: ['mp3', 'ogg', 'wav', 'jpg', 'jpeg', 'png', 'gif'] },
+        ],
+      })
+      if (selected) {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const url = await invoke<string>('read_file_as_data_url', { path: selected })
+        const key = field === 'cdtitle' ? 'cdtitle_filename' : `${field}_filename`
+        const store = useConverterStore.getState()
+        store.updateConfig({ [key]: selected })
+        if (field !== 'cdtitle') {
+          store.setMediaUrls({ ...store.mediaUrls, [field]: url })
+        }
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  const handleOpenInOsu = useCallback(async () => {
+    const path = exportPath || lastExportPath
+    if (!path) return
+    const { invoke } = await import('@tauri-apps/api/core')
+    try {
+      await invoke('open_file', { path })
+    } catch { /* ignore */ }
+  }, [lastExportPath, exportPath])
+
+  const handleDismissExport = useCallback(() => {
+    setLastExportPath(null)
+  }, [])
+
+  const tapCount = beatmap?.notes.filter(n => !n.hold).length ?? 0
+  const holdCount = beatmap?.notes.filter(n => n.hold).length ?? 0
+
+  return (
+    <ErrorBoundary>
+      <div
+        className="h-full flex flex-col relative overflow-hidden animate-app-entrance select-none hide-scrollbar"
+        onContextMenu={(e) => e.preventDefault()}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+        onDragLeave={(e) => { e.preventDefault(); setDragging(false) }}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragging(false)
+          const file = e.dataTransfer?.files?.[0]
+          if (!file) return
+          handleFileDrop((file as File & { path: string }).path)
+        }}
+      >
+        {mediaUrls.background && (
+          <div className="absolute inset-0 -z-10 overflow-hidden animate-bg-fade-in">
+            <div
+              className="w-full h-full bg-cover bg-center animate-zoom"
+              style={{
+                backgroundImage: `url(${mediaUrls.background})`,
+                filter: 'blur(20px) brightness(0.5) saturate(0.5)',
+              }}
+            />
+            <div className="absolute inset-0 bg-[#0c1a35]/45" />
+          </div>
+        )}
+        {!mediaUrls.background && (
+          <div className="absolute inset-0 -z-10 bg-gradient-to-br from-surface-950 via-[#0c1123] to-surface-950 animate-gradient-shift" />
+        )}
+
+        <div className="relative z-10 flex flex-col h-full">
+          <Header direction={direction} onSetDirection={(dir) => { setDirection(dir); reset() }} />
+
+          <main className="flex-1 flex flex-col items-center p-4 sm:p-6 gap-3 sm:gap-5 overflow-auto hide-scrollbar">
+            {packFolder && packEditing === null && (
+              <PackBrowser
+                entries={packEntries}
+                selected={packSelected}
+                onToggleSelect={(i) => {
+                  setPackSelected(prev => {
+                    const next = new Set(prev)
+                    if (next.has(i)) next.delete(i)
+                    else next.add(i)
+                    return next
+                  })
+                }}
+                onEditSong={handlePackEditSong}
+                onSelectAll={handleSelectAll}
+                onConvert={handlePackConvert}
+                onConvertAll={handlePackConvertAll}
+                onBack={handlePackClose}
+                bannerUrl={packBannerUrl}
+                isConverting={isConverting}
+              />
+            )}
+
+            {packFolder && packEditing !== null && beatmap && (
+              <div className="w-full max-w-xl animate-fade-in">
+                <button
+                  onClick={handlePackBack}
+                  className="flex items-center gap-2 h-10 px-5 rounded-xl text-sm font-medium
+                    bg-white/10 border border-white/15 text-surface-300
+                    hover:bg-white/[0.14] hover:text-white
+                    active:scale-[0.97] transition-all duration-75 mb-4 w-full justify-center"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back to pack
+                </button>
+                <MetadataPanel
+                  beatmap={beatmap}
+                  config={useConverterStore.getState().config}
+                  mediaUrls={mediaUrls}
+                  tapCount={tapCount}
+                  holdCount={holdCount}
+                  isConverting={isConverting}
+                  switchingDifficulty={switchingDifficulty}
+                  direction={direction}
+                  onUpdateConfig={(p) => useConverterStore.getState().updateConfig(p)}
+                  onChangeFile={handleChangeFile}
+                  onConvert={handleConvert}
+                  onReset={reset}
+                  onSelectDifficulty={handleSelectDifficulty}
+                />
+              </div>
+            )}
+
+            {!packFolder && !beatmap && !packLoading && (
+              <>
+              <FallingArrows />
+              <div className="flex flex-col items-center gap-4 w-full max-w-lg my-auto relative z-10">
+                <DropZone dragging={dragging} onFileSelected={handleFileDrop} direction={direction} />
+                <div className="flex items-center gap-3 w-full max-w-md">
+                  <div className="flex-1 h-px bg-white/5" />
+                  <span className="text-[11px] text-surface-500 tracking-widest uppercase">or</span>
+                  <div className="flex-1 h-px bg-white/5" />
+                </div>
+                <button
+                  onClick={handleOpenPack}
+                  className="h-11 px-6 rounded-xl text-sm font-medium
+                    bg-white/[0.04] border border-white/8 text-surface-400
+                    hover:bg-white/[0.07] hover:text-surface-200
+                    active:scale-[0.97] transition-all duration-75"
+                >
+                  Open pack folder
+                </button>
+              </div>
+              </>
+            )}
+
+            {!packFolder && packLoading && (
+              <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
+                <div className="w-10 h-10 rounded-xl border-2 border-accent/30 border-t-accent animate-spin" />
+                <p className="text-sm text-surface-400">Scanning pack...</p>
+              </div>
+            )}
+
+            {!packFolder && beatmap && (
+              <div className="w-full max-w-lg">
+                <MetadataPanel
+                  beatmap={beatmap}
+                  config={useConverterStore.getState().config}
+                  mediaUrls={mediaUrls}
+                  tapCount={tapCount}
+                  holdCount={holdCount}
+                  isConverting={isConverting}
+                  switchingDifficulty={switchingDifficulty}
+                  direction={direction}
+                  onUpdateConfig={(p) => useConverterStore.getState().updateConfig(p)}
+                  onChangeFile={handleChangeFile}
+                  onConvert={handleConvert}
+                  onReset={reset}
+                  onSelectDifficulty={handleSelectDifficulty}
+                />
+              </div>
+            )}
+
+            {error && (
+              <div className="bg-red-900/40 backdrop-blur border border-red-800/50 rounded-xl px-5 py-3 text-red-300 text-sm max-w-lg animate-slide-down">
+                {error}
+              </div>
+            )}
+          </main>
+
+          {beatmap && mediaUrls.audio && (!packFolder || packEditing !== null) && (
+            <>
+              <audio ref={audioRef} src={mediaUrls.audio} preload="metadata" />
+              <AudioPlayer
+                audioRef={audioRef}
+                audioPlaying={audioPlaying}
+                audioCurrent={audioCurrent}
+                audioDuration={audioDuration}
+                onSetAudioPlaying={setAudioPlaying}
+                onSetAudioCurrent={setAudioCurrent}
+                onSetAudioDuration={setAudioDuration}
+                previewTime={beatmap.preview_time}
+                onOpenPreview={() => setShowPreview(true)}
+              />
+            </>
+          )}
+
+          {!beatmap && !packFolder && (
+            <footer className="px-4 sm:px-6 py-2 sm:py-3 border-t border-surface-800/50 text-center text-[10px] sm:text-xs text-surface-500">
+              © {new Date().getFullYear()} made by Kaan &#x2764; &middot; Henkan — osu!mania ↔ Etterna converter
+            </footer>
+          )}
+        </div>
+
+        {/* Preview overlay */}
+        {showPreview && beatmap && mediaUrls.audio && (
+          <PreviewOverlay
+            audioRef={audioRef}
+            playing={audioPlaying}
+            current={audioCurrent}
+            duration={audioDuration}
+            notes={beatmap.notes}
+            keys={beatmap.keys}
+            bpm={Math.round(60000 / (beatmap.timing_points.find(tp => tp.uninherited)?.beat_length ?? 600))}
+            backgroundUrl={mediaUrls.background}
+            previewTime={beatmap.preview_time}
+            sourceFormat={beatmap.source_format}
+            onSetPreviewTime={handleSetPreviewTime}
+            onClose={() => setShowPreview(false)}
+          />
+        )}
+
+        {/* Convert dialog */}
+        {beatmap && (
+          <ConvertDialog
+            open={showConvertDialog}
+            difficulties={beatmap.available_difficulties}
+            currentIndex={beatmap.available_difficulties.findIndex(d => d.name === beatmap.difficulty_name)}
+            onConfirm={handleConvertDialogConfirm}
+            onCancel={() => setShowConvertDialog(false)}
+          />
+        )}
+
+        {/* Bulk convert dialog */}
+        {direction === 'etterna-to-osu' && (
+          <BulkConvertDialog
+            open={showBulkConvert}
+            onCancel={() => setShowBulkConvert(false)}
+          />
+        )}
+
+        {/* Pack settings dialog */}
+        <PackSettingsDialog
+          open={showPackSettings}
+          packName={packFolder ? packFolder.split(/[/\\]+/).filter(Boolean).pop() || 'pack' : 'pack'}
+          isConverting={isConverting}
+          defaultSettings={{
+            mode: 'osz',
+            creator: useConverterStore.getState().config.creator,
+            hp_drain: useConverterStore.getState().config.hp_drain,
+            overall_difficulty: useConverterStore.getState().config.overall_difficulty,
+          }}
+          onConfirm={(settings) => {
+            setShowPackSettings(false)
+            runPackConversion(settings)
+          }}
+          onCancel={handlePackSettingsCancel}
+        />
+
+        {/* Post-export overlay */}
+        {lastExportPath && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-surface-900 border border-surface-700/50 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 animate-scale-in">
+              <div className="text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/20 flex items-center justify-center animate-scale-in">
+                  <svg className="w-8 h-8 text-emerald-400 animate-scale-in" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-semibold text-surface-100 mb-1 animate-fade-in">Export complete!</h2>
+                <div className="text-xs text-surface-400 mb-6 space-y-1 max-h-24 overflow-y-auto animate-fade-in">
+                  {lastExportPath.split('\n').map((p, i) => (
+                    <p key={i} className="break-all">{p}</p>
+                  ))}
+                </div>
+                <div className="flex gap-3 justify-center animate-fade-in">
+                  <button
+                    onClick={handleOpenInOsu}
+                    className="px-6 py-2.5 rounded-xl bg-accent text-white font-medium text-sm
+                               hover:bg-accent-hover active:scale-[0.97] transition-all duration-75 shadow-lg shadow-accent/25"
+                  >
+                    Open in osu!
+                  </button>
+                  <button
+                    onClick={handleDismissExport}
+                    className="px-6 py-2.5 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-400 font-medium text-sm
+                               hover:bg-surface-700 hover:text-surface-200 active:scale-[0.97] transition-all duration-75"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </ErrorBoundary>
+  )
+}
+
+export default App

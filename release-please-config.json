@@ -1,0 +1,10 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "include-v-in-tag": true,
+      "pull-request-title-pattern": "chore: release ${version}",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

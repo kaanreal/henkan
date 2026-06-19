@@ -1,0 +1,134 @@
+use crate::models::beatmap::{Beatmap, ExportConfig};
+use anyhow::Result;
+
+pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
+    let global_timing_ms = config.global_timing_ms;
+    let mut output = String::new();
+
+    output.push_str("osu file format v14\n\n");
+
+    output.push_str("[General]\n");
+    output.push_str(&format!("AudioFilename: {}\n", beatmap.audio_filename));
+    output.push_str(&format!("AudioLeadIn: {}\n", beatmap.lead_in_ms as u64));
+    output.push_str("Mode: 3\n");
+    output.push_str(&format!("PreviewTime: {}\n", beatmap.preview_time as i64));
+    output.push('\n');
+
+    output.push_str("[Editor]\n\n");
+
+    output.push_str("[Metadata]\n");
+    output.push_str(&format!("Title:{}\n", beatmap.title));
+    output.push_str(&format!("TitleUnicode:{}\n", beatmap.title));
+    output.push_str(&format!("Artist:{}\n", beatmap.artist));
+    output.push_str(&format!("ArtistUnicode:{}\n", beatmap.artist));
+    output.push_str(&format!("Creator:{}\n", beatmap.creator));
+    output.push_str(&format!("Version:{}\n", beatmap.difficulty_name));
+    output.push_str(&format!("Source:{}\n", beatmap.source));
+    output.push_str(&format!("Tags:{}\n", beatmap.tags));
+    output.push('\n');
+
+    let cs = if config.circle_size == 0.0 { beatmap.keys as f64 } else { config.circle_size };
+    let ar = if config.approach_rate == 0.0 { config.overall_difficulty } else { config.approach_rate };
+
+    output.push_str("[Difficulty]\n");
+    output.push_str(&format!("HPDrainRate:{}\n", config.hp_drain));
+    output.push_str(&format!("CircleSize:{}\n", cs));
+    output.push_str(&format!("OverallDifficulty:{}\n", config.overall_difficulty));
+    output.push_str(&format!("ApproachRate:{}\n", ar));
+    output.push_str("SliderMultiplier:1.4\n");
+    output.push_str("SliderTickRate:1\n");
+    output.push('\n');
+
+    output.push_str("[Events]\n");
+    output.push_str("//Background and Video events\n");
+    // Export copies background to "bg.jpg" for both directions, so reference
+    // that known name instead of the SM file's original name.
+    if beatmap.background_filename.is_some() {
+        output.push_str("0,0,\"bg.jpg\",0,0\n");
+    }
+    output.push_str("//Break Periods\n");
+    output.push_str("//Storyboard Layer 0 (Background)\n");
+    output.push_str("//Storyboard Layer 1 (Fail)\n");
+    output.push_str("//Storyboard Layer 2 (Pass)\n");
+    output.push_str("//Storyboard Layer 3 (Foreground)\n");
+    output.push_str("//Storyboard Layer 4 (Overlay)\n");
+    output.push_str("//Storyboard Sound Samples\n");
+    output.push('\n');
+
+    // Apply timing correction (shift earlier, never below 0)
+    let shift = |t: f64| (t - global_timing_ms).max(0.0);
+
+    output.push_str("[TimingPoints]\n");
+
+    // collect BPM points and SV (inherited) points, then emit them in one
+    // time-sorted list — osu expects [TimingPoints] in chronological order,
+    // with the uninherited point first when both share a timestamp
+    let mut lines: Vec<(f64, u8, String)> = Vec::new();
+
+    for tp in &beatmap.timing_points {
+        let beat_length = if tp.beat_length > 0.0 {
+            tp.beat_length
+        } else {
+            -100.0
+        };
+        let t = shift(tp.time_ms);
+        lines.push((
+            t,
+            if tp.uninherited { 0 } else { 1 },
+            format!(
+                "{},{},{},{},{},{},{},{}",
+                t as i64,
+                beat_length,
+                tp.meter,
+                0,
+                0,
+                100,
+                if tp.uninherited { 1 } else { 0 },
+                0
+            ),
+        ));
+    }
+
+    for sv in &beatmap.sv_events {
+        if sv.multiplier <= 0.0 {
+            continue;
+        }
+        let sv_beat_length = -100.0 / sv.multiplier;
+        let t = shift(sv.time_ms);
+        lines.push((
+            t,
+            1,
+            format!("{},{},{},{},{},{},{},{}", t as i64, sv_beat_length, 4, 0, 0, 100, 0, 0),
+        ));
+    }
+
+    lines.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.cmp(&b.1))
+    });
+    for (_, _, line) in &lines {
+        output.push_str(line);
+        output.push('\n');
+    }
+
+    output.push('\n');
+
+    output.push_str("[HitObjects]\n");
+    for note in &beatmap.notes {
+        let x = ((note.column as f64 + 0.5) / beatmap.keys as f64 * 512.0) as u32;
+        let time = shift(note.time_ms) as u64;
+
+        if note.hold {
+            let end_time = shift(note.hold_end_ms.unwrap_or(note.time_ms + 1000.0)) as u64;
+            output.push_str(&format!(
+                "{},{},{},128,0,{}:0:0:0:0:\n",
+                x, 192, time, end_time
+            ));
+        } else {
+            output.push_str(&format!("{},{},{},1,0,0:0:0:0:\n", x, 192, time));
+        }
+    }
+
+    Ok(output)
+}
