@@ -1,0 +1,230 @@
+name: Release & Build
+
+on:
+    push:
+        branches:
+            - main
+    workflow_dispatch:
+
+permissions:
+    contents: write
+    pull-requests: write
+
+jobs:
+    release-please:
+        runs-on: ubuntu-latest
+        outputs:
+            release_created: ${{ steps.release.outputs.release_created }}
+            tag_name: ${{ steps.release.outputs.tag_name }}
+            body: ${{ steps.release.outputs.body }}
+        steps:
+            - uses: googleapis/release-please-action@v4
+              id: release
+              with:
+                  token: ${{ secrets.MY_RELEASE_TOKEN }}
+                  include-component-in-tag: false
+
+    build:
+        needs: release-please
+        if: ${{ needs.release-please.outputs.release_created }}
+        strategy:
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      target: x86_64-unknown-linux-gnu
+                      platform-name: linux-x86_64
+                    - os: windows-latest
+                      target: x86_64-pc-windows-msvc
+                      platform-name: windows-x86_64
+                    - os: macos-latest
+                      target: aarch64-apple-darwin
+                      platform-name: darwin-aarch64
+
+        runs-on: ${{ matrix.os }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: npm
+
+            - name: Extract version
+              id: version
+              shell: bash
+              env:
+                  TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+              run: |
+                  VERSION="${TAG_NAME#v}"
+                  echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+            - name: Patch version in tauri.conf.json and Cargo.toml
+              shell: bash
+              run: |
+                  VER="${{ steps.version.outputs.version }}"
+                  sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VER\"/" src-tauri/tauri.conf.json && rm -f src-tauri/tauri.conf.json.bak
+                  sed -i.bak "s/^version = \".*\"/version = \"$VER\"/" src-tauri/Cargo.toml && rm -f src-tauri/Cargo.toml.bak
+
+            - name: Install Rust
+              run: |
+                  rustup set profile minimal
+                  rustup toolchain install stable
+                  rustup default stable
+                  rustup target add ${{ matrix.target }}
+
+            - name: Install Linux deps
+              if: matrix.os == 'ubuntu-latest'
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+            - name: Create .env
+              run: cp src-tauri/.env.example src-tauri/.env
+
+            - run: npm ci
+
+            - name: Build Tauri release
+              run: npm run tauri build
+              env:
+                  APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
+                  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+                  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+            - name: Upload bundle artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: henkan-${{ matrix.platform-name }}
+                  path: src-tauri/target/release/bundle
+
+    generate-updater-json:
+        needs: [build, release-please]
+        runs-on: ubuntu-latest
+        steps:
+            - name: Download all platform bundles
+              uses: actions/download-artifact@v4
+              with:
+                  pattern: henkan-*
+                  path: bundles
+                  merge-multiple: true
+
+            - name: Create updater.json
+              shell: bash
+              env:
+                  TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+              run: |
+                  VERSION="${TAG_NAME#v}"
+                  PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                  REPO="${{ github.repository }}"
+                  BUNDLE_DIR="bundles"
+
+                  echo "{" > updater.json
+                  echo "  \"version\": \"$VERSION\"," >> updater.json
+                  echo "  \"pub_date\": \"$PUB_DATE\"," >> updater.json
+                  echo "  \"platforms\": {" >> updater.json
+
+                  FIRST=true
+                  for sigfile in "$BUNDLE_DIR"/*.sig; do
+                      [ -f "$sigfile" ] || continue
+                      SIG="$(tr -d '\n\r' < "$sigfile")"
+                      ARCHIVE="${sigfile%.sig}"
+                      FILENAME="$(basename "$ARCHIVE")"
+                      URL="https://github.com/$REPO/releases/download/$TAG_NAME/$FILENAME"
+
+                      PLATFORM=""
+                      case "$FILENAME" in
+                          *.AppImage.tar.gz) PLATFORM="linux-x86_64" ;;
+                          *aarch64*.dmg)     PLATFORM="darwin-aarch64" ;;
+                          *x64*.dmg)         PLATFORM="darwin-x86_64" ;;
+                          *.msi.zip)         PLATFORM="windows-x86_64" ;;
+                      esac
+
+                      if [ -n "$PLATFORM" ]; then
+                          [ "$FIRST" = false ] && echo "," >> updater.json
+                          FIRST=false
+                          echo "    \"$PLATFORM\": {" >> updater.json
+                          echo "      \"signature\": \"$SIG\"," >> updater.json
+                          echo "      \"url\": \"$URL\"" >> updater.json
+                          echo "    }" >> updater.json
+                      fi
+                  done
+
+                  echo "  }," >> updater.json
+                  echo "  \"notes\": \"https://github.com/$REPO/releases/tag/$TAG_NAME\"" >> updater.json
+                  echo "}" >> updater.json
+
+                  cat updater.json
+
+            - name: Upload updater.json
+              uses: actions/upload-artifact@v4
+              with:
+                  name: updater-json
+                  path: updater.json
+
+    publish:
+        needs: [build, generate-updater-json, release-please]
+        runs-on: ubuntu-latest
+        steps:
+            - name: Extract version
+              id: version
+              shell: bash
+              env:
+                  TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+              run: |
+                  VERSION="${TAG_NAME#v}"
+                  echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+            - name: Prepare Release Notes
+              id: release_notes
+              shell: bash
+              env:
+                  RP_BODY: ${{ needs.release-please.outputs.body }}
+                  TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+              run: |
+                  VERSION="${TAG_NAME#v}"
+                  HEADER="# Henkan v$VERSION – Release Notes"
+                  CLEANED_BODY=$(echo "$RP_BODY" | sed '1d' | sed 's/^### /## /g')
+                  COMPARE_URL=$(echo "$RP_BODY" | grep -oE "https://github.com/[^/]+/[^/]+/compare/[v0-9.]+...[v0-9.]+" | head -n 1)
+
+                  if [ -n "$COMPARE_URL" ]; then
+                    FOOTER="\n\n**Full Changelog**: ($COMPARE_URL)"
+                  else
+                    FOOTER=""
+                  fi
+
+                  {
+                    echo "RELEASE_BODY<<EOF"
+                    echo -e "$HEADER\n\n$CLEANED_BODY$FOOTER"
+                    echo "EOF"
+                  } >> $GITHUB_OUTPUT
+
+            - name: Download all platform bundles
+              uses: actions/download-artifact@v4
+              with:
+                  pattern: henkan-*
+                  path: bundles
+                  merge-multiple: true
+
+            - name: Download updater.json
+              uses: actions/download-artifact@v4
+              with:
+                  name: updater-json
+                  path: .
+
+            - name: Upload to Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ needs.release-please.outputs.tag_name }}
+                  name: Release v${{ steps.version.outputs.version }}
+                  body: ${{ steps.release_notes.outputs.RELEASE_BODY }}
+                  files: |
+                      bundles/**/*.msi
+                      bundles/**/*.msi.zip
+                      bundles/**/*.msi.zip.sig
+                      bundles/**/*.dmg
+                      bundles/**/*.dmg.sig
+                      bundles/**/*.AppImage
+                      bundles/**/*.AppImage.tar.gz
+                      bundles/**/*.AppImage.tar.gz.sig
+                      bundles/**/*.deb
+                      updater.json
+                  generate_release_notes: false
