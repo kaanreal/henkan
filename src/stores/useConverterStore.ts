@@ -42,9 +42,11 @@ function buildConfig(beatmap: Beatmap | null): ExportConfig {
       title: '', artist: '', creator: '', difficulty_name: '',
       source: '', tags: '', audio_filename: '',
       background_filename: null, banner_filename: null,       cdtitle_filename: null, cdtitle_name: '',
-      global_timing_ms: 50, output_format: 'osu',
+      global_timing_ms: 50, output_format: 'osz',
       hp_drain: 8, overall_difficulty: 8,
       preview_time: 0,
+      conversion_rate: 1,
+      preserve_pitch: true,
     }
   }
   return {
@@ -59,10 +61,12 @@ function buildConfig(beatmap: Beatmap | null): ExportConfig {
     banner_filename: beatmap.banner_filename,
     cdtitle_filename: null, cdtitle_name: '',
     global_timing_ms: 50,
-    output_format: 'osu',
+    output_format: 'osz',
     hp_drain: 8,
     overall_difficulty: 8,
     preview_time: beatmap.preview_time,
+    conversion_rate: 1,
+    preserve_pitch: true,
   }
 }
 

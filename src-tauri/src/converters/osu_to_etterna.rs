@@ -331,6 +331,58 @@ mod tests {
     use super::*;
     use crate::parsers::osu::parse_osu;
 
+    #[test]
+    fn test_rate_scaling_changes_output() {
+        let osu = r#"osu file format v14
+
+[General]
+AudioFilename: audio.mp3
+Mode: 3
+
+[Metadata]
+Title:Test Song
+Artist:Test Artist
+Creator:Mapper
+Version:4K Normal
+Source:
+
+[Difficulty]
+CircleSize:4
+
+[TimingPoints]
+0,500,4,0,0,100,1,0
+
+[HitObjects]
+64,192,1000,1,0,0:0:0:0:
+192,192,2000,1,0,0:0:0:0:
+320,192,3000,1,0,0:0:0:0:
+448,192,4000,1,0,0:0:0:0:
+"#;
+        let mut bm = parse_osu(osu).unwrap();
+        // convert at 1x (no scaling)
+        let sm_1x = crate::converters::osu_to_etterna::convert(&bm, 0.0).unwrap();
+        // scale timing for 2x and convert
+        crate::scale_timing_for_rate(&mut bm, 2.0);
+        let sm_2x = crate::converters::osu_to_etterna::convert(&bm, 0.0).unwrap();
+
+        // Re-parse and verify note times are earlier with 2x
+        let reparsed_1x = crate::parsers::etterna::parse_sm(&sm_1x).unwrap();
+        let reparsed_2x = crate::parsers::etterna::parse_sm(&sm_2x).unwrap();
+
+        // All notes should be shifted earlier with 2x rate
+        for (n1, n2) in reparsed_1x.notes.iter().zip(reparsed_2x.notes.iter()) {
+            assert!(n2.time_ms < n1.time_ms,
+                "rate 2x note should be earlier: 1x={}ms 2x={}ms", n1.time_ms, n2.time_ms);
+            assert!((n2.time_ms - n1.time_ms / 2.0).abs() < 3.0,
+                "2x note time should be ~half of 1x: 1x={}ms 2x={}ms", n1.time_ms, n2.time_ms);
+        }
+
+        // The total duration should be shorter with 2x
+        let dur_1x = reparsed_1x.duration_ms;
+        let dur_2x = reparsed_2x.duration_ms;
+        assert!(dur_2x < dur_1x,
+            "duration should be shorter with 2x: {} vs {}", dur_2x, dur_1x);
+    }
 
     #[test]
     fn test_converter_output() {

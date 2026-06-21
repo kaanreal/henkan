@@ -23,6 +23,7 @@ export interface DiffInfo {
   name: string
   keys: number
   note_count: number
+  audio_filename: string | null
 }
 
 export interface Beatmap {
@@ -65,6 +66,8 @@ export interface ExportConfig {
   hp_drain: number
   overall_difficulty: number
   preview_time: number
+  conversion_rate: number
+  preserve_pitch: boolean
 }
 
 export type ConvertDirection = 'osu-to-etterna' | 'etterna-to-osu'

@@ -27,14 +27,11 @@ export function Header({ direction, onSetDirection }: HeaderProps) {
   const [stars, setStars] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`https://api.github.com/repos/${REPO}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (typeof d.stargazers_count === 'number') {
-          setStars(d.stargazers_count.toLocaleString())
-        }
+    invoke<string | null>('get_github_stars', { repo: REPO })
+      .then((count) => {
+        if (count) setStars(count)
       })
-      .catch(() => { /* silent */ })
+      .catch(() => {})
   }, [])
 
   return (
