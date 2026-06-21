@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
 import type { ConvertDirection } from '../types/beatmap'
 
 const REPO = 'kaanreal/henkan'
@@ -27,9 +26,12 @@ export function Header({ direction, onSetDirection }: HeaderProps) {
   const [stars, setStars] = useState<string | null>(null)
 
   useEffect(() => {
-    invoke<string | null>('get_github_stars', { repo: REPO })
-      .then((count) => {
-        if (count) setStars(count)
+    fetch(`https://api.github.com/repos/${REPO}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.stargazers_count !== undefined) {
+          setStars(data.stargazers_count.toString())
+        }
       })
       .catch(() => {})
   }, [])
@@ -41,7 +43,7 @@ export function Header({ direction, onSetDirection }: HeaderProps) {
         <span className="text-base font-semibold tracking-tight text-surface-100">Henkan</span>
 
         <button
-          onClick={() => invoke('open_url', { url: GITHUB_URL })}
+          onClick={() => window.open(GITHUB_URL, '_blank')}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-surface-400 hover:text-surface-200 text-[11px] font-medium transition-all duration-75 active:scale-[0.97]"
         >
           <GithubIcon />
@@ -74,7 +76,7 @@ export function Header({ direction, onSetDirection }: HeaderProps) {
       </div>
 
       <button
-        onClick={() => invoke('open_url', { url: SUPPORTER_URL })}
+        onClick={() => window.open(SUPPORTER_URL, '_blank')}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#FF57A0]/40 hover:border-[#FF57A0] bg-[#FF57A0]/[0.06] hover:bg-[#FF57A0]/[0.12] text-surface-300 hover:text-white text-xs font-medium transition-all duration-75 active:scale-[0.97] shrink-0"
       >
         <HeartIcon />

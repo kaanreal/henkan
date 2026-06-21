@@ -3,32 +3,16 @@ import type { ConvertDirection } from '../types/beatmap'
 
 interface DropZoneProps {
   dragging: boolean
-  onFileSelected: (path: string) => void
+  onFileSelected: (file: File) => void
   direction: ConvertDirection
 }
 
 export function DropZone({ dragging, onFileSelected }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const handleClick = useCallback(async () => {
-    try {
-      const { open } = await import('@tauri-apps/plugin-dialog')
-      const selected = await open({
-        multiple: false,
-        filters: [
-          {
-            name: 'Beatmap Files',
-            extensions: ['osu', 'osz', 'sm'],
-          },
-        ],
-      })
-      if (selected) {
-        onFileSelected(selected)
-      }
-    } catch {
-      inputRef.current?.click()
-    }
-  }, [onFileSelected])
+  const handleClick = useCallback(() => {
+    inputRef.current?.click()
+  }, [])
 
   return (
     <div
@@ -62,7 +46,7 @@ export function DropZone({ dragging, onFileSelected }: DropZoneProps) {
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0]
-          if (file) onFileSelected((file as File & { path: string }).path)
+          if (file) onFileSelected(file)
         }}
       />
 
