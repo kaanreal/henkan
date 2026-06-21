@@ -25,23 +25,23 @@ Drag a .osu, .osz, or .sm file onto the window and it just works. Cross-platform
 
 ### Main Interface
 
-![Main Interface](dist/assets/screenshots/main-menu.png)
+![Main Interface](public/screenshots/main-menu.png)
 
 ### Pack Conversion
 
-![Pack Conversion](dist/assets/screenshots/pack-conversion.png)
+![Pack Conversion](public/screenshots/pack-conversion.png)
 
 ### Etterna Conversion
 
-![Etterna Conversion](dist/assets/screenshots/etterna-conversion.png)
+![Etterna Conversion](public/screenshots/etterna-conversion.png)
 
 ### Osu! Conversion
 
-![Osu! Conversion](dist/assets/screenshots/osu-conversion.png)
+![Osu! Conversion](public/screenshots/osu-conversion.png)
 
 ### Preview
 
-![Preview](dist/assets/screenshots/preview.png)
+![Preview](public/screenshots/preview.png)
 
 ## Download
 
