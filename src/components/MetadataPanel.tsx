@@ -136,6 +136,42 @@ export function MetadataPanel({
         </div>
       )}
 
+      {/* Conversion rate */}
+      <div className="animate-fade-in delay-200">
+        <div className="flex items-center gap-2 mb-2">
+          <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Rate</h2>
+          <div className="h-px flex-1 bg-white/5" />
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-surface-400 w-16 shrink-0">{config.conversion_rate.toFixed(2)}x</span>
+          <input
+            type="range"
+            min={0.5}
+            max={3}
+            step={0.05}
+            value={config.conversion_rate}
+            onChange={e => onUpdateConfig({ conversion_rate: parseFloat(e.target.value) })}
+            className="flex-1 h-2 rounded-full bg-white/15 cursor-pointer"
+            style={{ accentColor: '#6c5ce7' }}
+          />
+          <button
+            onClick={() => onUpdateConfig({ conversion_rate: 1 })}
+            className="text-[11px] text-surface-500 hover:text-surface-300 transition-colors px-1"
+          >
+            Reset
+          </button>
+        </div>
+        <label className="flex items-center gap-2 mt-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={config.preserve_pitch}
+            onChange={e => onUpdateConfig({ preserve_pitch: e.target.checked })}
+            className="w-3.5 h-3.5 rounded border-white/20 accent-[#6c5ce7]"
+          />
+          <span className="text-xs text-surface-400">Preserve pitch</span>
+        </label>
+      </div>
+
       {/* File pickers */}
       <div className="animate-fade-in delay-250">
         <div className="flex items-center gap-2 mb-2.5">
@@ -206,19 +242,20 @@ export function MetadataPanel({
       </div>
 
       {/* Output format */}
-      {direction === 'etterna-to-osu' && (
-        <div className="flex items-center gap-2 animate-fade-in delay-300">
-          <span className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase mr-1">Format</span>
-          <FormatToggle
-            options={[
-              { label: '.osu', value: 'osu' },
-              { label: '.osz', value: 'osz' },
-            ]}
-            value={config.output_format}
-            onChange={v => onUpdateConfig({ output_format: v as 'osu' | 'osz' })}
-          />
-        </div>
-      )}
+      <div className="flex items-center gap-2 animate-fade-in delay-300">
+        <span className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase mr-1">Format</span>
+        <FormatToggle
+          options={isOsu
+            ? [{ label: '.sm folder', value: 'folder' }]
+            : [
+                { label: '.osu', value: 'osu' },
+                { label: '.osz', value: 'osz' },
+              ]
+          }
+          value={config.output_format}
+          onChange={v => onUpdateConfig({ output_format: v as 'folder' | 'osu' | 'osz' })}
+        />
+      </div>
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1 animate-fade-in delay-300">
