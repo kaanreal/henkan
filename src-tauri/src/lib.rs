@@ -400,25 +400,40 @@ fn read_file_bytes(source_dir: &str, filename: &str) -> Result<(Vec<u8>, String)
 }
 
 fn find_ffmpeg() -> Option<PathBuf> {
+    // Check PATH first (works on all platforms)
+    if std::process::Command::new("ffmpeg").arg("-version").output().is_ok() {
+        return Some(PathBuf::from("ffmpeg"));
+    }
     // Development: in src-tauri/binaries/
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("binaries")
-        .join("ffmpeg-x86_64-pc-windows-msvc.exe");
-    if dev.exists() {
-        return Some(dev);
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries");
+    let target_triple = std::env::consts::ARCH.to_string() + "-" + std::env::consts::OS;
+    let sidecar_name = format!("ffmpeg-{}", target_triple);
+    // Try with .exe extension on Windows
+    let candidate = if cfg!(target_os = "windows") {
+        manifest.join(format!("{}.exe", sidecar_name))
+    } else {
+        manifest.join(&sidecar_name)
+    };
+    if candidate.exists() {
+        return Some(candidate);
+    }
+    // Try unadorned name
+    let plain = manifest.join("ffmpeg");
+    if plain.exists() {
+        return Some(plain);
     }
     // Production: alongside executable (sidecar placement)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let prod = dir.join("ffmpeg-x86_64-pc-windows-msvc.exe");
+            let prod = if cfg!(target_os = "windows") {
+                dir.join(format!("{}.exe", sidecar_name))
+            } else {
+                dir.join(&sidecar_name)
+            };
             if prod.exists() {
                 return Some(prod);
             }
         }
-    }
-    // Check PATH
-    if std::process::Command::new("ffmpeg").arg("-version").output().is_ok() {
-        return Some(PathBuf::from("ffmpeg"));
     }
     None
 }

@@ -215,7 +215,7 @@ function App() {
 
       let exportDir: string | null = null
 
-      if (cur.output_format === 'osz' && direction === 'etterna-to-osu') {
+      if (cur.output_format === 'osz') {
         const { save } = await import('@tauri-apps/plugin-dialog')
         exportDir = await save({
           title: 'Export as .osz',
