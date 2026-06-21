@@ -1,100 +1,90 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
+import type { WebAudioPlayer } from '../lib/WebAudioPlayer'
+import { useConverterStore } from '../stores/useConverterStore'
 
 interface Props {
-  audioRef: { current: HTMLAudioElement | null }
+  audioPlayerRef: { current: WebAudioPlayer | null }
   audioPlaying: boolean
-  audioCurrent: number
   audioDuration: number
-  onSetAudioPlaying: (v: boolean) => void
-  onSetAudioCurrent: (v: number) => void
-  onSetAudioDuration: (v: number) => void
   previewTime: number
   onOpenPreview?: () => void
 }
 
-const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
+const fmt = (s: number) => {
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${m}:${sec.toString().padStart(2, '0')}`
+}
 
 export function AudioPlayer({
-  audioRef, audioPlaying, audioCurrent, audioDuration,
-  onSetAudioPlaying, onSetAudioCurrent, onSetAudioDuration,
+  audioPlayerRef, audioPlaying, audioDuration,
   previewTime, onOpenPreview,
 }: Props) {
-  const [hasAutoPlayed, setHasAutoPlayed] = useState(false)
+  const conversionRate = useConverterStore(s => s.config.conversion_rate)
+  const preservePitch = useConverterStore(s => s.config.preserve_pitch)
   const [showVolume, setShowVolume] = useState(false)
   const [volume, setVolumeState] = useState(0.15)
-  const [rate, setRate] = useState(1)
-  const [preservePitch, setPreservePitch] = useState(true)
-  const [showRatePopup, setShowRatePopup] = useState(false)
   const volumeTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const rateMenuTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  
+  const progressFillRef = useRef<HTMLDivElement>(null)
+  const progressThumbRef = useRef<HTMLDivElement>(null)
+  const timeTextRef = useRef<HTMLSpanElement>(null)
+
+  // Event callbacks are handled by App.tsx via WebAudioPlayer.onXxx properties
 
   useEffect(() => {
-    const el = audioRef.current
+    const el = audioPlayerRef.current
     if (!el) return
-    const onMeta = () => onSetAudioDuration(el.duration)
-    const onTime = () => onSetAudioCurrent(el.currentTime)
-    const onEnd = () => onSetAudioPlaying(false)
-    const onP = () => onSetAudioPlaying(true)
-    const onPa = () => onSetAudioPlaying(false)
-    el.addEventListener('loadedmetadata', onMeta)
-    el.addEventListener('timeupdate', onTime)
-    el.addEventListener('ended', onEnd)
-    el.addEventListener('play', onP)
-    el.addEventListener('pause', onPa)
-    if (el.duration) onSetAudioDuration(el.duration)
-    return () => {
-      el.removeEventListener('loadedmetadata', onMeta)
-      el.removeEventListener('timeupdate', onTime)
-      el.removeEventListener('ended', onEnd)
-      el.removeEventListener('play', onP)
-      el.removeEventListener('pause', onPa)
+    el.volume = volume
+  }, [audioPlayerRef, volume])
+
+  useEffect(() => {
+    let rafId = 0
+    const loop = () => {
+      const el = audioPlayerRef.current
+      if (el) {
+        const c = el.currentTime
+        const pct = audioDuration > 0 ? (c / audioDuration) * 100 : 0
+        if (progressFillRef.current) progressFillRef.current.style.width = `${pct}%`
+        if (progressThumbRef.current) progressThumbRef.current.style.left = `calc(${pct}% - 6px)`
+        if (timeTextRef.current) timeTextRef.current.innerText = `${fmt(c)} / ${fmt(audioDuration)}`
+      }
+      rafId = requestAnimationFrame(loop)
     }
-  }, [audioRef, onSetAudioPlaying, onSetAudioCurrent, onSetAudioDuration])
+    rafId = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(rafId)
+  }, [audioPlayerRef, audioDuration])
 
   useEffect(() => {
-    const el = audioRef.current
+    const el = audioPlayerRef.current
     if (!el) return
-    el.volume = volume
-  }, [audioRef, volume])
+    el.playbackRate = conversionRate
+  }, [audioPlayerRef, conversionRate])
 
   useEffect(() => {
-    const el = audioRef.current
-    if (!el || hasAutoPlayed || audioDuration === 0) return
-    el.volume = volume
-    if (previewTime > 0) el.currentTime = previewTime / 1000
-    el.play().then(() => setHasAutoPlayed(true)).catch(() => {})
-  }, [audioRef, audioDuration, hasAutoPlayed, previewTime, volume])
-
-  useEffect(() => {
-    const el = audioRef.current
-    if (!el) return
-    el.playbackRate = rate
-  }, [audioRef, rate])
-
-  useEffect(() => {
-    const el = audioRef.current
+    const el = audioPlayerRef.current
     if (!el) return
     el.preservesPitch = preservePitch
-  }, [audioRef, preservePitch])
+  }, [audioPlayerRef, preservePitch])
 
   const toggle = useCallback(() => {
-    const el = audioRef.current
+    const el = audioPlayerRef.current
     if (!el) return
     if (audioPlaying) { el.pause() }
-    else { el.play().then(() => setHasAutoPlayed(true)).catch(() => {}) }
-  }, [audioRef, audioPlaying])
+    else { el.play().catch(() => {}) }
+  }, [audioPlayerRef, audioPlaying])
 
   const stop = useCallback(() => {
-    const el = audioRef.current
+    const el = audioPlayerRef.current
     if (!el) return
     el.pause()
     el.currentTime = previewTime > 0 ? previewTime / 1000 : 0
-  }, [audioRef, previewTime])
+  }, [audioPlayerRef, previewTime])
 
   const isMuted = volume === 0
 
   const toggleMute = useCallback(() => {
-    const el = audioRef.current
+    const el = audioPlayerRef.current
     if (!el) return
     if (isMuted) {
       const v = 0.15
@@ -104,16 +94,16 @@ export function AudioPlayer({
       el.muted = true
       setVolumeState(0)
     }
-  }, [audioRef, isMuted])
+  }, [audioPlayerRef, isMuted])
 
   const setVolume = useCallback((v: number) => {
-    const el = audioRef.current
+    const el = audioPlayerRef.current
     if (!el) return
     const clamped = Math.max(0, Math.min(1, v))
     el.volume = clamped
     setVolumeState(clamped)
     el.muted = clamped === 0
-  }, [audioRef])
+  }, [audioPlayerRef])
 
   const handleVolumeEnter = useCallback(() => {
     if (volumeTimer.current) clearTimeout(volumeTimer.current)
@@ -124,20 +114,6 @@ export function AudioPlayer({
     volumeTimer.current = setTimeout(() => setShowVolume(false), 200)
   }, [])
 
-  const handleRateEnter = useCallback(() => {
-    if (rateMenuTimer.current) clearTimeout(rateMenuTimer.current)
-    setShowRatePopup(true)
-  }, [])
-
-  const handleRateLeave = useCallback(() => {
-    rateMenuTimer.current = setTimeout(() => setShowRatePopup(false), 300)
-  }, [])
-
-  const fmt = (s: number) => {
-    const m = Math.floor(s / 60)
-    const sec = Math.floor(s % 60)
-    return `${m}:${sec.toString().padStart(2, '0')}`
-  }
 
   return (
     <div className="shrink-0 px-6 py-2.5 border-t border-white/5 bg-black/30 backdrop-blur-md flex items-center gap-2.5 animate-slide-up">
@@ -181,12 +157,12 @@ export function AudioPlayer({
         </svg>
       </button>
 
-      <span className="text-xs text-surface-500 tabular-nums w-16 shrink-0 select-none">{fmt(audioCurrent)} / {fmt(audioDuration)}</span>
+      <span ref={timeTextRef} className="text-xs text-surface-500 tabular-nums w-16 shrink-0 select-none">0:00 / 0:00</span>
 
       {/* Progress bar */}
       <div className="flex-1 h-2 bg-white/[0.06] rounded-full cursor-pointer group relative"
         onClick={(e) => {
-          const el = audioRef.current
+          const el = audioPlayerRef.current
           if (!el || !audioDuration) return
           const rect = e.currentTarget.getBoundingClientRect()
           const pct = (e.clientX - rect.left) / rect.width
@@ -194,65 +170,20 @@ export function AudioPlayer({
         }}
       >
         <div
-          className="h-full bg-accent rounded-full transition-[width] duration-75"
-          style={{ width: `${audioDuration ? (audioCurrent / audioDuration) * 100 : 0}%` }}
+          ref={progressFillRef}
+          className="h-full bg-accent rounded-full transition-none"
+          style={{ width: '0%' }}
         />
         <div
+          ref={progressThumbRef}
           className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-sm border-2 border-accent opacity-0 group-hover:opacity-100 transition-opacity duration-100"
-          style={{ left: `calc(${audioDuration ? (audioCurrent / audioDuration) * 100 : 0}% - 6px)` }}
+          style={{ left: '-6px' }}
         />
       </div>
 
-      {/* Rate control */}
-      <div
-        className="relative shrink-0"
-        onMouseEnter={handleRateEnter}
-        onMouseLeave={handleRateLeave}
-      >
-        <button
-          className="h-8 px-2.5 rounded-lg bg-surface-800 hover:bg-surface-700 text-xs text-surface-300 font-medium transition-all duration-75 active:scale-[0.95]"
-          title="Playback speed"
-        >
-          {rate}x
-        </button>
-        {showRatePopup && (
-          <div className="absolute bottom-full mb-2 right-0 bg-surface-800 border border-white/10 rounded-xl p-2 shadow-xl z-30 min-w-[140px]"
-            onMouseEnter={handleRateEnter}
-            onMouseLeave={handleRateLeave}
-          >
-            <div className="flex flex-col gap-1">
-              {RATES.map(r => (
-                <button
-                  key={r}
-                  onClick={() => { setRate(r); setShowRatePopup(false) }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-75 text-left active:scale-[0.97]
-                    ${r === rate
-                      ? 'bg-accent text-white'
-                      : 'text-surface-300 hover:bg-surface-700'
-                    }`}
-                >
-                  {r}x
-                </button>
-              ))}
-              <div className="border-t border-white/10 my-1" />
-              <label className="flex items-center gap-2 px-3 py-1.5 text-xs text-surface-300 cursor-pointer select-none">
-                <div
-                  className={`w-4 h-4 rounded border transition-all duration-100 flex items-center justify-center shrink-0 ${
-                    preservePitch ? 'bg-accent border-accent' : 'bg-surface-700 border-white/20'
-                  }`}
-                  onClick={() => setPreservePitch(p => !p)}
-                >
-                  {preservePitch && (
-                    <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
-                Preserve pitch
-              </label>
-            </div>
-          </div>
-        )}
+      {/* Rate */}
+      <div className="h-8 px-2.5 rounded-lg bg-surface-800 text-xs text-accent font-medium flex items-center shrink-0 select-none">
+        {conversionRate.toFixed(2)}x
       </div>
 
       {/* Volume */}

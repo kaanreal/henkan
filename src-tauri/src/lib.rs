@@ -103,6 +103,7 @@ fn extract_osz_all(path: &str) -> Result<OszResult, String> {
         name: p.2.difficulty_name.clone(),
         keys: p.2.keys,
         note_count: p.2.notes.len(),
+        audio_filename: Some(p.2.audio_filename.clone()),
     }).collect();
 
     beatmap.available_difficulties = diffs;
@@ -221,6 +222,7 @@ fn parse_file(path: String, direction: String) -> Result<Beatmap, String> {
                 name: beatmap.difficulty_name.clone(),
                 keys: beatmap.keys,
                 note_count: beatmap.notes.len(),
+                audio_filename: Some(beatmap.audio_filename.clone()),
             });
             beatmap.compute_duration();
             Ok(beatmap)
@@ -246,12 +248,108 @@ fn parse_file(path: String, direction: String) -> Result<Beatmap, String> {
 
 #[tauri::command]
 fn resolve_file(source_dir: String, filename: String) -> Result<String, String> {
-    let path = Path::new(&source_dir).join(&filename);
-    let resolved = if path.exists() { path } else { PathBuf::from(&filename) };
-    resolved
-        .canonicalize()
-        .map(|p| p.to_string_lossy().to_string())
-        .map_err(|_| format!("File not found: {}", filename))
+    let found = resolve_media_file(&source_dir, &filename, &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
+    match found {
+        Some(p) => p.canonicalize()
+            .map(|p| p.to_string_lossy().to_string())
+            .map_err(|_| format!("File not found: {}", filename)),
+        None => Err(format!("File not found: {} (looked in {})", filename, source_dir)),
+    }
+}
+
+/// Try to find a media file by exact match, then alternate extensions, then case-insensitive,
+/// then heuristic scan for plausible files.
+fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&str]) -> Option<PathBuf> {
+    // 1. Exact match in source dir
+    let exact = Path::new(source_dir).join(filename);
+    if exact.exists() { return Some(exact); }
+
+    // 2. Exact match relative to CWD
+    let cwd = PathBuf::from(filename);
+    if cwd.exists() { return Some(cwd); }
+
+    let path = Path::new(filename);
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(filename);
+
+    // 3. Try alternative extensions
+    for ext in alt_extensions {
+        let candidate = Path::new(source_dir).join(format!("{}{}", stem, ext));
+        if candidate.exists() { return Some(candidate); }
+    }
+
+    // 4. Case-insensitive scan of source dir
+    if let Ok(entries) = fs::read_dir(source_dir) {
+        let lower = filename.to_lowercase();
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.to_lowercase() == lower {
+                    return Some(entry.path());
+                }
+            }
+        }
+    }
+
+    // 5. Scan for any plausible image when the exact name doesn't exist.
+    //    Filters out CD titles and banners, then prefers files with "bg"/"background"
+    //    in the name; otherwise picks the largest remaining image.
+    if alt_extensions.iter().any(|e| IMAGE_EXTS.contains(e)) {
+        if let Ok(entries) = fs::read_dir(source_dir) {
+            let mut candidates: Vec<(u64, PathBuf)> = Vec::new();
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if !p.is_file() { continue; }
+                let ext = p.extension().and_then(|e| e.to_str().map(|s| s.to_lowercase())).unwrap_or_default();
+                if !IMAGE_EXTS.contains(&format!(".{}", ext).as_str()) { continue; }
+                let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                // Skip files that are clearly not backgrounds (CD titles, banners)
+                if stem.contains("cdtitle") || stem == "cd" || stem == "bn" || stem == "banner" { continue; }
+                // Prefer files with "bg" or "background" in the name
+                if stem.contains("bg") || stem.contains("background") {
+                    return Some(p);
+                }
+                if let Ok(meta) = p.metadata() {
+                    candidates.push((meta.len(), p));
+                }
+            }
+            // No file matched "bg"/"background" – pick the largest remaining
+            if let Some((_, biggest)) = candidates.into_iter().max_by_key(|(size, _)| *size) {
+                return Some(biggest);
+            }
+        }
+    }
+
+    None
+}
+
+const IMAGE_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"];
+
+fn rate_label(rate: f64) -> Option<String> {
+    if (rate - 1.0).abs() < f64::EPSILON { return None; }
+    let s = format!("{:.2}", rate);
+    let trimmed = s.trim_end_matches('0').trim_end_matches('.');
+    Some(format!("[{}x]", trimmed))
+}
+
+pub(crate) fn scale_timing_for_rate(bm: &mut Beatmap, rate: f64) {
+    if (rate - 1.0).abs() < f64::EPSILON { return; }
+    let inv = 1.0 / rate;
+    for tp in &mut bm.timing_points {
+        tp.time_ms *= inv;
+        if tp.uninherited && tp.beat_length > 0.0 {
+            tp.beat_length *= inv;
+        }
+    }
+    for note in &mut bm.notes {
+        note.time_ms *= inv;
+        if let Some(ref mut end) = note.hold_end_ms {
+            *end *= inv;
+        }
+    }
+    bm.preview_time *= inv;
+    bm.lead_in_ms *= inv;
+    bm.duration_ms = bm.notes.iter()
+        .map(|n| n.hold_end_ms.unwrap_or(n.time_ms))
+        .fold(0.0, f64::max);
 }
 
 #[tauri::command]
@@ -262,14 +360,20 @@ fn convert_beatmap(
     // Apply config overrides so user edits (mapper, title, etc.) are reflected
     beatmap.title = config.title.clone();
     beatmap.artist = config.artist.clone();
-    beatmap.creator = config.creator.clone();
+    if !config.creator.is_empty() { beatmap.creator = config.creator.clone(); }
     beatmap.difficulty_name = config.difficulty_name.clone();
+    if let Some(label) = rate_label(config.conversion_rate) {
+        beatmap.difficulty_name.push(' ');
+        beatmap.difficulty_name.push_str(&label);
+    }
     beatmap.source = config.source.clone();
     beatmap.tags = config.tags.clone();
     beatmap.audio_filename = config.audio_filename.clone();
     beatmap.background_filename = config.background_filename.clone();
     beatmap.banner_filename = config.banner_filename.clone();
     beatmap.preview_time = config.preview_time;
+
+    scale_timing_for_rate(&mut beatmap, config.conversion_rate);
 
     match beatmap.source_format {
         SourceFormat::OsuMania => {
@@ -284,12 +388,8 @@ fn convert_beatmap(
 }
 
 fn read_file_bytes(source_dir: &str, filename: &str) -> Result<(Vec<u8>, String), String> {
-    let src_path = Path::new(source_dir).join(filename);
-    let fallback = PathBuf::from(filename);
-    let resolved = if src_path.exists() { src_path } else { fallback };
-    if !resolved.exists() {
-        return Err(format!("File not found: {} (looked in {} and cwd)", filename, source_dir));
-    }
+    let resolved = resolve_media_file(source_dir, filename, &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".mp3", ".ogg", ".wav", ".flac", ".m4a"])
+        .ok_or_else(|| format!("File not found: {} (looked in {})", filename, source_dir))?;
     let bytes = fs::read(&resolved).map_err(|e| format!("Failed to read {}: {}", filename, e))?;
     let ext = resolved
         .extension()
@@ -297,6 +397,210 @@ fn read_file_bytes(source_dir: &str, filename: &str) -> Result<(Vec<u8>, String)
         .unwrap_or("bin")
         .to_lowercase();
     Ok((bytes, ext))
+}
+
+fn find_ffmpeg() -> Option<PathBuf> {
+    // Development: in src-tauri/binaries/
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("binaries")
+        .join("ffmpeg-x86_64-pc-windows-msvc.exe");
+    if dev.exists() {
+        return Some(dev);
+    }
+    // Production: alongside executable (sidecar placement)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let prod = dir.join("ffmpeg-x86_64-pc-windows-msvc.exe");
+            if prod.exists() {
+                return Some(prod);
+            }
+        }
+    }
+    // Check PATH
+    if std::process::Command::new("ffmpeg").arg("-version").output().is_ok() {
+        return Some(PathBuf::from("ffmpeg"));
+    }
+    None
+}
+
+fn speed_up_audio_ffmpeg(
+    ffmpeg: &Path,
+    input: &Path,
+    output: &Path,
+    rate: f64,
+    preserve_pitch: bool,
+) -> Result<String, String> {
+    let output_str = output.to_string_lossy().to_string();
+
+    if preserve_pitch {
+        // atempo filter is limited to 0.5–2.0; chain for rates outside that range
+        let mut filters: Vec<String> = Vec::new();
+        let mut r = rate;
+        while r > 2.0 {
+            filters.push("atempo=2.0".to_string());
+            r /= 2.0;
+        }
+        while r < 0.5 {
+            filters.push("atempo=0.5".to_string());
+            r /= 0.5;
+        }
+        filters.push(format!("atempo={:.6}", r));
+        let filter_str = filters.join(",");
+
+        let status = std::process::Command::new(ffmpeg)
+            .arg("-y")
+            .arg("-i")
+            .arg(input)
+            .arg("-af")
+            .arg(&filter_str)
+            .arg("-codec:a")
+            .arg("libmp3lame")
+            .arg("-b:a")
+            .arg("192k")
+            .arg(&output_str)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+        if !status.success() {
+            return Err(format!("ffmpeg exited with status {:?}", status.code()));
+        }
+    } else {
+        // No pitch preservation: change sample rate directly (chipmunk/tape effect)
+        let target_rate = (44100.0 * rate) as u32;
+        let setrate = format!("asetrate={},aresample=44100", target_rate);
+
+        let status = std::process::Command::new(ffmpeg)
+            .arg("-y")
+            .arg("-i")
+            .arg(input)
+            .arg("-af")
+            .arg(&setrate)
+            .arg("-codec:a")
+            .arg("libmp3lame")
+            .arg("-b:a")
+            .arg("192k")
+            .arg(&output_str)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+        if !status.success() {
+            return Err(format!("ffmpeg exited with status {:?}", status.code()));
+        }
+    }
+
+    Ok(output_str)
+}
+
+fn speed_up_audio_symphonia(input_path: &str, output_path: &str, rate: f64) -> Result<String, String> {
+    use symphonia::core::audio::SampleBuffer;
+    use symphonia::core::codecs::DecoderOptions;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
+
+    let file = std::fs::File::open(input_path)
+        .map_err(|e| format!("Failed to open audio: {}", e))?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+
+    let hint = Hint::new();
+    let probed = symphonia::default::get_probe()
+        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+        .map_err(|e| format!("Failed to probe audio format: {}", e))?;
+
+    let mut format = probed.format;
+    let track = format.tracks().first()
+        .ok_or_else(|| "No audio track found".to_string())?;
+    let track_id = track.id;
+    let sample_rate = track.codec_params.sample_rate.unwrap_or(44100);
+    let num_channels = track.codec_params.channels.map(|c| c.count()).unwrap_or(2);
+    let total_frames = track.codec_params.n_frames.unwrap_or(0) as usize;
+
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())
+        .map_err(|e| format!("Failed to create decoder: {}", e))?;
+
+    // Pre-allocate PCM buffer to avoid repeated reallocations during decode
+    let cap = if total_frames > 0 { total_frames * num_channels } else { 1024 * 1024 };
+    let mut all_samples: Vec<f32> = Vec::with_capacity(cap);
+
+    // Reuse one SampleBuffer across all packets
+    let mut sample_buf: Option<SampleBuffer<f32>> = None;
+    loop {
+        match format.next_packet() {
+            Ok(packet) => {
+                if packet.track_id() != track_id { continue; }
+                if let Ok(decoded) = decoder.decode(&packet) {
+                    let spec = *decoded.spec();
+                    let buf = sample_buf.get_or_insert_with(|| {
+                        let cap = decoded.frames().max(4096) as u64;
+                        SampleBuffer::new(cap, spec)
+                    });
+                    buf.copy_interleaved_ref(decoded);
+                    all_samples.extend_from_slice(buf.samples());
+                }
+            }
+            Err(symphonia::core::errors::Error::IoError(_)) => break,
+            Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
+            Err(_) => break,
+        }
+    }
+
+    if all_samples.is_empty() {
+        return Err("No audio samples decoded".to_string());
+    }
+
+    // Resample with linear interpolation, writing output directly to WAV
+    let in_frames = all_samples.len() / num_channels;
+    let out_frames = (in_frames as f64 / rate).ceil() as usize;
+
+    let spec = hound::WavSpec {
+        channels: num_channels as u16,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(output_path, spec)
+        .map_err(|e| format!("Failed to create WAV: {}", e))?;
+
+    // Borrow all_samples once to avoid bounds checks
+    let src = &all_samples[..];
+    let ch = num_channels;
+    for i in 0..out_frames {
+        let src_pos = i as f64 * rate;
+        let src_idx = src_pos as usize;
+        let frac = (src_pos - src_idx as f64) as f32;
+        let one_minus_frac = 1.0 - frac;
+
+        let base = src_idx * ch;
+        // Bounds: safe because src_idx <= in_frames / rate <= in_frames
+        if base + ch < src.len() {
+            for c in 0..ch {
+                let v = src[base + c] * one_minus_frac + src[base + ch + c] * frac;
+                writer.write_sample((v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
+                    .map_err(|e| format!("Write error: {}", e))?;
+            }
+        } else {
+            // Last partial frame — no next frame to interpolate with
+            for c in 0..ch {
+                let v = if base + c < src.len() { src[base + c] } else { 0.0 };
+                writer.write_sample((v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
+                    .map_err(|e| format!("Write error: {}", e))?;
+            }
+        }
+    }
+
+    writer.finalize()
+        .map_err(|e| format!("Failed to finalize WAV: {}", e))?;
+
+    Ok(output_path.to_string())
+}
+
+fn resolve_audio_path(source_dir: &str, filename: &str) -> PathBuf {
+    resolve_media_file(source_dir, filename, &[".mp3", ".ogg", ".wav", ".flac", ".m4a", ".wma"])
+        .unwrap_or_else(|| Path::new(source_dir).join(filename))
 }
 
 #[tauri::command]
@@ -307,6 +611,8 @@ fn export_beatmap(
     output_dir: String,
     filename_suffix: Option<String>,
 ) -> Result<String, String> {
+    // Find ffmpeg: dev path or production sidecar
+    let ffmpeg_path = find_ffmpeg();
     let base = format!("{} - {} ({})", config.artist, config.title, config.creator);
     let folder_name = if let Some(ref suffix) = filename_suffix {
         format!("{} [{}]", base, suffix)
@@ -339,28 +645,46 @@ fn export_beatmap(
         let opts: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
 
-        // .osu inside
+        // audio (keep original filename so #MUSIC: stays correct)
+        if !config.audio_filename.is_empty() {
+            let needs_rate = (config.conversion_rate - 1.0).abs() > f64::EPSILON;
+            let audio_bytes: Vec<u8> = if needs_rate {
+                let src = resolve_audio_path(&beatmap.source_dir, &config.audio_filename);
+                let tmp_dir = std::env::temp_dir().join("henkan_audio");
+                fs::create_dir_all(&tmp_dir)
+                    .map_err(|e| format!("Failed to create temp dir: {}", e))?;
+                let tmp_audio = tmp_dir.join(&config.audio_filename);
+                if let Some(ff) = &ffmpeg_path {
+                    speed_up_audio_ffmpeg(ff, &src, &tmp_audio, config.conversion_rate, config.preserve_pitch)?;
+                } else {
+                    speed_up_audio_symphonia(
+                        &src.to_string_lossy(),
+                        &tmp_audio.to_string_lossy(),
+                        config.conversion_rate,
+                    )?;
+                }
+                let bytes = fs::read(&tmp_audio)
+                    .map_err(|e| format!("Failed to read temp audio: {}", e))?;
+                let _ = fs::remove_dir_all(&tmp_dir);
+                bytes
+            } else {
+                let (bytes, _) =
+                    read_file_bytes(&beatmap.source_dir, &config.audio_filename)?;
+                bytes
+            };
+            zip_w
+                .start_file(&config.audio_filename, opts)
+                .map_err(|e| format!("Zip error: {}", e))?;
+            std::io::Write::write_all(&mut zip_w, &audio_bytes)
+                .map_err(|e| format!("Zip write error: {}", e))?;
+        }
+
+        // .osu/.sm inside
         zip_w
             .start_file(&out_filename, opts)
             .map_err(|e| format!("Zip error: {}", e))?;
         std::io::Write::write_all(&mut zip_w, converted_content.as_bytes())
             .map_err(|e| format!("Zip write error: {}", e))?;
-
-        // audio (use original filename so the .osu's AudioFilename matches)
-        if !config.audio_filename.is_empty() {
-            let (audio_bytes, _) =
-                read_file_bytes(&beatmap.source_dir, &config.audio_filename)?;
-            let audio_name = Path::new(&config.audio_filename)
-                .file_name()
-                .unwrap_or(std::ffi::OsStr::new("audio.mp3"))
-                .to_string_lossy()
-                .to_string();
-            zip_w
-                .start_file(&audio_name, opts)
-                .map_err(|e| format!("Zip error: {}", e))?;
-            std::io::Write::write_all(&mut zip_w, &audio_bytes)
-                .map_err(|e| format!("Zip write error: {}", e))?;
-        }
 
         // background (osu [Events] references "bg.jpg")
         if let Some(ref bg) = config.background_filename {
@@ -387,18 +711,32 @@ fn export_beatmap(
             .map_err(|e| format!("Failed to create export dir: {}", e))?;
 
         // Write converted beatmap
-        fs::write(export_path.join(&out_filename), &converted_content)
-            .map_err(|e| format!("Failed to write .{}: {}", out_ext, e))?;
-
-        // Copy audio (keep original name inside folder)
+        let out_content = converted_content;
         if !config.audio_filename.is_empty() {
-            copy_media(
-                &beatmap.source_dir,
-                &config.audio_filename,
-                &export_path,
-                &config.audio_filename,
-            )?;
+            let needs_rate = (config.conversion_rate - 1.0).abs() > f64::EPSILON;
+            if needs_rate {
+                let src = resolve_audio_path(&beatmap.source_dir, &config.audio_filename);
+                let dest = export_path.join(&config.audio_filename);
+                if let Some(ff) = &ffmpeg_path {
+                    speed_up_audio_ffmpeg(ff, &src, &dest, config.conversion_rate, config.preserve_pitch)?;
+                } else {
+                    speed_up_audio_symphonia(
+                        &src.to_string_lossy(),
+                        &dest.to_string_lossy(),
+                        config.conversion_rate,
+                    )?;
+                }
+            } else {
+                copy_media(
+                    &beatmap.source_dir,
+                    &config.audio_filename,
+                    &export_path,
+                    &config.audio_filename,
+                )?;
+            }
         }
+        fs::write(export_path.join(&out_filename), &out_content)
+            .map_err(|e| format!("Failed to write .{}: {}", out_ext, e))?;
 
         // Copy background as "bg.jpg"
         if let Some(ref bg) = config.background_filename {
@@ -518,6 +856,23 @@ fn open_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn get_github_stars(repo: String) -> Result<Option<String>, String> {
+    let url = format!("https://api.github.com/repos/{}", repo);
+    let resp = ureq::get(&url)
+        .header("User-Agent", "henkan/1.0")
+        .header("Accept", "application/vnd.github.v3+json")
+        .call()
+        .map_err(|e| format!("GitHub API error: {}", e))?;
+    let text = resp.into_body().read_to_string()
+        .map_err(|e| format!("Body read error: {}", e))?;
+    let json: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("JSON parse error: {}", e))?;
+    Ok(json.get("stargazers_count")
+        .and_then(|v| v.as_i64())
+        .map(|n| n.to_string()))
+}
+
+#[tauri::command]
 fn open_file(path: String) -> Result<(), String> {
     std::process::Command::new("cmd")
         .args(["/c", "start", "", &path])
@@ -535,6 +890,7 @@ fn export_all_beatmaps(
     pack_name: Option<String>,
 ) -> Result<Vec<String>, String> {
     use std::io::Write;
+    let ffmpeg_path = find_ffmpeg();
 
     let ext = Path::new(&source_file)
         .extension()
@@ -599,10 +955,15 @@ fn export_all_beatmaps(
                         .map_err(|e| format!("Parse error: {}", e))?;
                     bm.title = config.title.clone();
                     bm.artist = config.artist.clone();
-                    bm.creator = config.creator.clone();
+                    if !config.creator.is_empty() { bm.creator = config.creator.clone(); }
                     bm.source = config.source.clone();
                     bm.tags = config.tags.clone();
                     if config.preview_time != 0.0 { bm.preview_time = config.preview_time; }
+                    scale_timing_for_rate(&mut bm, config.conversion_rate);
+                    if let Some(label) = rate_label(config.conversion_rate) {
+                        bm.difficulty_name.push(' ');
+                        bm.difficulty_name.push_str(&label);
+                    }
                     let mut bmc = config.clone();
                     bmc.title = bm.title.clone();
                     bmc.artist = bm.artist.clone();
@@ -616,7 +977,7 @@ fn export_all_beatmaps(
                     let dn = bm.difficulty_name;
                     let diff_safe: String = dn
                         .chars()
-                        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()".contains(c) { c } else { '_' })
+                        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()[]".contains(c) { c } else { '_' })
                         .collect();
                     let entry_name = if diff_safe.is_empty() {
                         format!("{}.osu", safe)
@@ -633,8 +994,31 @@ fn export_all_beatmaps(
 
                     if !media_added && !audio_filename.is_empty() {
                         // audio
-                        let (audio_bytes, _aext) =
-                            read_file_bytes(&source_dir, &audio_filename)?;
+                        let needs_rate = (config.conversion_rate - 1.0).abs() > f64::EPSILON;
+                        let audio_bytes: Vec<u8> = if needs_rate {
+                            let src = resolve_audio_path(&source_dir, &audio_filename);
+                            let tmp_dir = std::env::temp_dir().join("henkan_audio");
+                            fs::create_dir_all(&tmp_dir)
+                                .map_err(|e| format!("Failed to create temp dir: {}", e))?;
+                            let tmp_audio = tmp_dir.join(&audio_filename);
+                            if let Some(ff) = &ffmpeg_path {
+                                speed_up_audio_ffmpeg(ff, &src, &tmp_audio, config.conversion_rate, config.preserve_pitch)?;
+                            } else {
+                                speed_up_audio_symphonia(
+                                    &src.to_string_lossy(),
+                                    &tmp_audio.to_string_lossy(),
+                                    config.conversion_rate,
+                                )?;
+                            }
+                            let bytes = fs::read(&tmp_audio)
+                                .map_err(|e| format!("Failed to read temp audio: {}", e))?;
+                            let _ = fs::remove_dir_all(&tmp_dir);
+                            bytes
+                        } else {
+                            let (bytes, _) =
+                                read_file_bytes(&source_dir, &audio_filename)?;
+                            bytes
+                        };
                         let audio_name = Path::new(&audio_filename)
                             .file_name()
                             .unwrap_or(std::ffi::OsStr::new("audio.mp3"))
@@ -691,7 +1075,7 @@ fn export_all_beatmaps(
                         .map_err(|e| format!("Parse error: {}", e))?;
                     bm.title = config.title.clone();
                     bm.artist = config.artist.clone();
-                    bm.creator = config.creator.clone();
+                    if !config.creator.is_empty() { bm.creator = config.creator.clone(); }
                     bm.source = config.source.clone();
                     bm.tags = config.tags.clone();
                     if config.preview_time != 0.0 { bm.preview_time = config.preview_time; }
@@ -708,6 +1092,11 @@ fn export_all_beatmaps(
                         }
                     }
 
+                    scale_timing_for_rate(&mut bm, config.conversion_rate);
+                    if let Some(label) = rate_label(config.conversion_rate) {
+                        bm.difficulty_name.push(' ');
+                        bm.difficulty_name.push_str(&label);
+                    }
                     let mut bmc = config.clone();
                     bmc.title = bm.title.clone();
                     bmc.artist = bm.artist.clone();
@@ -721,7 +1110,7 @@ fn export_all_beatmaps(
                     let dn = bm.difficulty_name;
                     let diff_safe: String = dn
                         .chars()
-                        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()".contains(c) { c } else { '_' })
+                        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()[]".contains(c) { c } else { '_' })
                         .collect();
                     let out_name = if diff_safe.is_empty() {
                         format!("{}.osu", name_base)
@@ -748,7 +1137,22 @@ fn export_all_beatmaps(
                         .extension().and_then(|e| e.to_str()).unwrap_or("mp3");
                     let audio_out = format!("{}.{}", name_base, audio_ext);
                     if !audio_filename.is_empty() {
-                        copy_media(&source_dir, &audio_filename, &out_folder, &audio_out)?;
+                        let needs_rate = (config.conversion_rate - 1.0).abs() > f64::EPSILON;
+                        if needs_rate {
+                            let src = resolve_audio_path(&source_dir, &audio_filename);
+                            let dest = out_folder.join(&audio_out);
+                            if let Some(ff) = &ffmpeg_path {
+                                speed_up_audio_ffmpeg(ff, &src, &dest, config.conversion_rate, config.preserve_pitch)?;
+                            } else {
+                                speed_up_audio_symphonia(
+                                    &src.to_string_lossy(),
+                                    &dest.to_string_lossy(),
+                                    config.conversion_rate,
+                                )?;
+                            }
+                        } else {
+                            copy_media(&source_dir, &audio_filename, &out_folder, &audio_out)?;
+                        }
                     }
                     if let Some(ref bg) = background_filename {
                         if !bg.is_empty() {
@@ -760,12 +1164,27 @@ fn export_all_beatmaps(
                     }
                 } else {
                     if !audio_filename.is_empty() {
-                        copy_media(
-                            &source_dir,
-                            &audio_filename,
-                            &out_folder,
-                            &audio_filename,
-                        )?;
+                        let needs_rate = (config.conversion_rate - 1.0).abs() > f64::EPSILON;
+                        if needs_rate {
+                            let src = resolve_audio_path(&source_dir, &audio_filename);
+                            let dest = out_folder.join(&audio_filename);
+                            if let Some(ff) = &ffmpeg_path {
+                                speed_up_audio_ffmpeg(ff, &src, &dest, config.conversion_rate, config.preserve_pitch)?;
+                            } else {
+                                speed_up_audio_symphonia(
+                                    &src.to_string_lossy(),
+                                    &dest.to_string_lossy(),
+                                    config.conversion_rate,
+                                )?;
+                            }
+                        } else {
+                            copy_media(
+                                &source_dir,
+                                &audio_filename,
+                                &out_folder,
+                                &audio_filename,
+                            )?;
+                        }
                     }
                     if let Some(ref bg) = background_filename {
                         if !bg.is_empty() {
@@ -797,7 +1216,14 @@ fn export_all_beatmaps(
             }
 
             let highest_diff = parsed.last()
-                .map(|e| e.1.difficulty_name.clone())
+                .map(|e| {
+                    let mut dn = e.1.difficulty_name.clone();
+                    if let Some(label) = rate_label(config.conversion_rate) {
+                        dn.push(' ');
+                        dn.push_str(&label);
+                    }
+                    dn
+                })
                 .unwrap_or_default();
 
             let out_folder = Path::new(&output_dir).join(&safe);
@@ -807,12 +1233,18 @@ fn export_all_beatmaps(
             let mut combined = String::new();
             for (i, (fname, bm)) in parsed.iter_mut().enumerate() {
                 // Apply config overrides (title/artist/creator etc.) to each diff
-                bm.title = config.title.clone();
-                bm.artist = config.artist.clone();
-                bm.creator = config.creator.clone();
-                bm.source = config.source.clone();
+                    bm.title = config.title.clone();
+                    bm.artist = config.artist.clone();
+                    if !config.creator.is_empty() { bm.creator = config.creator.clone(); }
+                    bm.source = config.source.clone();
                 bm.tags = config.tags.clone();
+                bm.difficulty_name = config.difficulty_name.clone();
+                if let Some(label) = rate_label(config.conversion_rate) {
+                    bm.difficulty_name.push(' ');
+                    bm.difficulty_name.push_str(&label);
+                }
                 if config.preview_time != 0.0 { bm.preview_time = config.preview_time; }
+                scale_timing_for_rate(bm, config.conversion_rate);
 
                 let converted =
                     converters::osu_to_etterna::convert(bm, config.global_timing_ms)
@@ -856,12 +1288,27 @@ fn export_all_beatmaps(
 
             // Copy media once
             if !config.audio_filename.is_empty() {
-                copy_media(
-                    &tmp_dir,
-                    &config.audio_filename,
-                    &out_folder,
-                    &config.audio_filename,
-                )?;
+                let needs_rate = (config.conversion_rate - 1.0).abs() > f64::EPSILON;
+                if needs_rate {
+                    let src = resolve_audio_path(&tmp_dir, &config.audio_filename);
+                    let dest = out_folder.join(&config.audio_filename);
+                    if let Some(ff) = &ffmpeg_path {
+                        speed_up_audio_ffmpeg(ff, &src, &dest, config.conversion_rate, config.preserve_pitch)?;
+                    } else {
+                        speed_up_audio_symphonia(
+                            &src.to_string_lossy(),
+                            &dest.to_string_lossy(),
+                            config.conversion_rate,
+                        )?;
+                    }
+                } else {
+                    copy_media(
+                        &tmp_dir,
+                        &config.audio_filename,
+                        &out_folder,
+                        &config.audio_filename,
+                    )?;
+                }
             }
             if let Some(ref bg) = config.background_filename {
                 if !bg.is_empty() {
@@ -1040,12 +1487,8 @@ fn extract_sm_header_field(content: &str, field: &str) -> Option<String> {
 }
 
 fn copy_media(source_dir: &str, filename: &str, dest: &Path, dest_name: &str) -> Result<(), String> {
-    let src_path = Path::new(source_dir).join(filename);
-    let fallback = PathBuf::from(filename);
-    let resolved = if src_path.exists() { src_path } else { fallback };
-    if !resolved.exists() {
-        return Err(format!("File not found: {} (looked in {} and cwd)", filename, source_dir));
-    }
+    let resolved = resolve_media_file(source_dir, filename, &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"])
+        .ok_or_else(|| format!("File not found: {} (looked in {})", filename, source_dir))?;
     fs::copy(&resolved, dest.join(dest_name))
         .map_err(|e| format!("Failed to copy {}: {}", dest_name, e))?;
     Ok(())
@@ -1083,6 +1526,18 @@ fn save_file(path: String, content: String) -> Result<(), String> {
     fs::write(&path, &content).map_err(|e| format!("Failed to save file: {}", e))
 }
 
+#[tauri::command]
+fn clean_dir(path: String) -> Result<(), String> {
+    let dir = Path::new(&path);
+    if dir.exists() {
+        fs::remove_dir_all(dir)
+            .map_err(|e| format!("Failed to clean directory: {}", e))?;
+    }
+    fs::create_dir_all(dir)
+        .map_err(|e| format!("Failed to recreate directory: {}", e))?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Keep a tokio runtime alive so aptabase' reqwest::Client::builder().build()
@@ -1103,6 +1558,7 @@ pub fn run() {
         ).build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             app.track_event("app_started", None).ok();
@@ -1122,10 +1578,12 @@ pub fn run() {
             create_dummy_diff,
             zip_folder,
             save_file,
+            clean_dir,
             scan_pack,
             find_pack_banner,
             open_file,
-            open_url
+            open_url,
+            get_github_stars
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
