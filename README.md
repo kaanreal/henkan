@@ -5,6 +5,7 @@
 The reliable VSRG converter you asked for.
 
 ## Introduction
+
 > There are a handful of converters out there, but most of them mess up the timing - notes drift, BPM changes get flattened, and holds break. Henkan does it properly: millisecond-accurate timing, full note conversion, BPM changes preserved, holds intact. What comes out is exactly what went in.
 
 Drag a .osu, .osz, or .sm file onto the window and it just works. Cross-platform, native performance, no web wrapper.
@@ -22,8 +23,28 @@ Drag a .osu, .osz, or .sm file onto the window and it just works. Cross-platform
 
 ## Screenshots
 
+### Main Interface
+
+![Main Interface](public/screenshots/main-menu.png)
+
+### Pack Conversion
+
+![Pack Conversion](public/screenshots/pack-conversion.png)
+
+### Etterna Conversion
+
+![Etterna Conversion](public/screenshots/etterna-conversion.png)
+
+### Osu! Conversion
+
+![Osu! Conversion](public/screenshots/osu-conversion.png)
+
+### Preview
+
+![Preview](public/screenshots/preview.png)
 
 ## Download
+
 - Available for Windows (.msi), macOS (Silicon) (.dmg), and Linux (.AppImage / .deb).
 - [Download here](https://github.com/kaanreal/henkan/releases)
 
