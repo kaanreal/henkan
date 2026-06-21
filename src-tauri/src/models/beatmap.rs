@@ -15,6 +15,7 @@ pub struct DiffInfo {
     pub name: String,
     pub keys: u32,
     pub note_count: usize,
+    pub audio_filename: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,7 +85,14 @@ pub struct ExportConfig {
     #[serde(default)]
     pub circle_size: f64,
     pub preview_time: f64,
+    #[serde(default = "default_conversion_rate")]
+    pub conversion_rate: f64,
+    #[serde(default = "default_preserve_pitch")]
+    pub preserve_pitch: bool,
 }
+
+fn default_conversion_rate() -> f64 { 1.0 }
+fn default_preserve_pitch() -> bool { true }
 
 /// Lightweight metadata returned by scan_pack for each .sm file found.
 #[derive(Debug, Clone, Serialize, Deserialize)]

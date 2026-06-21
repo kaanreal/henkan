@@ -51,6 +51,7 @@ pub fn parse_sm(content: &str) -> Result<Beatmap> {
         beatmap.difficulty_name = difficulty_name;
     }
 
+    let audio = headers.get("MUSIC").cloned();
     beatmap.available_difficulties = sections.iter().map(|s| {
         let k = detect_keys(s);
         let count = count_notes(s);
@@ -58,6 +59,7 @@ pub fn parse_sm(content: &str) -> Result<Beatmap> {
             name: detect_difficulty(s),
             keys: k,
             note_count: count,
+            audio_filename: audio.clone(),
         }
     }).collect();
 
@@ -107,6 +109,7 @@ pub fn parse_sm_difficulty(content: &str, index: usize) -> Result<Beatmap> {
         beatmap.difficulty_name = difficulty_name;
     }
 
+    let audio = headers.get("MUSIC").cloned();
     beatmap.available_difficulties = sections.iter().map(|s| {
         let k = detect_keys(s);
         let count = count_notes(s);
@@ -114,6 +117,7 @@ pub fn parse_sm_difficulty(content: &str, index: usize) -> Result<Beatmap> {
             name: detect_difficulty(s),
             keys: k,
             note_count: count,
+            audio_filename: audio.clone(),
         }
     }).collect();
 

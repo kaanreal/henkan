@@ -63,7 +63,11 @@ export function BeatmapPreview({ notes, keys, currentTime, duration, previewTime
         <div
           ref={containerRef}
           className="relative w-full overflow-hidden rounded-xl bg-surface-950/60 border border-white/5 cursor-pointer group"
-          style={{ height: CONTAINER_H }}
+          style={{
+            height: CONTAINER_H,
+            maskImage: 'linear-gradient(to bottom, transparent 8px, black 8px)',
+            WebkitMaskImage: 'linear-gradient(to bottom, transparent 8px, black 8px)',
+          }}
           onClick={handleClick}
         >
           {/* Columns */}

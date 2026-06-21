@@ -9,8 +9,12 @@ import { MetadataPanel } from './components/MetadataPanel'
 import { AudioPlayer } from './components/AudioPlayer'
 import { PreviewOverlay } from './components/PreviewOverlay'
 import { ConvertDialog } from './components/ConvertDialog'
+import { MultiAudioWarning } from './components/MultiAudioWarning'
 import { BulkConvertDialog } from './components/BulkConvertDialog'
+import { PackBrowser } from './components/PackBrowser'
+import { FallingArrows } from './components/FallingArrows'
 import { PackSettingsDialog } from './components/PackSettingsDialog'
+import { WebAudioPlayer } from './lib/WebAudioPlayer'
 
 function configFromEntry(entry: PackEntry): ExportConfig {
   const fallback = entry.source_file.split(/[/\\]+/).filter(Boolean).pop()?.replace(/\.[^.]+$/, '') || 'Untitled'
@@ -31,10 +35,10 @@ function configFromEntry(entry: PackEntry): ExportConfig {
     hp_drain: 8,
     overall_difficulty: 8,
     preview_time: 0,
+    conversion_rate: 1,
+    preserve_pitch: true,
   }
 }
-import { PackBrowser } from './components/PackBrowser'
-import { FallingArrows } from './components/FallingArrows'
 
 async function loadMediaAsDataUrl(sourceDir: string, filename: string | null): Promise<string | null> {
   if (!filename) return null
@@ -49,7 +53,7 @@ async function loadMediaAsDataUrl(sourceDir: string, filename: string | null): P
 
 function App() {
   const {
-    beatmap, direction, mediaUrls,
+    beatmap, config, direction, mediaUrls,
     isConverting, exportPath, error, dragging,
     setSourceFile, setBeatmap, setMediaUrls, setDirection,
     setConverting, setConvertedContent, setExportPath,
@@ -60,6 +64,8 @@ function App() {
   const [showPreview, setShowPreview] = useState(false)
   const [switchingDifficulty, setSwitchingDifficulty] = useState(false)
   const [showConvertDialog, setShowConvertDialog] = useState(false)
+  const [showMultiAudioWarning, setShowMultiAudioWarning] = useState(false)
+  const pendingIndicesRef = useRef<number[]>([])
   const [showBulkConvert, setShowBulkConvert] = useState(false)
   const [showPackSettings, setShowPackSettings] = useState(false)
   const [packConvertAllMode, setPackConvertAllMode] = useState(false)
@@ -74,11 +80,13 @@ function App() {
   const [packBannerPath, setPackBannerPath] = useState<string | null>(null)
   const packConfigsRef = useRef<Map<number, ExportConfig>>(new Map())
 
-  // Shared audio element — owned by App, used by AudioPlayer and PreviewOverlay
-  const audioRef = useRef<HTMLAudioElement>(null)
+  // Shared audio player — owned by App, used by AudioPlayer and PreviewOverlay
+  const audioPlayerRef = useRef<WebAudioPlayer | null>(null)
+  const [audioLoading, setAudioLoading] = useState(false)
   const [audioPlaying, setAudioPlaying] = useState(false)
-  const [audioCurrent, setAudioCurrent] = useState(0)
   const [audioDuration, setAudioDuration] = useState(0)
+  const [volumeToast, setVolumeToast] = useState<{ msg: string; leaving?: boolean } | null>(null)
+  const volumeToastTimer = useRef<number | undefined>(undefined)
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -93,6 +101,59 @@ function App() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [beatmap, mediaUrls.audio, showPreview])
+
+  // Alt+Scrollwheel volume control
+  useEffect(() => {
+    const handler = (e: WheelEvent) => {
+      if (!e.altKey || !audioPlayerRef.current) return
+      e.preventDefault()
+      const player = audioPlayerRef.current
+      const step = e.deltaY < 0 ? 0.05 : -0.05
+      const newVol = Math.round(Math.max(0, Math.min(1, player.volume + step)) * 100)
+      player.volume = newVol / 100
+      if (volumeToastTimer.current) clearTimeout(volumeToastTimer.current)
+      setVolumeToast({ msg: `Volume ${newVol}%` })
+      volumeToastTimer.current = window.setTimeout(() => {
+        setVolumeToast(v => v ? { ...v, leaving: true } : null)
+        volumeToastTimer.current = window.setTimeout(() => setVolumeToast(null), 220)
+      }, 1000)
+    }
+    window.addEventListener('wheel', handler, { passive: false })
+    return () => window.removeEventListener('wheel', handler)
+  }, [])
+
+  // Initialize WebAudioPlayer and wire up callbacks
+  useEffect(() => {
+    if (!audioPlayerRef.current) {
+      audioPlayerRef.current = new WebAudioPlayer()
+    }
+    const player = audioPlayerRef.current
+    player.onDurationChange = setAudioDuration
+    player.onPlay = () => setAudioPlaying(true)
+    player.onPause = () => setAudioPlaying(false)
+    player.onEnded = () => setAudioPlaying(false)
+  }, [])
+
+  // Decode audio whenever the data URL changes
+  useEffect(() => {
+    const player = audioPlayerRef.current
+    if (!player) return
+    if (mediaUrls.audio) {
+      setAudioLoading(true)
+      player.load(mediaUrls.audio).finally(() => {
+        setAudioLoading(false)
+        const bm = useConverterStore.getState().beatmap
+        if (bm && bm.preview_time > 0) {
+          player.currentTime = bm.preview_time / 1000
+        } else {
+          player.currentTime = 0
+        }
+        player.play().catch(() => {})
+      })
+    } else {
+      player.stop()
+    }
+  }, [mediaUrls.audio])
 
   const handleSetPreviewTime = useCallback((ms: number) => {
     const state = useConverterStore.getState()
@@ -142,9 +203,8 @@ function App() {
     setShowConvertDialog(true)
   }, [beatmap])
 
-  const handleConvertDialogConfirm = useCallback(async (indices: number[]) => {
+  const doConversion = useCallback(async (indices: number[], separateSongs: boolean) => {
     if (!beatmap?.source_file || indices.length === 0) return
-    setShowConvertDialog(false)
     setConverting(true)
     setError(null)
     setLastExportPath(null)
@@ -174,22 +234,40 @@ function App() {
 
       const allPaths: string[] = []
 
-      // OSZ → SM: combine all selected diffs into one .sm
-      const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
-      if (isOsz && direction === 'osu-to-etterna' && indices.length > 1) {
-        const paths = await invoke<string[]>('export_all_beatmaps', {
-          sourceFile: beatmap.source_file,
-          config: cur,
-          outputDir: exportDir,
-          indices,
-        })
-        allPaths.push(...paths)
-      } else {
+      if (separateSongs) {
         for (const idx of indices) {
           const bm = await invoke<Beatmap>('select_difficulty', { path: beatmap.source_file, index: idx })
-          const content = await invoke<string>('convert_beatmap', { beatmap: bm, config: cur })
-          const result = await invoke<string>('export_beatmap', { beatmap: bm, config: cur, convertedContent: content, outputDir: exportDir })
+          const diffLabel = bm.difficulty_name || `Diff ${idx}`
+          const diffCfg = {
+            ...cur,
+            audio_filename: bm.audio_filename || cur.audio_filename,
+            background_filename: bm.background_filename ?? cur.background_filename,
+            difficulty_name: bm.difficulty_name,
+            preview_time: bm.preview_time,
+          }
+          const content = await invoke<string>('convert_beatmap', { beatmap: bm, config: diffCfg })
+          const result = await invoke<string>('export_beatmap', { beatmap: bm, config: diffCfg, convertedContent: content, outputDir: exportDir, filenameSuffix: diffLabel })
           allPaths.push(result)
+        }
+      } else {
+        const allAtOne = Math.abs(cur.conversion_rate - 1) < 0.01
+        const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
+        if (isOsz && direction === 'osu-to-etterna' && indices.length > 1 && allAtOne) {
+          const paths = await invoke<string[]>('export_all_beatmaps', {
+            sourceFile: beatmap.source_file,
+            config: cur,
+            outputDir: exportDir,
+            indices,
+          })
+          allPaths.push(...paths)
+        } else {
+          for (const idx of indices) {
+            const bm = await invoke<Beatmap>('select_difficulty', { path: beatmap.source_file, index: idx })
+            const cfg = { ...cur }
+            const content = await invoke<string>('convert_beatmap', { beatmap: bm, config: cfg })
+            const result = await invoke<string>('export_beatmap', { beatmap: bm, config: cfg, convertedContent: content, outputDir: exportDir })
+            allPaths.push(result)
+          }
         }
       }
 
@@ -204,6 +282,42 @@ function App() {
       setConverting(false)
     }
   }, [beatmap, direction, setConverting, setError, setExportPath])
+
+  const handleConvertDialogConfirm = useCallback(async (indices: number[]) => {
+    if (!beatmap?.source_file || indices.length === 0) return
+    setShowConvertDialog(false)
+
+    const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
+    const curRate = useConverterStore.getState().config.conversion_rate
+    const allAtOne = Math.abs(curRate - 1) < 0.01
+    if (isOsz && direction === 'osu-to-etterna' && indices.length > 1 && allAtOne) {
+      const audioFiles = new Set(
+        indices.map(i => beatmap.available_difficulties[i]?.audio_filename).filter(Boolean)
+      )
+      if (audioFiles.size > 1) {
+        pendingIndicesRef.current = indices
+        setShowMultiAudioWarning(true)
+        return
+      }
+    }
+
+    await doConversion(indices, false)
+  }, [beatmap, direction, doConversion])
+
+  const handleSeparateSongs = useCallback(() => {
+    setShowMultiAudioWarning(false)
+    doConversion(pendingIndicesRef.current, true)
+  }, [doConversion])
+
+  const handleCombineAnyway = useCallback(() => {
+    setShowMultiAudioWarning(false)
+    doConversion(pendingIndicesRef.current, false)
+  }, [doConversion])
+
+  const handleMultiAudioCancel = useCallback(() => {
+    setShowMultiAudioWarning(false)
+    pendingIndicesRef.current = []
+  }, [])
 
   // ── Pack browsing ──────────────────────────────────────────
 
@@ -259,11 +373,9 @@ function App() {
     // Clear previous song immediately to prevent flash
     useConverterStore.getState().setBeatmap(null)
     useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null })
-    const audio = audioRef.current
+    const audio = audioPlayerRef.current
     if (audio) {
-      audio.pause()
-      audio.removeAttribute('src')
-      audio.load()
+      audio.stop()
     }
     setAudioPlaying(false)
 
@@ -291,7 +403,7 @@ function App() {
       setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to load song')
       setPackEditing(null)
     }
-  }, [packEntries, packEditing, audioRef, setAudioPlaying, setError])
+  }, [packEntries, packEditing, setAudioPlaying, setError])
 
   const handlePackBack = useCallback(() => {
     // Save current config
@@ -302,14 +414,12 @@ function App() {
     setPackEditing(null)
     useConverterStore.getState().setBeatmap(null)
     useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null })
-    const audio = audioRef.current
+    const audio = audioPlayerRef.current
     if (audio) {
-      audio.pause()
-      audio.removeAttribute('src')
-      audio.load()
+      audio.stop()
     }
     setAudioPlaying(false)
-  }, [packEditing, audioRef, setAudioPlaying])
+  }, [packEditing, setAudioPlaying])
 
   const handlePackClose = useCallback(() => {
     if (packEditing !== null) {
@@ -371,6 +481,9 @@ function App() {
       const workDir = useOsz
         ? `${exportDir}/__henkan_pack_${packFolderName}`
         : `${exportDir}/${packFolderName}`
+
+      // Clean the workDir so stale files from previous conversions don't persist
+      await invoke('clean_dir', { path: workDir })
 
       const allPaths: string[] = []
 
@@ -565,7 +678,7 @@ function App() {
                 </button>
                 <MetadataPanel
                   beatmap={beatmap}
-                  config={useConverterStore.getState().config}
+                  config={config}
                   mediaUrls={mediaUrls}
                   tapCount={tapCount}
                   holdCount={holdCount}
@@ -615,7 +728,7 @@ function App() {
               <div className="w-full max-w-lg">
                 <MetadataPanel
                   beatmap={beatmap}
-                  config={useConverterStore.getState().config}
+                  config={config}
                   mediaUrls={mediaUrls}
                   tapCount={tapCount}
                   holdCount={holdCount}
@@ -640,15 +753,16 @@ function App() {
 
           {beatmap && mediaUrls.audio && (!packFolder || packEditing !== null) && (
             <>
-              <audio ref={audioRef} src={mediaUrls.audio} preload="metadata" />
+              {audioLoading && (
+                <div className="absolute top-0 left-0 right-0 h-0.5 z-50 overflow-hidden pointer-events-none">
+                  <div className="h-full bg-accent/60 animate-pulse" style={{ animation: 'loading-bar 1.2s ease-in-out infinite', width: '40%' }} />
+                  <style>{`@keyframes loading-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }`}</style>
+                </div>
+              )}
               <AudioPlayer
-                audioRef={audioRef}
+                audioPlayerRef={audioPlayerRef}
                 audioPlaying={audioPlaying}
-                audioCurrent={audioCurrent}
                 audioDuration={audioDuration}
-                onSetAudioPlaying={setAudioPlaying}
-                onSetAudioCurrent={setAudioCurrent}
-                onSetAudioDuration={setAudioDuration}
                 previewTime={beatmap.preview_time}
                 onOpenPreview={() => setShowPreview(true)}
               />
@@ -665,9 +779,8 @@ function App() {
         {/* Preview overlay */}
         {showPreview && beatmap && mediaUrls.audio && (
           <PreviewOverlay
-            audioRef={audioRef}
+            audioPlayerRef={audioPlayerRef}
             playing={audioPlaying}
-            current={audioCurrent}
             duration={audioDuration}
             notes={beatmap.notes}
             keys={beatmap.keys}
@@ -696,6 +809,15 @@ function App() {
           <BulkConvertDialog
             open={showBulkConvert}
             onCancel={() => setShowBulkConvert(false)}
+          />
+        )}
+
+        {/* Multi-audio warning dialog */}
+        {showMultiAudioWarning && (
+          <MultiAudioWarning
+            onSeparateSongs={handleSeparateSongs}
+            onCombineAnyway={handleCombineAnyway}
+            onCancel={handleMultiAudioCancel}
           />
         )}
 
@@ -739,7 +861,7 @@ function App() {
                     className="px-6 py-2.5 rounded-xl bg-accent text-white font-medium text-sm
                                hover:bg-accent-hover active:scale-[0.97] transition-all duration-75 shadow-lg shadow-accent/25"
                   >
-                    Open in osu!
+                    {direction === 'etterna-to-osu' ? 'Open in osu!' : 'Show in explorer'}
                   </button>
                   <button
                     onClick={handleDismissExport}
@@ -754,6 +876,27 @@ function App() {
           </div>
         )}
       </div>
+
+      {volumeToast && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
+          <div
+            className={`${volumeToast.leaving ? 'animate-[toastOut_0.2s_ease-in_forwards]' : 'animate-[toastIn_0.2s_ease-out]'} text-white/90 text-xs font-medium bg-white/12 px-5 py-2 rounded-full backdrop-blur-md border border-white/8 shadow-lg`}
+          >
+            {volumeToast.msg}
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes toastIn {
+          from { opacity: 0; transform: translateY(-16px) scale(0.92); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes toastOut {
+          from { opacity: 1; transform: translateY(0) scale(1); }
+          to { opacity: 0; transform: translateY(-8px) scale(0.95); }
+        }
+      `}</style>
     </ErrorBoundary>
   )
 }
