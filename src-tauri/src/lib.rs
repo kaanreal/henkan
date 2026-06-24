@@ -949,11 +949,7 @@ fn export_all_beatmaps(
             });
 
             if config.output_format == "osz" {
-                let osz_path = if pack_mode {
-                    Path::new(&output_dir).join(format!("{}.osz", safe))
-                } else {
-                    PathBuf::from(&output_dir)
-                };
+                let osz_path = Path::new(&output_dir).join(format!("{}.osz", safe));
                 if let Some(parent) = osz_path.parent() {
                     fs::create_dir_all(parent)
                         .map_err(|e| format!("Failed to create output directory: {}", e))?;
