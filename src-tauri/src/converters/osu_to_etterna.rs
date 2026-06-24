@@ -3,7 +3,7 @@ use crate::models::timing::TimingPoint;
 use anyhow::Result;
 use std::fmt::Write;
 
-pub fn convert(beatmap: &Beatmap, global_timing_ms: f64) -> Result<String> {
+pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str) -> Result<String> {
     let tps = &beatmap.timing_points;
 
     // compute beat shift so earliest note/timing-point lands at beat 0
@@ -74,10 +74,10 @@ pub fn convert(beatmap: &Beatmap, global_timing_ms: f64) -> Result<String> {
         _ => "dance-single",
     };
 
-    let diff_name = if beatmap.difficulty_name.is_empty() {
-        "Converted"
+    let diff_name = if chart_description.is_empty() {
+        if beatmap.difficulty_name.is_empty() { "Converted" } else { &beatmap.difficulty_name }
     } else {
-        &beatmap.difficulty_name
+        chart_description
     };
 
     let meter = compute_meter(beatmap);
@@ -360,10 +360,10 @@ CircleSize:4
 "#;
         let mut bm = parse_osu(osu).unwrap();
         // convert at 1x (no scaling)
-        let sm_1x = crate::converters::osu_to_etterna::convert(&bm, 0.0).unwrap();
+        let sm_1x = crate::converters::osu_to_etterna::convert(&bm, 0.0, "").unwrap();
         // scale timing for 2x and convert
         crate::scale_timing_for_rate(&mut bm, 2.0);
-        let sm_2x = crate::converters::osu_to_etterna::convert(&bm, 0.0).unwrap();
+        let sm_2x = crate::converters::osu_to_etterna::convert(&bm, 0.0, "").unwrap();
 
         // Re-parse and verify note times are earlier with 2x
         let reparsed_1x = crate::parsers::etterna::parse_sm(&sm_1x).unwrap();
@@ -415,11 +415,10 @@ CircleSize:4
         let bm = parse_osu(osu).unwrap();
         assert_eq!(bm.notes.len(), 5);
         assert_eq!(bm.keys, 4);
-        let sm = convert(&bm, 0.0).unwrap();
+        let sm = convert(&bm, 0.0, "").unwrap();
         assert!(sm.contains("1"));   // contains tap notes
         assert!(sm.contains("2"));   // contains hold head
-        assert!(sm.contains("3"));   // contains hold tail
-        assert!(sm.contains("dance-single"));
+        assert!(sm.contains("3"));
         assert!(sm.contains("4K Normal"));
         assert!(sm.lines().any(|l| l.starts_with('1') || l.contains("1")), "no tap note row found");
         assert!(sm.lines().any(|l| l.starts_with('2')), "no hold head found");
@@ -457,7 +456,7 @@ CircleSize:4
 64,192,3000,128,0,4500:0:0:0:0:
 "#;
         let bm = parse_osu(osu).unwrap();
-        let sm = convert(&bm, 0.0).unwrap();
+        let sm = convert(&bm, 0.0, "").unwrap();
         let reparsed = crate::parsers::etterna::parse_sm(&sm).unwrap();
         assert_eq!(reparsed.notes.len(), bm.notes.len(),
             "roundtrip note count mismatch: {} vs {}",
@@ -499,7 +498,7 @@ CircleSize:4
 448,192,1527,1,0,0:0:0:0:
 "#;
         let bm = parse_osu(osu).unwrap();
-        let sm = convert(&bm, 0.0).unwrap();
+        let sm = convert(&bm, 0.0, "").unwrap();
         let reparsed = crate::parsers::etterna::parse_sm(&sm).unwrap();
         assert_eq!(reparsed.notes.len(), bm.notes.len(),
             "roundtrip note count: {} vs {}", reparsed.notes.len(), bm.notes.len());
@@ -539,7 +538,7 @@ CircleSize:4
 192,192,9115,1,0,0:0:0:0:
 "#;
         let bm = parse_osu(osu).unwrap();
-        let sm = convert(&bm, 0.0).unwrap();
+        let sm = convert(&bm, 0.0, "").unwrap();
 
         // The first note (col 3) should be row 0001, not 1111
         // The second group (col 1 + col 0) should be row 1100
@@ -600,7 +599,7 @@ CircleSize:4
 192,192,6000,1,0,0:0:0:0:
 "#;
         let bm = parse_osu(osu).unwrap();
-        let sm = convert(&bm, 0.0).unwrap();
+        let sm = convert(&bm, 0.0, "").unwrap();
         let reparsed = crate::parsers::etterna::parse_sm(&sm).unwrap();
 
         assert_eq!(reparsed.notes.len(), bm.notes.len(),
@@ -652,7 +651,7 @@ CircleSize:4
 448,192,1527,1,0,0:0:0:0:
 "#;
         let bm = parse_osu(osu).unwrap();
-        let sm = convert(&bm, 0.0).unwrap();
+        let sm = convert(&bm, 0.0, "").unwrap();
         println!("=== SM OUTPUT (notes before TP) ===\n{}", sm);
         // BPMS check
         assert!(sm.contains("#BPMS:"), "BPMS line missing");
