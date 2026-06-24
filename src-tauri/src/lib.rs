@@ -753,22 +753,19 @@ fn export_beatmap(
         fs::write(export_path.join(&out_filename), &out_content)
             .map_err(|e| format!("Failed to write .{}: {}", out_ext, e))?;
 
-        // Copy background as "bg.jpg"
+        // Copy background as "bg.png"
         if let Some(ref bg) = config.background_filename {
             if !bg.is_empty() {
-                copy_media(&beatmap.source_dir, bg, &export_path, "bg.jpg")?;
+                copy_media(&beatmap.source_dir, bg, &export_path, "bg.png")?;
             }
         }
 
         // banner + cdtitle only for SM destination
         if beatmap.source_format == SourceFormat::OsuMania {
-            let banner_src = config
-                .banner_filename
-                .or_else(|| config.background_filename.clone());
-            if let Some(ref b) = banner_src {
-                let banner_path = export_path.join("banner.jpg");
-                if !banner_path.exists() {
-                    copy_media(&beatmap.source_dir, b, &export_path, "banner.jpg")?;
+            let banner_auto = config.banner_filename.as_ref().map_or(true, |s| s.is_empty());
+            if !banner_auto {
+                if let Some(ref b) = config.banner_filename {
+                    copy_media(&beatmap.source_dir, b, &export_path, "banner.png")?;
                 }
             }
             if let Some(ref cdt) = config.cdtitle_filename {
@@ -1199,7 +1196,7 @@ fn export_all_beatmaps(
                     }
                     if let Some(ref bg) = background_filename {
                         if !bg.is_empty() {
-                            copy_media(&source_dir, bg, &out_folder, "bg.jpg")?;
+                            copy_media(&source_dir, bg, &out_folder, "bg.png")?;
                         }
                     }
                 }
@@ -1323,17 +1320,14 @@ fn export_all_beatmaps(
             }
             if let Some(ref bg) = config.background_filename {
                 if !bg.is_empty() {
-                    copy_media(&tmp_dir, bg, &out_folder, "bg.jpg")?;
+                    copy_media(&tmp_dir, bg, &out_folder, "bg.png")?;
                 }
             }
-            // banner + cdtitle for SM destination
-            let banner_src = config
-                .banner_filename
-                .or_else(|| config.background_filename.clone());
-            if let Some(ref b) = banner_src {
-                let banner_path = out_folder.join("banner.jpg");
-                if !banner_path.exists() {
-                    copy_media(&tmp_dir, b, &out_folder, "banner.jpg")?;
+            // banner for SM destination (only if explicitly set)
+            let banner_auto = config.banner_filename.as_ref().map_or(true, |s| s.is_empty());
+            if !banner_auto {
+                if let Some(ref b) = config.banner_filename {
+                    copy_media(&tmp_dir, b, &out_folder, "banner.png")?;
                 }
             }
             if let Some(ref cdt) = config.cdtitle_filename {
