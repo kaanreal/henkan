@@ -231,14 +231,8 @@ fn compute_radar_values(beatmap: &Beatmap) -> (f64, f64, f64, f64, f64) {
     (stream, voltage, air, freeze, chaos)
 }
 
-pub(crate) fn compute_meter(beatmap: &Beatmap) -> u32 {
-    let taps = beatmap.notes.iter().filter(|n| !n.hold).count() as f64;
-    let dur = beatmap.duration_ms / 1000.0;
-    if dur > 0.0 {
-        (taps / dur / 2.0).round().max(1.0) as u32
-    } else {
-        1
-    }
+pub(crate) fn compute_meter(_beatmap: &Beatmap) -> u32 {
+    1
 }
 
 // SM note grid: 192 slots per beat = 768 rows per measure (768th-note resolution).
