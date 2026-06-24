@@ -33,7 +33,7 @@ function configFromEntry(entry: PackEntry): ExportConfig {
     cdtitle_filename: null,
     cdtitle_name: '',
     global_timing_ms: 50,
-    output_format: 'folder',
+    output_format: 'osz',
     hp_drain: 8,
     overall_difficulty: 8,
     preview_time: 0,
@@ -219,7 +219,7 @@ function App() {
         if (i === 0 && queueItems.length === 0) {
           queueSetActiveId(id)
           setDirection(dir)
-          setBeatmap(result)
+          setBeatmap(result, dir)
           useConverterStore.getState().updateConfig(cfg)
           await loadQueueMedia(result)
         }
@@ -259,7 +259,7 @@ function App() {
         loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.banner_filename),
       ])
       useConverterStore.getState().setMediaUrls({ audio, background: bg, banner })
-      setBeatmap(item.beatmap)
+      setBeatmap(item.beatmap, item.direction)
       useConverterStore.getState().updateConfig(item.config)
     } catch {
       setError('Failed to load media')
@@ -290,11 +290,12 @@ function App() {
       if (next && next.beatmap) {
         queueSetActiveId(next.id)
         setDirection(next.direction)
-        setBeatmap(next.beatmap)
+        setBeatmap(next.beatmap, next.direction)
         useConverterStore.getState().updateConfig(next.config)
         loadQueueMedia(next.beatmap)
       } else {
         queueSetActiveId(null)
+        setBeatmap(null)
         reset()
       }
     } else {
@@ -318,12 +319,12 @@ function App() {
         if (next.beatmap) {
           queueSetActiveId(next.id)
           setDirection(next.direction)
-          setBeatmap(next.beatmap)
+          setBeatmap(next.beatmap, next.direction)
           useConverterStore.getState().updateConfig(next.config)
           loadQueueMedia(next.beatmap)
+        } else {
+          reset()
         }
-      } else {
-        reset()
       }
     }
   }, [queueActiveId, queueItems, queueClearCompleted, queueSetActiveId, setDirection, setBeatmap, loadQueueMedia, reset])
@@ -600,7 +601,7 @@ function App() {
         loadMediaAsDataUrl(bm.source_dir, bm.background_filename),
       ])
       useConverterStore.getState().setMediaUrls({ audio: newAudio, background: bg, banner: null })
-      useConverterStore.getState().setBeatmap(bm)
+      useConverterStore.getState().setBeatmap(bm, 'etterna-to-osu')
 
       // Restore any saved config for this song (after setBeatmap resets it)
       const saved = packConfigsRef.current.get(index)

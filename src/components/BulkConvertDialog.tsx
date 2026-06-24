@@ -136,7 +136,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
           banner_filename: null,
           cdtitle_filename: null,
           global_timing_ms: 50,
-          output_format: 'osu',
+          output_format: 'osz',
           hp_drain: 7,
           overall_difficulty: 7,
           preview_time: 0,

@@ -23,7 +23,7 @@ interface ConverterState {
   dragging: boolean
 
   setSourceFile: (path: string | null) => void
-  setBeatmap: (beatmap: Beatmap | null) => void
+  setBeatmap: (beatmap: Beatmap | null, direction?: ConvertDirection) => void
   setDirection: (dir: ConvertDirection) => void
   setMediaUrls: (urls: MediaUrls) => void
   updateConfig: (partial: Partial<ExportConfig>) => void
@@ -42,7 +42,7 @@ function buildConfig(beatmap: Beatmap | null): ExportConfig {
       title: '', artist: '', creator: '', difficulty_name: '',
       source: '', tags: '', audio_filename: '',
       background_filename: null, banner_filename: null,       cdtitle_filename: null, cdtitle_name: '',
-      global_timing_ms: 50, output_format: 'folder',
+      global_timing_ms: 50, output_format: 'osz',
       hp_drain: 8, overall_difficulty: 8,
       preview_time: 0,
       conversion_rate: 1,
@@ -61,7 +61,7 @@ function buildConfig(beatmap: Beatmap | null): ExportConfig {
     banner_filename: beatmap.banner_filename,
     cdtitle_filename: null, cdtitle_name: '',
     global_timing_ms: 50,
-    output_format: 'folder',
+    output_format: 'osz',
     hp_drain: 8,
     overall_difficulty: 8,
     preview_time: beatmap.preview_time,
@@ -83,7 +83,10 @@ export const useConverterStore = create<ConverterState>((set) => ({
   dragging: false,
 
   setSourceFile: (path) => set({ sourceFile: path }),
-  setBeatmap: (beatmap) => set({ beatmap, config: buildConfig(beatmap) }),
+  setBeatmap: (beatmap, direction?: ConvertDirection) => set({
+    beatmap,
+    config: { ...buildConfig(beatmap), output_format: direction === 'osu-to-etterna' ? 'folder' : 'osz' },
+  }),
   setDirection: (dir) => set({ direction: dir }),
   setMediaUrls: (urls) => set({ mediaUrls: urls }),
   updateConfig: (partial) => set((s) => ({ config: { ...s.config, ...partial } })),
