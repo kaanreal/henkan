@@ -628,15 +628,15 @@ fn export_beatmap(
 ) -> Result<String, String> {
     // Find ffmpeg: dev path or production sidecar
     let ffmpeg_path = find_ffmpeg();
-    let base = format!("{} - {} ({})", config.artist, config.title, config.creator);
+    let base = format!("{} [{}]", config.title, config.creator);
     let folder_name = if let Some(ref suffix) = filename_suffix {
-        format!("{} [{}]", base, suffix)
+        format!("{} {}", base, suffix)
     } else {
         base
     };
     let safe_name: String = folder_name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()".contains(c) { c } else { '_' })
+        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()[]".contains(c) { c } else { '_' })
         .collect();
 
     let out_ext = match beatmap.source_format {
@@ -915,10 +915,10 @@ fn export_all_beatmaps(
 
     let pack_mode = pack_name.is_some();
 
-    let base = format!("{} - {} ({})", config.artist, config.title, config.creator);
+    let base = format!("{} [{}]", config.title, config.creator);
     let safe: String = base
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()".contains(c) { c } else { '_' })
+        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()[]".contains(c) { c } else { '_' })
         .collect();
 
     let mut results = Vec::new();
