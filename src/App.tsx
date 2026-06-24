@@ -1,10 +1,12 @@
-import type { Beatmap, ConvertDirection, ExportConfig, PackEntry } from './types/beatmap'
+import type { Beatmap, ExportConfig, PackEntry } from './types/beatmap'
 import { useCallback, useState, useEffect, useRef, startTransition } from 'react'
 import { useConverterStore } from './stores/useConverterStore'
+import { useQueueStore, type QueueItem, buildConfig, emptyConfig, generateId, detectDirection } from './stores/useQueueStore'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { trackEvent } from '@aptabase/tauri'
 import { Header } from './components/Header'
 import { DropZone } from './components/DropZone'
+import { ConversionQueue } from './components/ConversionQueue'
 import { MetadataPanel } from './components/MetadataPanel'
 import { AudioPlayer } from './components/AudioPlayer'
 import { PreviewOverlay } from './components/PreviewOverlay'
@@ -55,8 +57,8 @@ function App() {
   const {
     beatmap, config, direction, mediaUrls,
     isConverting, exportPath, error, dragging,
-    setSourceFile, setBeatmap, setMediaUrls, setDirection,
-    setConverting, setConvertedContent, setExportPath,
+    setBeatmap, setMediaUrls, setDirection,
+    setConverting, setExportPath,
     setError, setDragging, reset,
   } = useConverterStore()
 
@@ -69,6 +71,17 @@ function App() {
   const [showBulkConvert, setShowBulkConvert] = useState(false)
   const [showPackSettings, setShowPackSettings] = useState(false)
   const [packConvertAllMode, setPackConvertAllMode] = useState(false)
+  const [queueLoading, setQueueLoading] = useState(false)
+
+  // Queue state
+  const queueItems = useQueueStore(s => s.items)
+  const queueActiveId = useQueueStore(s => s.activeId)
+  const queueAddItem = useQueueStore(s => s.addItem)
+  const queueRemoveItem = useQueueStore(s => s.removeItem)
+  const queueSetActiveId = useQueueStore(s => s.setActiveId)
+  const queueUpdateItem = useQueueStore(s => s.updateItem)
+  const queueClearCompleted = useQueueStore(s => s.clearCompleted)
+  const queueClearAll = useQueueStore(s => s.clearAll)
 
   // Pack browsing state
   const [packFolder, setPackFolder] = useState<string | null>(null)
@@ -166,37 +179,225 @@ function App() {
     }
   }, [])
 
-  const handleFileDrop = useCallback(async (path: string) => {
+  // ── Multi-file queue ─────────────────────────────────────────
+
+  const loadQueueMedia = useCallback(async (bm: Beatmap) => {
+    const [audio, bg, banner] = await Promise.all([
+      loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
+      loadMediaAsDataUrl(bm.source_dir, bm.background_filename),
+      loadMediaAsDataUrl(bm.source_dir, bm.banner_filename),
+    ])
+    setMediaUrls({ audio, background: bg, banner })
+  }, [setMediaUrls])
+
+  const handleFilesSelected = useCallback(async (paths: string[]) => {
+    const newIds: string[] = []
+    for (const path of paths) {
+      const id = generateId()
+      const fileName = path.split(/[/\\]+/).filter(Boolean).pop() || path
+      const dir = detectDirection(path)
+      newIds.push(id)
+      queueAddItem({
+        id, filePath: path, fileName, direction: dir,
+        beatmap: null, config: emptyConfig(),
+        status: 'parsing', error: null, exportPath: null,
+      })
+    }
+
+    // Parse files sequentially so each is ready as soon as possible
+    for (let i = 0; i < paths.length; i++) {
+      const path = paths[i]
+      const id = newIds[i]
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const dir = detectDirection(path)
+        const result = await invoke<Beatmap>('parse_file', { path, direction: dir })
+        const cfg = buildConfig(result)
+        queueUpdateItem(id, { beatmap: result, config: cfg, status: 'ready' })
+
+        // Auto-activate the first newly added item
+        if (i === 0 && queueItems.length === 0) {
+          queueSetActiveId(id)
+          setDirection(dir)
+          setBeatmap(result)
+          useConverterStore.getState().updateConfig(cfg)
+          await loadQueueMedia(result)
+        }
+      } catch (e: unknown) {
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to parse file'
+        queueUpdateItem(id, { status: 'error', error: msg })
+      }
+    }
+  }, [queueAddItem, queueUpdateItem, queueSetActiveId, queueItems.length, setDirection, setBeatmap, loadQueueMedia])
+
+  const handleQueueSelect = useCallback(async (item: QueueItem) => {
+    if (item.id === queueActiveId || !item.beatmap) return
+    // Save current config to the previously active item
+    const curCfg = useConverterStore.getState().config
+    if (queueActiveId) {
+      queueUpdateItem(queueActiveId, { config: curCfg })
+    }
+    // Reset completed/errored items to ready when clicked for retry
+    if (item.status === 'completed' || item.status === 'error') {
+      queueUpdateItem(item.id, { status: 'ready', exportPath: null, error: null })
+    }
+    // Clear old content immediately to prevent flash
+    setQueueLoading(true)
+    setBeatmap(null)
+    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null })
+    audioPlayerRef.current?.stop()
+    setAudioPlaying(false)
+    setLastExportPath(null)
     setError(null)
-    setConvertedContent(null)
-    setExportPath(null)
-    setSourceFile(path)
+    // Load the new item's data
+    queueSetActiveId(item.id)
+    setDirection(item.direction)
+    try {
+      const [audio, bg, banner] = await Promise.all([
+        loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.audio_filename),
+        loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.background_filename),
+        loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.banner_filename),
+      ])
+      useConverterStore.getState().setMediaUrls({ audio, background: bg, banner })
+      setBeatmap(item.beatmap)
+      useConverterStore.getState().updateConfig(item.config)
+    } catch {
+      setError('Failed to load media')
+    } finally {
+      setQueueLoading(false)
+    }
+  }, [queueActiveId, queueUpdateItem, queueSetActiveId, setDirection, setBeatmap, loadMediaAsDataUrl])
+
+  const handleQueueAddFiles = useCallback(async () => {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({
+      multiple: true,
+      filters: [{ name: 'Beatmap Files', extensions: ['osu', 'osz', 'sm'] }],
+    })
+    if (selected) {
+      const paths = Array.isArray(selected) ? selected : [selected]
+      handleFilesSelected(paths)
+    }
+  }, [handleFilesSelected])
+
+  const handleQueueRemove = useCallback((id: string) => {
+    const idx = queueItems.findIndex(i => i.id === id)
+    if (id === queueActiveId) {
+      const remaining = queueItems.filter(i => i.id !== id)
+      const nextIdx = Math.min(idx, remaining.length - 1)
+      const next = remaining.length > 0 ? remaining[Math.max(0, nextIdx)] : null
+      queueRemoveItem(id)
+      if (next && next.beatmap) {
+        queueSetActiveId(next.id)
+        setDirection(next.direction)
+        setBeatmap(next.beatmap)
+        useConverterStore.getState().updateConfig(next.config)
+        loadQueueMedia(next.beatmap)
+      } else {
+        queueSetActiveId(null)
+        reset()
+      }
+    } else {
+      queueRemoveItem(id)
+    }
+  }, [queueItems, queueActiveId, queueRemoveItem, queueSetActiveId, setDirection, setBeatmap, loadQueueMedia, reset])
+
+  const handleQueueClearAll = useCallback(() => {
+    queueClearAll()
+    reset()
+  }, [queueClearAll, reset])
+
+  const handleQueueClearCompleted = useCallback(() => {
+    const hadActiveCompleted = queueActiveId !== null
+      && queueItems.find(i => i.id === queueActiveId)?.status === 'completed'
+    queueClearCompleted()
+    if (hadActiveCompleted) {
+      const fresh = useQueueStore.getState().items
+      if (fresh.length > 0) {
+        const next = fresh[fresh.length - 1]
+        if (next.beatmap) {
+          queueSetActiveId(next.id)
+          setDirection(next.direction)
+          setBeatmap(next.beatmap)
+          useConverterStore.getState().updateConfig(next.config)
+          loadQueueMedia(next.beatmap)
+        }
+      } else {
+        reset()
+      }
+    }
+  }, [queueActiveId, queueItems, queueClearCompleted, queueSetActiveId, setDirection, setBeatmap, loadQueueMedia, reset])
+
+  const handleResetAll = useCallback(() => {
+    for (const item of queueItems) {
+      if ((item.status === 'completed' || item.status === 'error') && item.beatmap) {
+        queueUpdateItem(item.id, { status: 'ready', exportPath: null, error: null })
+      }
+    }
+  }, [queueItems, queueUpdateItem])
+
+  const doBatchConversion = useCallback(async () => {
+    const readyItems = queueItems.filter(i => i.status === 'ready' && i.beatmap)
+    if (readyItems.length === 0 || isConverting) return
+
+    // Save active config before starting
+    const activeCfg = useConverterStore.getState().config
+    if (queueActiveId) {
+      queueUpdateItem(queueActiveId, { config: activeCfg })
+    }
+
+    setConverting(true)
+    setError(null)
     setLastExportPath(null)
 
-    // Auto-detect direction from file extension
-    const ext = path.split('.').pop()?.toLowerCase() || ''
-    const detected: ConvertDirection =
-      (ext === 'osu' || ext === 'osz') ? 'osu-to-etterna' : 'etterna-to-osu'
-    if (detected !== useConverterStore.getState().direction) {
-      useConverterStore.getState().setDirection(detected)
+    const { invoke } = await import('@tauri-apps/api/core')
+    const { open } = await import('@tauri-apps/plugin-dialog')
+
+    const baseDir = await open({ directory: true, title: 'Export all to folder' })
+    if (!baseDir) { setConverting(false); return }
+
+    const allPaths: string[] = []
+
+    for (const item of readyItems) {
+      // Use chosen output_format for all items; preserve per-item metadata edits
+      const cfg = { ...item.config, output_format: activeCfg.output_format }
+      queueUpdateItem(item.id, { status: 'converting' })
+      try {
+        const ext = item.filePath.split('.').pop()?.toLowerCase() || ''
+
+        if (ext === 'sm' || ext === 'osz') {
+          const paths = await invoke<string[]>('export_all_beatmaps', {
+            sourceFile: item.filePath,
+            config: cfg,
+            outputDir: baseDir,
+          })
+          allPaths.push(...paths)
+        } else {
+          const maxIdx = item.beatmap!.available_difficulties.length
+          for (let i = 0; i < Math.max(1, maxIdx); i++) {
+            const bm = await invoke<Beatmap>('select_difficulty', { path: item.filePath, index: i })
+            const content = await invoke<string>('convert_beatmap', { beatmap: bm, config: cfg })
+            const result = await invoke<string>('export_beatmap', {
+              beatmap: bm, config: cfg,
+              convertedContent: content, outputDir: baseDir,
+            })
+            allPaths.push(result)
+          }
+        }
+        queueUpdateItem(item.id, { status: 'completed', exportPath: allPaths[allPaths.length - 1], config: cfg })
+      } catch (e: unknown) {
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Conversion failed'
+        queueUpdateItem(item.id, { status: 'error', error: msg, config: cfg })
+      }
     }
 
-    try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const result = await invoke<Beatmap>('parse_file', { path, direction: detected })
-
-      const [audio, bg, banner] = await Promise.all([
-        loadMediaAsDataUrl(result.source_dir, result.audio_filename),
-        loadMediaAsDataUrl(result.source_dir, result.background_filename),
-        loadMediaAsDataUrl(result.source_dir, result.banner_filename),
-      ])
-      setMediaUrls({ audio, background: bg, banner })
-      setBeatmap(result)
-    } catch (e: unknown) {
-      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to parse file')
-      setBeatmap(null)
+    if (allPaths.length > 0) {
+      setLastExportPath(allPaths.join('\n'))
+      setExportPath(baseDir)
+      trackEvent('batch_conversion_completed', { count: String(readyItems.length) })
     }
-  }, [setSourceFile, setBeatmap, setMediaUrls, setConvertedContent, setExportPath, setError])
+    setConverting(false)
+  }, [queueItems, queueActiveId, isConverting, queueUpdateItem, setConverting, setError, setExportPath])
 
   const handleConvert = useCallback(() => {
     if (!beatmap) return
@@ -209,9 +410,9 @@ function App() {
     setError(null)
     setLastExportPath(null)
 
+    const cur = useConverterStore.getState().config
     try {
       const { invoke } = await import('@tauri-apps/api/core')
-      const cur = useConverterStore.getState().config
 
       let exportDir: string | null = null
 
@@ -273,15 +474,22 @@ function App() {
 
       setLastExportPath(allPaths.join('\n'))
       setExportPath(exportDir)
+      if (queueActiveId) {
+        queueUpdateItem(queueActiveId, { status: 'completed', exportPath: allPaths.join('\n') || exportDir, config: cur })
+      }
       trackEvent('conversion_completed', { count: String(indices.length), format: cur.output_format })
     } catch (e: unknown) {
+      if (queueActiveId) {
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Conversion failed'
+        queueUpdateItem(queueActiveId, { status: 'error', error: msg, config: cur })
+      }
       const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Conversion failed'
       setError(msg)
       trackEvent('conversion_failed', { error: msg })
     } finally {
       setConverting(false)
     }
-  }, [beatmap, direction, setConverting, setError, setExportPath])
+  }, [beatmap, direction, queueActiveId, queueUpdateItem, setConverting, setError, setExportPath])
 
   const handleConvertDialogConfirm = useCallback(async (indices: number[]) => {
     if (!beatmap?.source_file || indices.length === 0) return
@@ -432,8 +640,9 @@ function App() {
     setPackSelected(new Set())
     setPackBannerUrl(null)
     packConfigsRef.current.clear()
+    queueClearAll()
     reset()
-  }, [packEditing, reset])
+  }, [packEditing, queueClearAll, reset])
 
   const handleSelectAll = useCallback((select: boolean) => {
     startTransition(() => {
@@ -598,6 +807,11 @@ function App() {
     } catch { /* ignore */ }
   }, [lastExportPath, exportPath])
 
+  const handleReset = useCallback(() => {
+    queueClearAll()
+    reset()
+  }, [queueClearAll, reset])
+
   const handleDismissExport = useCallback(() => {
     setLastExportPath(null)
   }, [])
@@ -615,9 +829,9 @@ function App() {
         onDrop={(e) => {
           e.preventDefault()
           setDragging(false)
-          const file = e.dataTransfer?.files?.[0]
-          if (!file) return
-          handleFileDrop((file as File & { path: string }).path)
+          const files = Array.from(e.dataTransfer?.files || [])
+          const paths = files.map(f => (f as File & { path: string }).path).filter(Boolean)
+          if (paths.length > 0) handleFilesSelected(paths)
         }}
       >
         {mediaUrls.background && (
@@ -637,7 +851,20 @@ function App() {
         )}
 
         <div className="relative z-10 flex flex-col h-full">
-          <Header direction={direction} onSetDirection={(dir) => { setDirection(dir); reset() }} />
+          <Header direction={direction} onSetDirection={(dir) => { setDirection(dir); queueClearAll(); reset() }} />
+
+          <ConversionQueue
+            items={queueItems}
+            activeId={queueActiveId}
+            isConverting={isConverting}
+            onSelect={handleQueueSelect}
+            onRemove={handleQueueRemove}
+            onAddFiles={handleQueueAddFiles}
+            onConvertAll={doBatchConversion}
+            onResetAll={handleResetAll}
+            onClearCompleted={handleQueueClearCompleted}
+            onClearAll={handleQueueClearAll}
+          />
 
           <main className="flex-1 flex flex-col items-center p-4 sm:p-6 gap-3 sm:gap-5 overflow-auto hide-scrollbar">
             {packFolder && packEditing === null && (
@@ -694,11 +921,11 @@ function App() {
               </div>
             )}
 
-            {!packFolder && !beatmap && !packLoading && (
+            {!packFolder && queueItems.length === 0 && !beatmap && !packLoading && (
               <>
               <FallingArrows />
               <div className="flex flex-col items-center gap-4 w-full max-w-lg my-auto relative z-10">
-                <DropZone dragging={dragging} onFileSelected={handleFileDrop} direction={direction} />
+                <DropZone dragging={dragging} onFilesSelected={handleFilesSelected} direction={direction} />
                 <div className="flex items-center gap-3 w-full max-w-md">
                   <div className="flex-1 h-px bg-white/5" />
                   <span className="text-[11px] text-surface-500 tracking-widest uppercase">or</span>
@@ -724,7 +951,67 @@ function App() {
               </div>
             )}
 
-            {!packFolder && beatmap && (
+            {!packFolder && queueItems.length > 0 && (
+              <div className="flex flex-col items-center w-full max-w-lg my-auto">
+                {(() => {
+                  const activeItem = queueItems.find(i => i.id === queueActiveId)
+                  if (queueLoading) {
+                    return (
+                      <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
+                        <div className="w-8 h-8 rounded-xl border-2 border-accent/30 border-t-accent animate-spin" />
+                        <p className="text-sm text-surface-400">Loading...</p>
+                      </div>
+                    )
+                  }
+                  if (activeItem?.status === 'parsing') {
+                    return (
+                      <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
+                        <div className="w-8 h-8 rounded-xl border-2 border-accent/30 border-t-accent animate-spin" />
+                        <p className="text-sm text-surface-400">Parsing {activeItem.fileName}...</p>
+                      </div>
+                    )
+                  }
+                  if (activeItem?.status === 'error' && !activeItem.beatmap) {
+                    return (
+                      <div className="flex flex-col items-center gap-6 animate-fade-in my-auto">
+                        <div className="text-center">
+                          <p className="text-sm text-red-400 mb-1">Failed to load {activeItem.fileName}</p>
+                          <p className="text-xs text-surface-500">{activeItem.error}</p>
+                        </div>
+                        <DropZone dragging={dragging} onFilesSelected={handleFilesSelected} direction={direction} />
+                      </div>
+                    )
+                  }
+                  if (activeItem?.beatmap) {
+                    return (
+                      <MetadataPanel
+                        beatmap={activeItem.beatmap}
+                        config={config}
+                        mediaUrls={mediaUrls}
+                        tapCount={tapCount}
+                        holdCount={holdCount}
+                        isConverting={isConverting}
+                        switchingDifficulty={switchingDifficulty}
+                        direction={activeItem.direction}
+                        onUpdateConfig={(p) => useConverterStore.getState().updateConfig(p)}
+                        onChangeFile={handleChangeFile}
+                        onConvert={handleConvert}
+                        onReset={handleReset}
+                        onSelectDifficulty={handleSelectDifficulty}
+                      />
+                    )
+                  }
+                  return (
+                    <div className="flex flex-col items-center gap-6 animate-fade-in my-auto">
+                      <p className="text-sm text-surface-500">Select a file from the queue above</p>
+                      <DropZone dragging={dragging} onFilesSelected={handleFilesSelected} direction={direction} />
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
+
+            {!packFolder && queueItems.length === 0 && beatmap && (
               <div className="w-full max-w-lg">
                 <MetadataPanel
                   beatmap={beatmap}
@@ -738,7 +1025,7 @@ function App() {
                   onUpdateConfig={(p) => useConverterStore.getState().updateConfig(p)}
                   onChangeFile={handleChangeFile}
                   onConvert={handleConvert}
-                  onReset={reset}
+                  onReset={handleReset}
                   onSelectDifficulty={handleSelectDifficulty}
                 />
               </div>
