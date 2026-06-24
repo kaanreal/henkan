@@ -29,10 +29,15 @@ pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str
     writeln!(out, "#MUSIC:{};", escape(&beatmap.audio_filename))?;
 
     if beatmap.background_filename.is_some() {
-        writeln!(out, "#BACKGROUND:bg.jpg;")?;
+        writeln!(out, "#BACKGROUND:bg.png;")?;
     }
+    let banner_auto = beatmap.banner_filename.as_ref().map_or(true, |s| s.is_empty());
     if beatmap.banner_filename.is_some() || beatmap.background_filename.is_some() {
-        writeln!(out, "#BANNER:banner.jpg;")?;
+        if banner_auto {
+            writeln!(out, "#BANNER:bg.png;")?;
+        } else {
+            writeln!(out, "#BANNER:banner.png;")?;
+        }
     }
 
     // SM convention: beat 0 occurs at time -OFFSET seconds.
