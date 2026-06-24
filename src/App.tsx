@@ -17,6 +17,9 @@ import { PackBrowser } from './components/PackBrowser'
 import { FallingArrows } from './components/FallingArrows'
 import { PackSettingsDialog } from './components/PackSettingsDialog'
 import { WebAudioPlayer } from './lib/WebAudioPlayer'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+
+const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
 function configFromEntry(entry: PackEntry): ExportConfig {
   const fallback = entry.source_file.split(/[/\\]+/).filter(Boolean).pop()?.replace(/\.[^.]+$/, '') || 'Untitled'
@@ -530,10 +533,13 @@ function App() {
 
   // ── Pack browsing ──────────────────────────────────────────
 
-  const handleOpenPack = useCallback(async () => {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const folder = await open({ directory: true, title: 'Select pack folder' })
-    if (!folder) return
+  const handleOpenPack = useCallback(async (folder?: string) => {
+    if (!folder) {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const picked = await open({ directory: true, title: 'Select pack folder' })
+      if (!picked) return
+      folder = picked
+    }
     setPackFolder(folder)
     setPackEditing(null)
     setPackSelected(new Set())
@@ -817,6 +823,42 @@ function App() {
     setLastExportPath(null)
   }, [])
 
+  // Drag-and-drop (Tauri native events provide real paths)
+  const lastDropRef = useRef(0)
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    let cancelled = false
+    getCurrentWindow().onDragDropEvent((evt) => {
+      if (cancelled) return
+      if (evt.payload.type === 'enter') {
+        setDragging(true)
+      } else if (evt.payload.type === 'leave') {
+        setDragging(false)
+      } else if (evt.payload.type === 'drop') {
+        setDragging(false)
+        const now = Date.now()
+        if (now - lastDropRef.current < 500) return
+        lastDropRef.current = now
+        const seen = new Set<string>()
+        const files: string[] = []
+        const dirs: string[] = []
+        for (const p of evt.payload.paths) {
+          if (seen.has(p)) continue
+          seen.add(p)
+          const ext = p.match(/\.[^.]+$/)?.[0]?.toLowerCase()
+          if (!ext || !ACCEPTED_EXTS.includes(ext)) dirs.push(p)
+          else files.push(p)
+        }
+        if (dirs.length > 0) handleOpenPack(dirs[0])
+        if (files.length > 0) handleFilesSelected(files)
+      }
+    }).then(fn => { unlisten = fn })
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [setDragging, handleFilesSelected, handleOpenPack])
+
   const tapCount = beatmap?.notes.filter(n => !n.hold).length ?? 0
   const holdCount = beatmap?.notes.filter(n => n.hold).length ?? 0
 
@@ -830,9 +872,6 @@ function App() {
         onDrop={(e) => {
           e.preventDefault()
           setDragging(false)
-          const files = Array.from(e.dataTransfer?.files || [])
-          const paths = files.map(f => (f as File & { path: string }).path).filter(Boolean)
-          if (paths.length > 0) handleFilesSelected(paths)
         }}
       >
         {mediaUrls.background && (
@@ -933,7 +972,7 @@ function App() {
                   <div className="flex-1 h-px bg-white/5" />
                 </div>
                 <button
-                  onClick={handleOpenPack}
+                  onClick={() => handleOpenPack()}
                   className="h-11 px-6 rounded-xl text-sm font-medium
                     bg-white/[0.04] border border-white/8 text-surface-400
                     hover:bg-white/[0.07] hover:text-surface-200
