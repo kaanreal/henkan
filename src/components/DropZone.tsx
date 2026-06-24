@@ -3,18 +3,18 @@ import type { ConvertDirection } from '../types/beatmap'
 
 interface DropZoneProps {
   dragging: boolean
-  onFileSelected: (path: string) => void
+  onFilesSelected: (paths: string[]) => void
   direction: ConvertDirection
 }
 
-export function DropZone({ dragging, onFileSelected }: DropZoneProps) {
+export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleClick = useCallback(async () => {
     try {
       const { open } = await import('@tauri-apps/plugin-dialog')
       const selected = await open({
-        multiple: false,
+        multiple: true,
         filters: [
           {
             name: 'Beatmap Files',
@@ -23,12 +23,13 @@ export function DropZone({ dragging, onFileSelected }: DropZoneProps) {
         ],
       })
       if (selected) {
-        onFileSelected(selected)
+        const paths = Array.isArray(selected) ? selected : [selected]
+        onFilesSelected(paths)
       }
     } catch {
       inputRef.current?.click()
     }
-  }, [onFileSelected])
+  }, [onFilesSelected])
 
   return (
     <div
@@ -61,8 +62,9 @@ export function DropZone({ dragging, onFileSelected }: DropZoneProps) {
         accept=".osu,.osz,.sm"
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) onFileSelected((file as File & { path: string }).path)
+          const files = Array.from(e.target.files || [])
+          const paths = files.map(f => (f as File & { path: string }).path).filter(Boolean)
+          if (paths.length > 0) onFilesSelected(paths)
         }}
       />
 
