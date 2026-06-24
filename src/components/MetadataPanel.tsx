@@ -200,7 +200,7 @@ export function MetadataPanel({
               onClear={() => onUpdateConfig({ banner_filename: null })}
             />
           )}
-          {/* CD Title row with inline name field — only for SM target */}
+          {/* CD Title — only for SM target */}
           {direction === 'osu-to-etterna' && (
           <div className="flex items-center gap-2 text-sm">
             <span className="text-[11px] text-surface-500 font-medium w-20 shrink-0">CD Title</span>
@@ -228,14 +228,6 @@ export function MetadataPanel({
                 </svg>
               </button>
             )}
-            <input
-              value={config.cdtitle_name}
-              onChange={e => onUpdateConfig({ cdtitle_name: e.target.value })}
-              placeholder="Name"
-              className="w-16 h-9 bg-white/[0.04] border border-white/8 rounded-lg px-2 text-sm text-surface-200
-                outline-none transition-all duration-75 placeholder:text-surface-600 text-center
-                focus:border-accent/40 focus:bg-white/[0.06]"
-            />
           </div>
         )}
         </div>

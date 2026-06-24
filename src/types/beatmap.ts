@@ -36,6 +36,7 @@ export interface Beatmap {
   audio_filename: string
   background_filename: string | null
   banner_filename: string | null
+  cdtitle_filename: string | null
   source_dir: string
   source_file: string
   timing_points: TimingPoint[]
@@ -60,7 +61,6 @@ export interface ExportConfig {
   background_filename: string | null
   banner_filename: string | null
   cdtitle_filename: string | null
-  cdtitle_name: string
   global_timing_ms: number
   output_format: 'folder' | 'osu' | 'osz'
   hp_drain: number

@@ -39,6 +39,7 @@ pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str
             writeln!(out, "#BANNER:banner.png;")?;
         }
     }
+    writeln!(out, "#CDTITLE:cdtitle.png;")?;
 
     // SM convention: beat 0 occurs at time -OFFSET seconds.
     // compute_offset returns the time of beat 0 (≤ 0), so negate it here.

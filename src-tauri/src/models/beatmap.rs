@@ -32,6 +32,7 @@ pub struct Beatmap {
     pub audio_filename: String,
     pub background_filename: Option<String>,
     pub banner_filename: Option<String>,
+    pub cdtitle_filename: Option<String>,
 
     // Source paths (for resolving relative refs)
     pub source_dir: String,
@@ -75,7 +76,6 @@ pub struct ExportConfig {
     pub background_filename: Option<String>,
     pub banner_filename: Option<String>,
     pub cdtitle_filename: Option<String>,
-    pub cdtitle_name: String,
     pub global_timing_ms: f64,       // ms to shift all notes later (+ = later, - = earlier)
     pub output_format: String,       // "osu" or "osz" ("osz" = zip package)
     pub hp_drain: f64,
@@ -117,6 +117,7 @@ impl Beatmap {
             audio_filename: String::new(),
             background_filename: None,
             banner_filename: None,
+            cdtitle_filename: None,
             source_dir: String::new(),
             source_file: String::new(),
             timing_points: Vec::new(),

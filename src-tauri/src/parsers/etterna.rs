@@ -27,6 +27,7 @@ pub fn parse_sm(content: &str) -> Result<Beatmap> {
         headers.get("BANNER").cloned()
     });
     beatmap.banner_filename = headers.get("BANNER").cloned();
+    beatmap.cdtitle_filename = headers.get("CDTITLE").cloned();
 
     let offset: f64 = headers.get("OFFSET").and_then(|s| s.parse().ok()).unwrap_or(0.0);
 
@@ -91,6 +92,7 @@ pub fn parse_sm_difficulty(content: &str, index: usize) -> Result<Beatmap> {
         headers.get("BANNER").cloned()
     });
     beatmap.banner_filename = headers.get("BANNER").cloned();
+    beatmap.cdtitle_filename = headers.get("CDTITLE").cloned();
 
     let offset: f64 = headers.get("OFFSET").and_then(|s| s.parse().ok()).unwrap_or(0.0);
     let sample_start: f64 = headers.get("SAMPLESTART").and_then(|s| s.parse().ok()).unwrap_or(0.0);
@@ -449,35 +451,38 @@ fn beat_to_ms(
     let mut prev_beat = 0.0;
 
     for i in 0..bpms.len() {
-        let (bpm_beat, bpm) = bpms[i];
-        if beat <= bpm_beat {
+        let (_bpm_beat, bpm) = bpms[i];
+        let seg_end = if i + 1 < bpms.len() { bpms[i + 1].0 } else { f64::INFINITY };
+
+        if beat < seg_end {
             let beat_diff = beat - prev_beat;
-            if i > 0 {
-                let prev_bpm = bpms[i - 1].1;
-                time += beat_diff * (60_000.0 / prev_bpm);
-            } else {
-                time += beat_diff * (60_000.0 / bpm);
+            time += beat_diff * (60_000.0 / bpm);
+            for &(s_beat, sec) in stops {
+                if s_beat >= prev_beat && s_beat < beat {
+                    time += sec * 1000.0;
+                }
             }
             return time;
         }
 
-        let next_beat = if i + 1 < bpms.len() {
-            bpms[i + 1].0
-        } else {
-            beat
-        };
-
-        let beat_diff = next_beat - prev_beat;
+        let beat_diff = seg_end - prev_beat;
         time += beat_diff * (60_000.0 / bpm);
+        for &(s_beat, sec) in stops {
+            if s_beat >= prev_beat && s_beat < seg_end {
+                time += sec * 1000.0;
+            }
+        }
+        prev_beat = seg_end;
+    }
 
-        let stop_duration: f64 = stops
-            .iter()
-            .filter(|(s_beat, _)| *s_beat >= prev_beat && *s_beat < next_beat)
-            .map(|(_, sec)| sec * 1000.0)
-            .sum();
-        time += stop_duration;
-
-        prev_beat = next_beat;
+    if beat > prev_beat {
+        let last_bpm = bpms.last().map(|(_, b)| *b).unwrap_or(120.0);
+        time += (beat - prev_beat) * (60_000.0 / last_bpm);
+        for &(s_beat, sec) in stops {
+            if s_beat >= prev_beat && s_beat < beat {
+                time += sec * 1000.0;
+            }
+        }
     }
 
     time
