@@ -323,6 +323,8 @@ fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&str])
 
 const IMAGE_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"];
 
+const DEFAULT_CDTITLE: &[u8] = include_bytes!("../assets/cdtitle_default.png");
+
 fn rate_label(rate: f64) -> Option<String> {
     if (rate - 1.0).abs() < f64::EPSILON { return None; }
     let s = format!("{:.2}", rate);
@@ -371,6 +373,7 @@ fn convert_beatmap(
     beatmap.audio_filename = config.audio_filename.clone();
     beatmap.background_filename = config.background_filename.clone();
     beatmap.banner_filename = config.banner_filename.clone();
+    beatmap.cdtitle_filename = config.cdtitle_filename.clone();
     beatmap.preview_time = config.preview_time;
 
     scale_timing_for_rate(&mut beatmap, config.conversion_rate);
@@ -768,8 +771,14 @@ fn export_beatmap(
                     copy_media(&beatmap.source_dir, b, &export_path, "banner.png")?;
                 }
             }
-            if let Some(ref cdt) = config.cdtitle_filename {
-                copy_media(&beatmap.source_dir, cdt, &export_path, "cdtitle.jpg")?;
+            let cdtitle_has_file = config.cdtitle_filename.as_ref().is_some_and(|s| !s.is_empty());
+            if cdtitle_has_file {
+                if let Some(ref cdt) = config.cdtitle_filename {
+                    copy_media(&beatmap.source_dir, cdt, &export_path, "cdtitle.png")?;
+                }
+            } else {
+                fs::write(export_path.join("cdtitle.png"), DEFAULT_CDTITLE)
+                    .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
             }
         }
 
@@ -1330,8 +1339,14 @@ fn export_all_beatmaps(
                     copy_media(&tmp_dir, b, &out_folder, "banner.png")?;
                 }
             }
-            if let Some(ref cdt) = config.cdtitle_filename {
-                copy_media(&tmp_dir, cdt, &out_folder, "cdtitle.jpg")?;
+            let cdtitle_has_file = config.cdtitle_filename.as_ref().is_some_and(|s| !s.is_empty());
+            if cdtitle_has_file {
+                if let Some(ref cdt) = config.cdtitle_filename {
+                    copy_media(&tmp_dir, cdt, &out_folder, "cdtitle.png")?;
+                }
+            } else {
+                fs::write(out_folder.join("cdtitle.png"), DEFAULT_CDTITLE)
+                    .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
             }
         }
         _ => return Err("Unsupported file format".to_string()),

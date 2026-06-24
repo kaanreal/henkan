@@ -41,7 +41,7 @@ function buildConfig(beatmap: Beatmap | null): ExportConfig {
     return {
       title: '', artist: '', creator: '', difficulty_name: '',
       source: '', tags: '', audio_filename: '',
-      background_filename: null, banner_filename: null,       cdtitle_filename: null, cdtitle_name: '',
+      background_filename: null, banner_filename: null,       cdtitle_filename: null,
       global_timing_ms: 50, output_format: 'osz',
       hp_drain: 8, overall_difficulty: 8,
       preview_time: 0,
@@ -59,7 +59,7 @@ function buildConfig(beatmap: Beatmap | null): ExportConfig {
     audio_filename: beatmap.audio_filename,
     background_filename: beatmap.background_filename,
     banner_filename: beatmap.banner_filename,
-    cdtitle_filename: null, cdtitle_name: '',
+    cdtitle_filename: null,
     global_timing_ms: 50,
     output_format: 'osz',
     hp_drain: 8,

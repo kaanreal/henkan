@@ -34,7 +34,6 @@ function configFromEntry(entry: PackEntry): ExportConfig {
     background_filename: entry.background_filename,
     banner_filename: null,
     cdtitle_filename: null,
-    cdtitle_name: '',
     global_timing_ms: 50,
     output_format: 'osz',
     hp_drain: 8,
