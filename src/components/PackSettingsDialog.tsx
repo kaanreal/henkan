@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 interface PackSettings {
   mode: 'osz' | 'folder'
@@ -21,13 +21,12 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
   const [leaving, setLeaving] = useState(false)
 
   // Reset state when dialog opens
-  useEffect(() => {
-    if (open) {
-      setSettings(defaultSettings)
-      setLeaving(false)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  if (open && leaving) {
+    setLeaving(false)
+  }
+  if (open && (settings.mode !== defaultSettings.mode || settings.creator !== defaultSettings.creator)) {
+    setSettings(defaultSettings)
+  }
 
   function update<K extends keyof PackSettings>(key: K, value: PackSettings[K]) {
     setSettings(prev => ({ ...prev, [key]: value }))
