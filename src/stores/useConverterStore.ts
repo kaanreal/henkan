@@ -61,7 +61,7 @@ function buildConfig(beatmap: Beatmap | null): ExportConfig {
     banner_filename: beatmap.banner_filename,
     cdtitle_filename: null,
     global_timing_ms: 50,
-    output_format: 'osz',
+    output_format: beatmap.source_format === 'OsuMania' ? 'folder' : 'osz',
     hp_drain: 8,
     overall_difficulty: 8,
     preview_time: beatmap.preview_time,

@@ -765,6 +765,9 @@ function App() {
 
       // Update beatmap + config first (preserves user-customized fields, syncs rest from new beatmap)
       useConverterStore.getState().updateBeatmapDifficulty(bm)
+      if (queueActiveId) {
+        queueUpdateItem(queueActiveId, { beatmap: bm })
+      }
 
       // Load media using config values — now correctly reflects user customizations
       // while falling back to the new difficulty's defaults for non-customized fields
@@ -780,7 +783,7 @@ function App() {
     } finally {
       setSwitchingDifficulty(false)
     }
-  }, [beatmap, setError])
+  }, [beatmap, setError, queueActiveId, queueUpdateItem])
 
   const handleChangeFile = useCallback(async (field: string, _current: string | null): Promise<void> => {
     try {
