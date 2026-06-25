@@ -260,6 +260,10 @@ fn resolve_file(source_dir: String, filename: String) -> Result<String, String> 
 /// Try to find a media file by exact match, then alternate extensions, then case-insensitive,
 /// then heuristic scan for plausible files.
 fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&str]) -> Option<PathBuf> {
+    if filename.is_empty() {
+        return scan_source_dir_for_bg(source_dir);
+    }
+
     // 1. Exact match in source dir
     let exact = Path::new(source_dir).join(filename);
     if exact.exists() { return Some(exact); }
@@ -293,31 +297,38 @@ fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&str])
     //    Filters out CD titles and banners, then prefers files with "bg"/"background"
     //    in the name; otherwise picks the largest remaining image.
     if alt_extensions.iter().any(|e| IMAGE_EXTS.contains(e)) {
-        if let Ok(entries) = fs::read_dir(source_dir) {
-            let mut candidates: Vec<(u64, PathBuf)> = Vec::new();
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if !p.is_file() { continue; }
-                let ext = p.extension().and_then(|e| e.to_str().map(|s| s.to_lowercase())).unwrap_or_default();
-                if !IMAGE_EXTS.contains(&format!(".{}", ext).as_str()) { continue; }
-                let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-                // Skip files that are clearly not backgrounds (CD titles, banners)
-                if stem.contains("cdtitle") || stem == "cd" || stem == "bn" || stem == "banner" { continue; }
-                // Prefer files with "bg" or "background" in the name
-                if stem.contains("bg") || stem.contains("background") {
-                    return Some(p);
-                }
-                if let Ok(meta) = p.metadata() {
-                    candidates.push((meta.len(), p));
-                }
-            }
-            // No file matched "bg"/"background" – pick the largest remaining
-            if let Some((_, biggest)) = candidates.into_iter().max_by_key(|(size, _)| *size) {
-                return Some(biggest);
-            }
-        }
+        return scan_source_dir_for_bg(source_dir);
     }
 
+    None
+}
+
+/// Scan source_dir for plausible background images, preferring files named
+/// "bg"/"background" and falling back to the largest remaining image.
+fn scan_source_dir_for_bg(source_dir: &str) -> Option<PathBuf> {
+    if let Ok(entries) = fs::read_dir(source_dir) {
+        let mut candidates: Vec<(u64, PathBuf)> = Vec::new();
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if !p.is_file() { continue; }
+            let ext = p.extension().and_then(|e| e.to_str().map(|s| s.to_lowercase())).unwrap_or_default();
+            if !IMAGE_EXTS.contains(&format!(".{}", ext).as_str()) { continue; }
+            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+            // Skip files that are clearly not backgrounds (CD titles, banners)
+            if stem.contains("cdtitle") || stem == "cd" || stem == "bn" || stem == "banner" { continue; }
+            // Prefer files with "bg" or "background" in the name
+            if stem.contains("bg") || stem.contains("background") {
+                return Some(p);
+            }
+            if let Ok(meta) = p.metadata() {
+                candidates.push((meta.len(), p));
+            }
+        }
+        // No file matched "bg"/"background" – pick the largest remaining
+        if let Some((_, biggest)) = candidates.into_iter().max_by_key(|(size, _)| *size) {
+            return Some(biggest);
+        }
+    }
     None
 }
 
@@ -953,11 +964,19 @@ fn export_all_beatmaps(
             } else {
                 config.audio_filename.clone()
             };
-            let background_filename: Option<String> = config.background_filename.clone().or_else(|| {
+            let mut background_filename: Option<String> = config.background_filename.clone().or_else(|| {
                 extract_sm_header_field(&content, "BACKGROUND").or_else(|| {
                     extract_sm_header_field(&content, "BANNER")
                 })
             });
+            // If no background was specified, scan the source dir for plausible images
+            if background_filename.as_ref().map_or(true, |s| s.is_empty()) {
+                if let Some(found) = scan_source_dir_for_bg(&source_dir) {
+                    if let Some(name) = found.file_name().and_then(|n| n.to_str()) {
+                        background_filename = Some(name.to_string());
+                    }
+                }
+            }
 
             if config.output_format == "osz" {
                 let osz_path = Path::new(&output_dir).join(format!("{}.osz", safe));

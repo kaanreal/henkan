@@ -44,12 +44,22 @@ function configFromEntry(entry: PackEntry): ExportConfig {
   }
 }
 
-async function loadMediaAsDataUrl(sourceDir: string, filename: string | null): Promise<string | null> {
-  if (!filename) return null
+async function loadMediaAsDataUrl(sourceDir: string, filename: string | null | undefined): Promise<string | null> {
   try {
     const { invoke } = await import('@tauri-apps/api/core')
-    const resolved = await invoke<string>('resolve_file', { sourceDir, filename })
+    const resolved = await invoke<string>('resolve_file', { sourceDir, filename: filename ?? '' })
     return await invoke<string>('read_file_as_data_url', { path: resolved })
+  } catch {
+    return null
+  }
+}
+
+async function resolveMediaName(sourceDir: string, filename: string | null | undefined): Promise<string | null> {
+  if (filename) return filename
+  try {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const resolved = await invoke<string>('resolve_file', { sourceDir, filename: '' })
+    return resolved.split(/[/\\]+/).pop() || null
   } catch {
     return null
   }
@@ -601,9 +611,10 @@ function App() {
       })
 
       // Load media
-      const [newAudio, bg] = await Promise.all([
+      const [newAudio, bg, bgName] = await Promise.all([
         loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
         loadMediaAsDataUrl(bm.source_dir, bm.background_filename),
+        resolveMediaName(bm.source_dir, bm.background_filename),
       ])
       useConverterStore.getState().setMediaUrls({ audio: newAudio, background: bg, banner: null })
       useConverterStore.getState().setBeatmap(bm, 'etterna-to-osu')
@@ -612,6 +623,13 @@ function App() {
       const saved = packConfigsRef.current.get(index)
       if (saved) {
         useConverterStore.getState().updateConfig(saved)
+      }
+
+      // If background was auto-discovered, update config so the FilePicker
+      // shows the actual filename instead of "auto"
+      const finalConfig = useConverterStore.getState().config
+      if (bgName && !finalConfig.background_filename) {
+        useConverterStore.getState().updateConfig({ background_filename: bgName })
       }
     } catch (e: unknown) {
       setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to load song')

@@ -24,33 +24,31 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
   onEdit: () => void
 }) {
   const [bgUrl, setBgUrl] = useState<string | null>(() => {
-    const key = `${entry.source_dir}|${entry.background_filename}`
+    const key = `${entry.source_dir}|${entry.background_filename ?? ''}`
     return _bgCache.get(key) ?? null
   })
 
   useEffect(() => {
     let cancelled = false
-    if (entry.background_filename) {
-      const key = `${entry.source_dir}|${entry.background_filename}`
-      if (_bgCache.has(key)) return
-      const load = async () => {
-        try {
-          const { invoke } = await import('@tauri-apps/api/core')
-          const resolved = await invoke<string>('resolve_file', {
-            sourceDir: entry.source_dir,
-            filename: entry.background_filename,
-          })
-          if (cancelled) return
-          const url = await invoke<string>('read_file_as_data_url', { path: resolved })
-          if (cancelled) return
-          _bgCache.set(key, url)
-          setBgUrl(url)
-        } catch {
-          // no background
-        }
+    const key = `${entry.source_dir}|${entry.background_filename ?? ''}`
+    if (_bgCache.has(key)) return
+    const load = async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const resolved = await invoke<string>('resolve_file', {
+          sourceDir: entry.source_dir,
+          filename: entry.background_filename ?? '',
+        })
+        if (cancelled) return
+        const url = await invoke<string>('read_file_as_data_url', { path: resolved })
+        if (cancelled) return
+        _bgCache.set(key, url)
+        setBgUrl(url)
+      } catch {
+        // no background
       }
-      load()
     }
+    load()
     return () => { cancelled = true }
   }, [entry.source_dir, entry.background_filename])
 
