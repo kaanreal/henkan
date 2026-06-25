@@ -23,11 +23,11 @@ pub fn parse_sm(content: &str) -> Result<Beatmap> {
     beatmap.source = headers.get("GENRE").cloned().unwrap_or_default();
 
     beatmap.audio_filename = headers.get("MUSIC").cloned().unwrap_or_default();
-    beatmap.background_filename = headers.get("BACKGROUND").cloned().or_else(|| {
-        headers.get("BANNER").cloned()
-    });
-    beatmap.banner_filename = headers.get("BANNER").cloned();
-    beatmap.cdtitle_filename = headers.get("CDTITLE").cloned();
+    beatmap.background_filename = headers.get("BACKGROUND").cloned()
+        .filter(|s| !s.is_empty())
+        .or_else(|| headers.get("BANNER").cloned().filter(|s| !s.is_empty()));
+    beatmap.banner_filename = headers.get("BANNER").cloned().filter(|s| !s.is_empty());
+    beatmap.cdtitle_filename = headers.get("CDTITLE").cloned().filter(|s| !s.is_empty());
 
     let offset: f64 = headers.get("OFFSET").and_then(|s| s.parse().ok()).unwrap_or(0.0);
 
@@ -88,11 +88,11 @@ pub fn parse_sm_difficulty(content: &str, index: usize) -> Result<Beatmap> {
     beatmap.creator = headers.get("CREDIT").cloned().unwrap_or_default();
     beatmap.source = headers.get("GENRE").cloned().unwrap_or_default();
     beatmap.audio_filename = headers.get("MUSIC").cloned().unwrap_or_default();
-    beatmap.background_filename = headers.get("BACKGROUND").cloned().or_else(|| {
-        headers.get("BANNER").cloned()
-    });
-    beatmap.banner_filename = headers.get("BANNER").cloned();
-    beatmap.cdtitle_filename = headers.get("CDTITLE").cloned();
+    beatmap.background_filename = headers.get("BACKGROUND").cloned()
+        .filter(|s| !s.is_empty())
+        .or_else(|| headers.get("BANNER").cloned().filter(|s| !s.is_empty()));
+    beatmap.banner_filename = headers.get("BANNER").cloned().filter(|s| !s.is_empty());
+    beatmap.cdtitle_filename = headers.get("CDTITLE").cloned().filter(|s| !s.is_empty());
 
     let offset: f64 = headers.get("OFFSET").and_then(|s| s.parse().ok()).unwrap_or(0.0);
     let sample_start: f64 = headers.get("SAMPLESTART").and_then(|s| s.parse().ok()).unwrap_or(0.0);
