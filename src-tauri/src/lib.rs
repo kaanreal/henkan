@@ -616,6 +616,17 @@ fn speed_up_audio_symphonia(input_path: &str, output_path: &str, rate: f64) -> R
     Ok(output_path.to_string())
 }
 
+/// Sanitize a string for use as a Windows filename component, truncating
+/// to `max_len` chars to avoid hitting MAX_PATH (260).
+fn sanitize_filename(s: &str, max_len: usize) -> String {
+    s.chars()
+        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()[]".contains(c) { c } else { '_' })
+        .collect::<String>()
+        .chars()
+        .take(max_len)
+        .collect()
+}
+
 fn resolve_audio_path(source_dir: &str, filename: &str) -> PathBuf {
     resolve_media_file(source_dir, filename, &[".mp3", ".ogg", ".wav", ".flac", ".m4a", ".wma"])
         .unwrap_or_else(|| Path::new(source_dir).join(filename))
@@ -637,10 +648,7 @@ fn export_beatmap(
     } else {
         base
     };
-    let safe_name: String = folder_name
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()[]".contains(c) { c } else { '_' })
-        .collect();
+    let safe_name = sanitize_filename(&folder_name, 80);
 
     let out_ext = match beatmap.source_format {
         SourceFormat::OsuMania => "sm",
@@ -922,10 +930,7 @@ fn export_all_beatmaps(
     let pack_mode = pack_name.is_some();
 
     let base = format!("{} [{}]", config.title, config.creator);
-    let safe: String = base
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()[]".contains(c) { c } else { '_' })
-        .collect();
+    let safe = sanitize_filename(&base, 80);
 
     let mut results = Vec::new();
 
@@ -992,10 +997,7 @@ fn export_all_beatmaps(
                             .map_err(|e| format!("Conversion error: {}", e))?;
 
                     let dn = bm.difficulty_name;
-                    let diff_safe: String = dn
-                        .chars()
-                        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()[]".contains(c) { c } else { '_' })
-                        .collect();
+                    let diff_safe = sanitize_filename(&dn, 60);
                     let entry_name = if diff_safe.is_empty() {
                         format!("{}.osu", safe)
                     } else {
@@ -1068,10 +1070,7 @@ fn export_all_beatmaps(
                 results.insert(0, osz_path.to_string_lossy().to_string());
             } else {
                 // folder output
-                let title_safe: String = config.title
-                    .chars()
-                    .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()".contains(c) { c } else { '_' })
-                    .collect();
+                let title_safe = sanitize_filename(&config.title, 80);
 
                 let out_folder = if pack_mode {
                     PathBuf::from(&output_dir)
@@ -1125,10 +1124,7 @@ fn export_all_beatmaps(
                             .map_err(|e| format!("Conversion error: {}", e))?;
 
                     let dn = bm.difficulty_name;
-                    let diff_safe: String = dn
-                        .chars()
-                        .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()[]".contains(c) { c } else { '_' })
-                        .collect();
+                    let diff_safe = sanitize_filename(&dn, 60);
                     let out_name = if diff_safe.is_empty() {
                         format!("{}.osu", name_base)
                     } else {
