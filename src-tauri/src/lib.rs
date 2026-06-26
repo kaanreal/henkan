@@ -10,6 +10,7 @@ pub use models::beatmap::Beatmap;
 use models::beatmap::{DiffInfo, ExportConfig, PackEntry, SourceFormat};
 use std::fs;
 use std::io::Read;
+use ureq::ResponseExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -338,6 +339,42 @@ fn scan_source_dir_for_bg(source_dir: &str) -> Option<PathBuf> {
 const IMAGE_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"];
 
 const DEFAULT_CDTITLE: &[u8] = include_bytes!("../assets/cdtitle_default.png");
+
+/// Try to fetch the osu! avatar for a given creator name.
+/// Falls back to None on any error (network, no user, etc.).
+fn fetch_mapper_avatar(creator: &str) -> Option<Vec<u8>> {
+    // Resolve username → user_id by following the osu! profile redirect
+    let profile_url = format!("https://osu.ppy.sh/users/{}", creator);
+    let resp = ureq::get(&profile_url)
+        .header("User-Agent", "henkan/1.0")
+        .call()
+        .ok()?;
+    let final_url = resp.get_uri().to_string();
+    drop(resp);
+
+    let user_id = final_url
+        .strip_prefix("https://osu.ppy.sh/users/")
+        .or_else(|| final_url.strip_prefix("https://old.ppy.sh/users/"))
+        .and_then(|rest| rest.split('/').next())
+        .and_then(|s| s.parse::<u64>().ok())?;
+
+    let avatar_url = format!("https://a.ppy.sh/{}", user_id);
+    let avatar_resp = ureq::get(&avatar_url)
+        .header("User-Agent", "henkan/1.0")
+        .call()
+        .ok()?;
+    if avatar_resp.status() != 200 {
+        return None;
+    }
+    let content_type = avatar_resp.headers().get("Content-Type")
+        .and_then(|v| v.to_str().ok())?;
+    if !content_type.starts_with("image/") {
+        return None;
+    }
+    let mut buf = Vec::new();
+    avatar_resp.into_body().as_reader().read_to_end(&mut buf).ok()?;
+    Some(buf)
+}
 
 fn rate_label(rate: f64) -> Option<String> {
     if (rate - 1.0).abs() < f64::EPSILON { return None; }
@@ -798,6 +835,9 @@ fn export_beatmap(
                 if let Some(ref cdt) = config.cdtitle_filename {
                     copy_media(&beatmap.source_dir, cdt, &export_path, "cdtitle.png")?;
                 }
+            } else if let Some(avatar) = fetch_mapper_avatar(&beatmap.creator) {
+                fs::write(export_path.join("cdtitle.png"), &avatar)
+                    .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
             } else {
                 fs::write(export_path.join("cdtitle.png"), DEFAULT_CDTITLE)
                     .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
@@ -1362,6 +1402,9 @@ fn export_all_beatmaps(
                 if let Some(ref cdt) = config.cdtitle_filename {
                     copy_media(&tmp_dir, cdt, &out_folder, "cdtitle.png")?;
                 }
+            } else if let Some(avatar) = fetch_mapper_avatar(&config.creator) {
+                fs::write(out_folder.join("cdtitle.png"), &avatar)
+                    .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
             } else {
                 fs::write(out_folder.join("cdtitle.png"), DEFAULT_CDTITLE)
                     .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
