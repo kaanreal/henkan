@@ -145,6 +145,9 @@ fn select_difficulty(path: String, index: usize) -> Result<Beatmap, String> {
             let (fname, text) = &entries[index];
             let new_bm = parsers::osu::parse_osu(text)
                 .map_err(|e| format!("Parse error in {}: {}", fname, e))?;
+            beatmap.creator = new_bm.creator;
+            beatmap.title = new_bm.title;
+            beatmap.artist = new_bm.artist;
             beatmap.difficulty_name = new_bm.difficulty_name;
             beatmap.keys = new_bm.keys;
             beatmap.notes = new_bm.notes;
