@@ -393,6 +393,7 @@ function App() {
             const result = await invoke<string>('export_beatmap', {
               beatmap: bm, config: cfg,
               convertedContent: content, outputDir: baseDir,
+              filenameSuffix: bm.difficulty_name,
             })
             allPaths.push(result)
           }
