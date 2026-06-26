@@ -1,5 +1,5 @@
 use crate::models::beatmap::Beatmap;
-use crate::models::timing::TimingPoint;
+use crate::models::timing::ms_to_beat;
 use anyhow::Result;
 use std::fmt::Write;
 
@@ -170,42 +170,6 @@ fn compute_bpms(beatmap: &Beatmap, beat_shift: f64) -> Vec<(f64, f64)> {
     }
 
     bpms
-}
-
-fn ms_to_beat(time_ms: f64, tps: &[TimingPoint]) -> f64 {
-    if tps.is_empty() {
-        return time_ms / 500.0;
-    }
-
-    let relevant: Vec<&TimingPoint> = tps.iter().filter(|tp| tp.uninherited && tp.beat_length > 0.0).collect();
-    if relevant.is_empty() {
-        return time_ms / 500.0;
-    }
-
-    if time_ms <= relevant[0].time_ms {
-        let bpm = 60_000.0 / relevant[0].beat_length;
-        return (time_ms - relevant[0].time_ms) * bpm / 60_000.0;
-    }
-
-    let mut beat = 0.0;
-
-    for i in 0..relevant.len() - 1 {
-        let cur = relevant[i];
-        let next = relevant[i + 1];
-        if time_ms <= next.time_ms {
-            let dt = time_ms - cur.time_ms;
-            let ppb = relevant[i].beat_length; // ms per beat
-            beat += dt / ppb;
-            return beat;
-        }
-        let dt = next.time_ms - cur.time_ms;
-        beat += dt / cur.beat_length;
-    }
-
-    let last = relevant[relevant.len() - 1];
-    let dt = time_ms - last.time_ms;
-    beat += dt / last.beat_length;
-    beat
 }
 
 fn compute_radar_values(beatmap: &Beatmap) -> (f64, f64, f64, f64, f64) {
