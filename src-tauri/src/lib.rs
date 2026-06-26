@@ -1,13 +1,11 @@
-mod converters;
-mod models;
-mod parsers;
+pub mod converters;
+pub mod models;
+pub mod parsers;
 
-/// Public API exposed for integration tests.
+/// Public API exposed for integration tests and CLI.
 pub use parsers::etterna::parse_sm;
 pub use parsers::osu::parse_osu;
-pub use models::beatmap::Beatmap;
-
-use models::beatmap::{DiffInfo, ExportConfig, PackEntry, SourceFormat};
+pub use models::beatmap::{Beatmap, DiffInfo, ExportConfig, PackEntry, SourceFormat};
 use std::fs;
 use std::io::Read;
 use ureq::ResponseExt;
@@ -17,11 +15,127 @@ use std::path::{Path, PathBuf};
 use tauri::Manager;
 use tauri_plugin_aptabase::EventTracker;
 
+// ── Public CLI API ─────────────────────────────────────────
+
+pub fn cli_parse_file(path: &str, direction: &str) -> Result<Beatmap, String> {
+    let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+    if direction == "osu-to-etterna" && ext != "osu" && ext != "osz" {
+        return Err("Expected .osu or .osz file".into());
+    }
+    if direction == "etterna-to-osu" && ext != "sm" {
+        return Err("Expected .sm file".into());
+    }
+    match ext.as_str() {
+        "osz" => {
+            let (bm, _entries, _tmp_dir) = extract_osz_all(path)?;
+            Ok(bm)
+        }
+        "osu" => {
+            let content = std::fs::read_to_string(path)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let dir = Path::new(path).parent().unwrap_or(Path::new("")).to_string_lossy().to_string();
+            let mut beatmap = parsers::osu::parse_osu(&content)
+                .map_err(|e| format!("Parse error: {}", e))?;
+            beatmap.source_dir = dir;
+            beatmap.source_file = path.to_string();
+            beatmap.available_difficulties.push(DiffInfo {
+                name: beatmap.difficulty_name.clone(),
+                keys: beatmap.keys,
+                note_count: beatmap.notes.len(),
+                audio_filename: Some(beatmap.audio_filename.clone()),
+            });
+            beatmap.compute_duration();
+            Ok(beatmap)
+        }
+        "sm" => {
+            let content = std::fs::read_to_string(path)
+                .map_err(|e| format!("Failed to read file: {}", e))?;
+            let dir = Path::new(path).parent().unwrap_or(Path::new("")).to_string_lossy().to_string();
+            let mut beatmap = parsers::etterna::parse_sm(&content)
+                .map_err(|e| format!("Parse error: {}", e))?;
+            beatmap.source_dir = dir;
+            beatmap.source_file = path.to_string();
+            beatmap.compute_duration();
+            Ok(beatmap)
+        }
+        _ => Err("Unsupported file format".into()),
+    }
+}
+
+pub fn cli_convert_beatmap(beatmap: &mut Beatmap, config: &ExportConfig) -> Result<String, String> {
+    beatmap.title = config.title.clone();
+    beatmap.artist = config.artist.clone();
+    if !config.creator.is_empty() { beatmap.creator = config.creator.clone(); }
+    beatmap.difficulty_name = config.difficulty_name.clone();
+    if let Some(label) = rate_label(config.conversion_rate) {
+        beatmap.difficulty_name.push(' ');
+        beatmap.difficulty_name.push_str(&label);
+    }
+    beatmap.source = config.source.clone();
+    beatmap.tags = config.tags.clone();
+    beatmap.audio_filename = config.audio_filename.clone();
+    beatmap.background_filename = config.background_filename.clone();
+    beatmap.banner_filename = config.banner_filename.clone();
+    beatmap.cdtitle_filename = config.cdtitle_filename.clone();
+    beatmap.preview_time = config.preview_time;
+    scale_timing_for_rate(beatmap, config.conversion_rate);
+    match beatmap.source_format {
+        SourceFormat::OsuMania =>
+            converters::osu_to_etterna::convert(beatmap, config.global_timing_ms, &config.creator)
+                .map_err(|e| format!("Conversion error: {}", e)),
+        SourceFormat::Etterna =>
+            converters::etterna_to_osu::convert(beatmap, config)
+                .map_err(|e| format!("Conversion error: {}", e)),
+    }
+}
+
+pub fn cli_export_beatmap(beatmap: &Beatmap, config: &ExportConfig, converted_content: &str, output_dir: &str) -> Result<String, String> {
+    let base = format!("{} [{}]", config.title, config.creator);
+    let safe_name = sanitize_filename(&base, 80);
+    let out_ext = match beatmap.source_format {
+        SourceFormat::OsuMania => "sm",
+        SourceFormat::Etterna => "osu",
+    };
+    let out_filename = format!("{}.{}", safe_name, out_ext);
+    let export_path = Path::new(output_dir).join(&safe_name);
+    std::fs::create_dir_all(&export_path)
+        .map_err(|e| format!("Failed to create export dir: {}", e))?;
+    if !config.audio_filename.is_empty() {
+        let needs_rate = (config.conversion_rate - 1.0).abs() > f64::EPSILON;
+        if needs_rate {
+            let src = resolve_audio_path(&beatmap.source_dir, &config.audio_filename);
+            let dest = export_path.join(&config.audio_filename);
+            if let Some(ff) = find_ffmpeg() {
+                speed_up_audio_ffmpeg(&ff, &src, &dest, config.conversion_rate, config.preserve_pitch)?;
+            } else {
+                speed_up_audio_symphonia(&src.to_string_lossy(), &dest.to_string_lossy(), config.conversion_rate)?;
+            }
+        } else {
+            copy_media(&beatmap.source_dir, &config.audio_filename, &export_path, &config.audio_filename)?;
+        }
+    }
+    std::fs::write(export_path.join(&out_filename), converted_content)
+        .map_err(|e| format!("Failed to write .{}: {}", out_ext, e))?;
+    if let Some(ref bg) = config.background_filename {
+        if !bg.is_empty() {
+            copy_media(&beatmap.source_dir, bg, &export_path, "bg.png")?;
+        }
+    }
+    if beatmap.source_format == SourceFormat::OsuMania {
+        if let Some(ref cdt) = config.cdtitle_filename {
+            if !cdt.is_empty() {
+                copy_media(&beatmap.source_dir, cdt, &export_path, "cdtitle.png")?;
+            }
+        }
+    }
+    Ok(export_path.to_string_lossy().to_string())
+}
+
 // ── .osz extraction ──────────────────────────────────────────
 
-type OszResult = (Beatmap, Vec<(String, String)>, String);
+pub type OszResult = (Beatmap, Vec<(String, String)>, String);
 
-fn extract_osz_all(path: &str) -> Result<OszResult, String> {
+pub fn extract_osz_all(path: &str) -> Result<OszResult, String> {
     let file = fs::File::open(path).map_err(|e| format!("Failed to open .osz: {}", e))?;
     let mut archive =
         zip::ZipArchive::new(file).map_err(|e| format!("Invalid .osz (corrupt zip): {}", e))?;
@@ -263,7 +377,7 @@ fn resolve_file(source_dir: String, filename: String) -> Result<String, String> 
 
 /// Try to find a media file by exact match, then alternate extensions, then case-insensitive,
 /// then heuristic scan for plausible files.
-fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&str]) -> Option<PathBuf> {
+pub fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&str]) -> Option<PathBuf> {
     if filename.is_empty() {
         return scan_source_dir_for_bg(source_dir);
     }
@@ -309,7 +423,7 @@ fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&str])
 
 /// Scan source_dir for plausible background images, preferring files named
 /// "bg"/"background" and falling back to the largest remaining image.
-fn scan_source_dir_for_bg(source_dir: &str) -> Option<PathBuf> {
+pub fn scan_source_dir_for_bg(source_dir: &str) -> Option<PathBuf> {
     if let Ok(entries) = fs::read_dir(source_dir) {
         let mut candidates: Vec<(u64, PathBuf)> = Vec::new();
         for entry in entries.flatten() {
@@ -336,13 +450,13 @@ fn scan_source_dir_for_bg(source_dir: &str) -> Option<PathBuf> {
     None
 }
 
-const IMAGE_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"];
+pub const IMAGE_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"];
 
-const DEFAULT_CDTITLE: &[u8] = include_bytes!("../assets/cdtitle_default.png");
+pub const DEFAULT_CDTITLE: &[u8] = include_bytes!("../assets/cdtitle_default.png");
 
 /// Try to fetch the osu! avatar for a given creator name.
 /// Falls back to None on any error (network, no user, etc.).
-fn fetch_mapper_avatar(creator: &str) -> Option<Vec<u8>> {
+pub fn fetch_mapper_avatar(creator: &str) -> Option<Vec<u8>> {
     // Resolve username → user_id by following the osu! profile redirect
     let profile_url = format!("https://osu.ppy.sh/users/{}", creator);
     let resp = ureq::get(&profile_url)
@@ -376,14 +490,14 @@ fn fetch_mapper_avatar(creator: &str) -> Option<Vec<u8>> {
     Some(buf)
 }
 
-fn rate_label(rate: f64) -> Option<String> {
+pub fn rate_label(rate: f64) -> Option<String> {
     if (rate - 1.0).abs() < f64::EPSILON { return None; }
     let s = format!("{:.2}", rate);
     let trimmed = s.trim_end_matches('0').trim_end_matches('.');
     Some(format!("[{}x]", trimmed))
 }
 
-pub(crate) fn scale_timing_for_rate(bm: &mut Beatmap, rate: f64) {
+pub fn scale_timing_for_rate(bm: &mut Beatmap, rate: f64) {
     if (rate - 1.0).abs() < f64::EPSILON { return; }
     let inv = 1.0 / rate;
     for tp in &mut bm.timing_points {
@@ -441,7 +555,7 @@ fn convert_beatmap(
     }
 }
 
-fn read_file_bytes(source_dir: &str, filename: &str) -> Result<(Vec<u8>, String), String> {
+pub fn read_file_bytes(source_dir: &str, filename: &str) -> Result<(Vec<u8>, String), String> {
     let resolved = resolve_media_file(source_dir, filename, &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".mp3", ".ogg", ".wav", ".flac", ".m4a"])
         .ok_or_else(|| format!("File not found: {} (looked in {})", filename, source_dir))?;
     let bytes = fs::read(&resolved).map_err(|e| format!("Failed to read {}: {}", filename, e))?;
@@ -453,7 +567,7 @@ fn read_file_bytes(source_dir: &str, filename: &str) -> Result<(Vec<u8>, String)
     Ok((bytes, ext))
 }
 
-fn find_ffmpeg() -> Option<PathBuf> {
+pub fn find_ffmpeg() -> Option<PathBuf> {
     // Check PATH first (works on all platforms)
     if std::process::Command::new("ffmpeg").arg("-version").output().is_ok() {
         return Some(PathBuf::from("ffmpeg"));
@@ -492,7 +606,7 @@ fn find_ffmpeg() -> Option<PathBuf> {
     None
 }
 
-fn speed_up_audio_ffmpeg(
+pub fn speed_up_audio_ffmpeg(
     ffmpeg: &Path,
     input: &Path,
     output: &Path,
@@ -562,7 +676,7 @@ fn speed_up_audio_ffmpeg(
     Ok(output_str)
 }
 
-fn speed_up_audio_symphonia(input_path: &str, output_path: &str, rate: f64) -> Result<String, String> {
+pub fn speed_up_audio_symphonia(input_path: &str, output_path: &str, rate: f64) -> Result<String, String> {
     use symphonia::core::audio::SampleBuffer;
     use symphonia::core::codecs::DecoderOptions;
     use symphonia::core::formats::FormatOptions;
@@ -669,7 +783,7 @@ fn speed_up_audio_symphonia(input_path: &str, output_path: &str, rate: f64) -> R
 
 /// Sanitize a string for use as a Windows filename component, truncating
 /// to `max_len` chars to avoid hitting MAX_PATH (260).
-fn sanitize_filename(s: &str, max_len: usize) -> String {
+pub fn sanitize_filename(s: &str, max_len: usize) -> String {
     s.chars()
         .map(|c| if c.is_ascii_alphanumeric() || " _.-'!()[]".contains(c) { c } else { '_' })
         .collect::<String>()
@@ -678,7 +792,7 @@ fn sanitize_filename(s: &str, max_len: usize) -> String {
         .collect()
 }
 
-fn resolve_audio_path(source_dir: &str, filename: &str) -> PathBuf {
+pub fn resolve_audio_path(source_dir: &str, filename: &str) -> PathBuf {
     resolve_media_file(source_dir, filename, &[".mp3", ".ogg", ".wav", ".flac", ".m4a", ".wma"])
         .unwrap_or_else(|| Path::new(source_dir).join(filename))
 }
@@ -1534,7 +1648,7 @@ fn zip_folder(folder_path: String, output_path: String) -> Result<String, String
 
 /// After sorting by computed meter, reassign meters sequentially (1, 2, 3, …)
 /// so the .sm file always starts at meter 1.
-fn renumber_meters(sm: &str) -> String {
+pub fn renumber_meters(sm: &str) -> String {
     let mut lines: Vec<String> = sm.lines().map(|l| l.to_string()).collect();
     let mut counter = 1u32;
     let mut i = 0;
@@ -1556,7 +1670,7 @@ fn renumber_meters(sm: &str) -> String {
     lines.join("\n")
 }
 
-fn extract_sm_header_field(content: &str, field: &str) -> Option<String> {
+pub fn extract_sm_header_field(content: &str, field: &str) -> Option<String> {
     let prefix = format!("#{}:", field);
     for line in content.lines() {
         let trimmed = line.trim();
@@ -1567,7 +1681,7 @@ fn extract_sm_header_field(content: &str, field: &str) -> Option<String> {
     None
 }
 
-fn copy_media(source_dir: &str, filename: &str, dest: &Path, dest_name: &str) -> Result<(), String> {
+pub fn copy_media(source_dir: &str, filename: &str, dest: &Path, dest_name: &str) -> Result<(), String> {
     let resolved = resolve_media_file(source_dir, filename, &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"])
         .ok_or_else(|| format!("File not found: {} (looked in {})", filename, source_dir))?;
     fs::copy(&resolved, dest.join(dest_name))
@@ -1619,6 +1733,115 @@ fn clean_dir(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Headless mode: when files are dropped onto the .exe, process each one
+/// and export to the same directory as the source file.
+pub fn headless_process(paths: &[String]) {
+    let mut opened_dir: Option<String> = None;
+
+    for path in paths {
+        let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+        let direction = match ext.as_str() {
+            "osu" | "osz" => "osu-to-etterna",
+            "sm" => "etterna-to-osu",
+            _ => continue,
+        };
+
+        let mut beatmap = match cli_parse_file(path, direction) {
+            Ok(bm) => bm,
+            Err(_) => continue,
+        };
+
+        let config = ExportConfig {
+            title: beatmap.title.clone(),
+            artist: beatmap.artist.clone(),
+            creator: beatmap.creator.clone(),
+            difficulty_name: beatmap.difficulty_name.clone(),
+            source: beatmap.source.clone(),
+            tags: beatmap.tags.clone(),
+            audio_filename: beatmap.audio_filename.clone(),
+            background_filename: beatmap.background_filename.clone(),
+            banner_filename: beatmap.banner_filename.clone(),
+            cdtitle_filename: beatmap.cdtitle_filename.clone(),
+            preview_time: beatmap.preview_time,
+            ..ExportConfig::default()
+        };
+
+        let content = match cli_convert_beatmap(&mut beatmap, &config) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let source_dir = Path::new(path)
+            .parent()
+            .unwrap_or(Path::new("."))
+            .to_string_lossy()
+            .to_string();
+
+        // Write the converted file first, then best-effort media/cdtitle
+        let base = format!("{} [{}]", config.title, config.creator);
+        let safe_name = sanitize_filename(&base, 80);
+        let out_ext = match beatmap.source_format {
+            SourceFormat::OsuMania => "sm",
+            SourceFormat::Etterna => "osu",
+        };
+        let out_filename = format!("{}.{}", safe_name, out_ext);
+        let export_path = Path::new(&source_dir).join(&safe_name);
+        let _ = fs::create_dir_all(&export_path);
+        let _ = fs::write(export_path.join(&out_filename), &content);
+
+        // Best-effort media/cdtitle (same as GUI export)
+        if !config.audio_filename.is_empty() {
+            let needs_rate = (config.conversion_rate - 1.0).abs() > f64::EPSILON;
+            if needs_rate {
+                let src = resolve_audio_path(&beatmap.source_dir, &config.audio_filename);
+                let dest = export_path.join(&config.audio_filename);
+                let _ = find_ffmpeg().and_then(|ff| {
+                    speed_up_audio_ffmpeg(&ff, &src, &dest, config.conversion_rate, config.preserve_pitch).ok()
+                }).or_else(|| {
+                    speed_up_audio_symphonia(&src.to_string_lossy(), &dest.to_string_lossy(), config.conversion_rate).ok()
+                });
+            } else {
+                let _ = copy_media(&beatmap.source_dir, &config.audio_filename, &export_path, &config.audio_filename);
+            }
+        }
+        if let Some(ref bg) = config.background_filename {
+            if !bg.is_empty() {
+                let _ = copy_media(&beatmap.source_dir, bg, &export_path, "bg.png");
+            }
+        }
+
+        // CD title: just use the default, no network fetch
+        if beatmap.source_format == SourceFormat::OsuMania {
+            let cdtitle_has_file = config.cdtitle_filename.as_ref().is_some_and(|s| !s.is_empty());
+            if cdtitle_has_file {
+                if let Some(ref cdt) = config.cdtitle_filename {
+                    let _ = copy_media(&beatmap.source_dir, cdt, &export_path, "cdtitle.png");
+                }
+            } else {
+                let _ = fs::write(export_path.join("cdtitle.png"), DEFAULT_CDTITLE);
+            }
+        }
+
+        opened_dir = Some(source_dir);
+    }
+
+    // Open the source directory in Explorer so the user sees all export folders
+    if let Some(ref p) = opened_dir {
+        #[cfg(windows)]
+        {
+            let _ = std::process::Command::new("explorer")
+                .arg(p)
+                .spawn();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = std::process::Command::new("open")
+                .arg(p)
+                .spawn();
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Keep a tokio runtime alive so aptabase' reqwest::Client::builder().build()
@@ -1668,4 +1891,55 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_parse_osu() {
+        let content = r#"
+osu file format v14
+
+[General]
+AudioFilename: audio.mp3
+Mode: 3
+
+[Metadata]
+Title:Test Song
+TitleUnicode:Test Song
+Artist:Test Artist
+Creator:Test Mapper
+Version:EZ
+
+[Difficulty]
+HPDrainRate:5
+CircleSize:4
+OverallDifficulty:5
+ApproachRate:5
+SliderMultiplier:1.4
+SliderTickRate:1
+
+[TimingPoints]
+0,500,4,0,0,100,1,0
+
+[HitObjects]
+256,192,0,1,0,0:0:0:0:
+256,192,500,128,0,500:0:0:0:0:
+"#;
+        let dir = std::env::temp_dir().join("henkan_unit_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.osu");
+        std::fs::write(&path, content).unwrap();
+        
+        let result = cli_parse_file(&path.to_string_lossy(), "osu-to-etterna");
+        assert!(result.is_ok(), "parse failed: {:?}", result.err());
+        
+        let bm = result.unwrap();
+        assert_eq!(bm.title, "Test Song");
+        assert_eq!(bm.artist, "Test Artist");
+    }
 }

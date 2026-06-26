@@ -91,6 +91,32 @@ pub struct ExportConfig {
     pub preserve_pitch: bool,
 }
 
+impl Default for ExportConfig {
+    fn default() -> Self {
+        Self {
+            title: String::new(),
+            artist: String::new(),
+            creator: String::new(),
+            difficulty_name: String::new(),
+            source: String::new(),
+            tags: String::new(),
+            audio_filename: String::new(),
+            background_filename: None,
+            banner_filename: None,
+            cdtitle_filename: None,
+            global_timing_ms: 50.0,
+            output_format: "folder".into(),
+            hp_drain: 8.0,
+            overall_difficulty: 8.0,
+            approach_rate: 0.0,
+            circle_size: 0.0,
+            preview_time: 0.0,
+            conversion_rate: 1.0,
+            preserve_pitch: true,
+        }
+    }
+}
+
 fn default_conversion_rate() -> f64 { 1.0 }
 fn default_preserve_pitch() -> bool { true }
 
