@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "cli": "cargo run --manifest-path src-tauri/Cargo.toml --package henkan --bin henkan-cli"
   },
   "dependencies": {
     "@aptabase/tauri": "^0.4.1",
