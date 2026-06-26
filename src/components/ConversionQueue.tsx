@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import type { QueueItem } from '../stores/useQueueStore'
 
 interface Props {
@@ -60,6 +61,8 @@ export function ConversionQueue({
 }: Props) {
   if (items.length === 0) return null
 
+  const scrollRef = useRef<HTMLDivElement>(null)
+
   const doneCount = items.filter((i) => i.status === 'completed').length
   const readyCount = items.filter((i) => i.status === 'ready').length
   const retryableCount = items.filter((i) => (i.status === 'error' || i.status === 'completed') && i.beatmap).length
@@ -75,7 +78,15 @@ export function ConversionQueue({
           </span>
         </span>
 
-        <div className="flex-1 flex items-center gap-1.5 overflow-x-auto hide-scrollbar">
+        <div
+          ref={scrollRef}
+          onWheel={(e) => {
+            if (scrollRef.current) {
+              scrollRef.current.scrollLeft += e.deltaY
+            }
+          }}
+          className="flex-1 flex items-center gap-1.5 overflow-x-auto hide-scrollbar"
+        >
           {items.map((item) => {
             const active = item.id === activeId
             const isRetryable = (item.status === 'completed' || item.status === 'error') && item.beatmap
