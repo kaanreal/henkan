@@ -1,4 +1,5 @@
 use crate::models::beatmap::{Beatmap, ExportConfig};
+use crate::models::timing::snap_time_ms;
 use anyhow::Result;
 
 pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
@@ -55,8 +56,11 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     output.push_str("//Storyboard Sound Samples\n");
     output.push('\n');
 
-    // Apply timing correction (shift earlier, never below 0)
-    let shift = |t: f64| (t - global_timing_ms).max(0.0);
+    // Apply timing correction (shift earlier). Timing points must NOT be
+    // clamped to 0 so the SM offset → beat relationship is preserved
+    // (otherwise the osu! editor shows wrong snap grids).
+    let shift_tp = |t: f64| t - global_timing_ms;
+    let shift_note = |t: f64| (t - global_timing_ms).max(0.0);
 
     output.push_str("[TimingPoints]\n");
 
@@ -71,7 +75,7 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
         } else {
             -100.0
         };
-        let t = shift(tp.time_ms);
+        let t = shift_tp(tp.time_ms);
         lines.push((
             t,
             if tp.uninherited { 0 } else { 1 },
@@ -94,7 +98,7 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
             continue;
         }
         let sv_beat_length = -100.0 / sv.multiplier;
-        let t = shift(sv.time_ms);
+        let t = shift_tp(sv.time_ms);
         lines.push((
             t,
             1,
@@ -117,10 +121,12 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     output.push_str("[HitObjects]\n");
     for note in &beatmap.notes {
         let x = ((note.column as f64 + 0.5) / beatmap.keys as f64 * 512.0) as u32;
-        let time = shift(note.time_ms) as u64;
+        let snapped = snap_time_ms(note.time_ms, &beatmap.timing_points);
+        let time = shift_note(snapped) as u64;
 
         if note.hold {
-            let end_time = shift(note.hold_end_ms.unwrap_or(note.time_ms + 1000.0)) as u64;
+            let end_snapped = snap_time_ms(note.hold_end_ms.unwrap_or(note.time_ms + 1000.0), &beatmap.timing_points);
+            let end_time = shift_note(end_snapped) as u64;
             output.push_str(&format!(
                 "{},{},{},128,0,{}:0:0:0:0:\n",
                 x, 192, time, end_time
