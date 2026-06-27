@@ -32,12 +32,15 @@ fn main() -> io::Result<()> {
 
 const BG: Color = Color::Rgb(18, 18, 24);
 const SURFACE: Color = Color::Rgb(26, 26, 34);
+const SURFACE_LIGHT: Color = Color::Rgb(32, 32, 42);
 const BORDER: Color = Color::Rgb(60, 60, 80);
+const BORDER_ACTIVE: Color = Color::Rgb(80, 140, 255);
 const TEXT: Color = Color::Rgb(200, 200, 210);
 const DIM: Color = Color::Rgb(100, 100, 120);
 const ACCENT: Color = Color::Rgb(80, 140, 255);
 const GREEN: Color = Color::Rgb(80, 200, 80);
 const RED: Color = Color::Rgb(220, 80, 80);
+const YELLOW: Color = Color::Rgb(220, 200, 80);
 
 const LOGO: &[&str] = &[
     "██╗  ██╗███████╗███╗   ██╗██╗  ██╗ █████╗ ███╗   ██╗",
@@ -155,8 +158,6 @@ struct App {
     term_h: u16,
     last_export_dir: PathBuf,
     star_tick: Instant,
-    drop_btn_area: Cell<Option<Rect>>,
-    results_btn_area: Cell<Option<Rect>>,
     cmd_input: String,
     completions: Vec<String>,
     completion_idx: usize,
@@ -168,6 +169,18 @@ struct App {
 
 const COMMANDS: &[&str] = &[
     "select", "results", "open", "clear", "help", "exit", "quit", "settings", "reset",
+];
+
+const COMMAND_DESCS: &[(&str, &str)] = &[
+    ("select", "Open file dialog to pick beatmaps"),
+    ("results", "Switch to results screen"),
+    ("open", "Open export folder in file manager"),
+    ("clear", "Clear output history and results list"),
+    ("help", "Display help and usage information"),
+    ("settings", "Show current configuration settings"),
+    ("reset", "Reset all settings to defaults"),
+    ("exit", "Exit the program"),
+    ("quit", "Exit the program"),
 ];
 
 const SETTING_KEYS: &[&str] = &[
@@ -191,8 +204,6 @@ impl App {
             term_w: 80,
             term_h: 24,
             star_tick: Instant::now(),
-            drop_btn_area: Cell::new(None),
-            results_btn_area: Cell::new(None),
             cmd_input: String::new(),
             completions: Vec::new(),
             completion_idx: 0,
@@ -242,7 +253,11 @@ impl App {
             self.completion_idx = 0;
             return;
         }
-        if let Some(after_set) = trimmed.strip_prefix("set ") {
+
+        // Support both "/cmd" and direct "cmd" syntax
+        let search = trimmed.strip_prefix('/').unwrap_or(trimmed);
+
+        if let Some(after_set) = search.strip_prefix("set ") {
             let after = after_set.trim();
             if after.is_empty() {
                 self.completions = SETTING_KEYS.iter()
@@ -254,9 +269,14 @@ impl App {
                     .map(|k| format!("set {} ", k))
                     .collect();
             }
+        } else if search.is_empty() {
+            // Just "/" shows all commands
+            self.completions = COMMANDS.iter()
+                .map(|c| c.to_string())
+                .collect();
         } else {
             self.completions = COMMANDS.iter()
-                .filter(|c| c.starts_with(trimmed))
+                .filter(|c| c.starts_with(search))
                 .map(|c| c.to_string())
                 .collect();
         }
@@ -308,13 +328,30 @@ if ($res -eq 'OK') { $d.FileNames -join "`n" }
     }
 
     fn handle_drop_key(&mut self, key: crossterm::event::KeyEvent) {
+        let has_comps = !self.completions.is_empty();
         match key.code {
-            KeyCode::Enter => self.execute_command(),
+            KeyCode::Enter => {
+                if has_comps && self.completion_idx < self.completions.len() {
+                    // Accept selected completion
+                    self.cmd_input.clone_from(&self.completions[self.completion_idx]);
+                    self.completions.clear();
+                    self.completion_idx = 0;
+                } else {
+                    self.execute_command();
+                }
+            }
             KeyCode::Tab => self.tab_complete(),
             KeyCode::F(1) => {
                 if !self.results.is_empty() { self.go_to_results(); }
             }
-            KeyCode::Esc => std::process::exit(0),
+            KeyCode::Esc => {
+                if has_comps {
+                    self.completions.clear();
+                    self.completion_idx = 0;
+                } else {
+                    std::process::exit(0);
+                }
+            }
             KeyCode::Char(ch) => {
                 self.cmd_input.push(ch);
                 self.compute_completions();
@@ -324,11 +361,28 @@ if ($res -eq 'OK') { $d.FileNames -join "`n" }
                 self.compute_completions();
             }
             KeyCode::Up => {
-                if self.output_scroll > 0 { self.output_scroll -= 1; }
+                if has_comps {
+                    if self.completion_idx > 0 {
+                        self.completion_idx -= 1;
+                    } else {
+                        self.completion_idx = self.completions.len().saturating_sub(1);
+                    }
+                } else if self.output_scroll > 0 {
+                    self.output_scroll -= 1;
+                }
             }
             KeyCode::Down => {
-                let max = self.output_lines.len().saturating_sub(1);
-                if self.output_scroll < max { self.output_scroll += 1; }
+                if has_comps {
+                    let last = self.completions.len().saturating_sub(1);
+                    if self.completion_idx < last {
+                        self.completion_idx += 1;
+                    } else {
+                        self.completion_idx = 0;
+                    }
+                } else {
+                    let max = self.output_lines.len().saturating_sub(1);
+                    if self.output_scroll < max { self.output_scroll += 1; }
+                }
             }
             _ => {}
         }
@@ -343,6 +397,9 @@ if ($res -eq 'OK') { $d.FileNames -join "`n" }
             self.pick_files_via_dialog();
             return;
         }
+
+        // Support both "/cmd" and "cmd" syntax
+        let trimmed = trimmed.strip_prefix('/').unwrap_or(&trimmed).to_string();
 
         let (cmd, rest) = trimmed.split_once(' ').unwrap_or((&trimmed, ""));
         let rest = rest.trim();
@@ -458,6 +515,8 @@ if ($res -eq 'OK') { $d.FileNames -join "`n" }
         if self.completions.is_empty() { return; }
         self.completion_idx = (self.completion_idx + 1) % self.completions.len();
         self.cmd_input.clone_from(&self.completions[self.completion_idx]);
+        self.completions.clear();
+        self.completion_idx = 0;
     }
 
     fn go_to_drop(&mut self) {
@@ -492,10 +551,6 @@ if ($res -eq 'OK') { $d.FileNames -join "`n" }
         let pos = Position::new(ev.column, ev.row);
         match self.screen {
             Screen::Drop => {
-                // Button click
-                if let Some(area) = self.drop_btn_area.get() {
-                    if area.contains(pos) { self.pick_files_via_dialog(); return; }
-                }
                 // Completion list click
                 if let Some(area) = self.comp_list_area.get() {
                     if area.contains(pos) {
@@ -510,11 +565,7 @@ if ($res -eq 'OK') { $d.FileNames -join "`n" }
                     }
                 }
             }
-            Screen::Results => {
-                if let Some(area) = self.results_btn_area.get() {
-                    if area.contains(pos) { self.open_folder(); }
-                }
-            }
+            Screen::Results => {}
         }
     }
 
@@ -652,253 +703,300 @@ if ($res -eq 'OK') { $d.FileNames -join "`n" }
     }
 
     fn draw_drop(&self, f: &mut Frame, area: Rect) {
-        if area.width < 10 || area.height < 18 { return; }
-        let box_w = 56.min(area.width.saturating_sub(4));
-        let box_h = (area.height - 4).min(23).max(18);
-        let x = (area.width - box_w) / 2;
-        let y = (area.height - box_h) / 2;
-        let box_area = Rect::new(x, y, box_w, box_h);
-
-        let outer = Block::default()
-            .borders(Borders::ALL)
-            .border_set(symbols::border::ROUNDED)
-            .border_style(Style::default().fg(BORDER))
-            .bg(SURFACE);
-        f.render_widget(&outer, box_area);
-        let inner = outer.inner(box_area);
+        if area.width < 30 || area.height < 10 { return; }
 
         let has_comps = !self.completions.is_empty();
-        let (parts, out_idx): (Vec<Constraint>, usize) = if has_comps {
-            (
-                vec![
-                    Constraint::Length(6),   // logo
-                    Constraint::Length(1),   // gap
-                    Constraint::Length(1),   // button
-                    Constraint::Length(1),   // gap
-                    Constraint::Length(3),   // input
-                    Constraint::Max(5),      // completions
-                    Constraint::Length(1),   // gap
-                    Constraint::Min(0),      // output
-                ],
-                7,
-            )
+        let hint_items = if has_comps {
+            self.completions.len().min(8)
         } else {
-            (
-                vec![
-                    Constraint::Length(6),   // logo
-                    Constraint::Length(1),   // gap
-                    Constraint::Length(1),   // button
-                    Constraint::Length(1),   // gap
-                    Constraint::Length(3),   // input
-                    Constraint::Length(1),   // gap
-                    Constraint::Min(0),      // output
-                ],
-                6,
-            )
+            0
         };
-        let vert = Layout::vertical(parts);
-        let vert_areas = vert.split(inner);
-        let logo_a = vert_areas[0];
-        let btn_a = vert_areas[2];
-        let input_a = vert_areas[4];
-        let output_a = vert_areas[out_idx];
+        let hint_height = if hint_items > 0 {
+            hint_items as u16 + 2 // +2 for top/bottom borders
+        } else {
+            0
+        };
+        let cmd_bar_height = 3u16;
+        let status_height = 1u16;
+        let title_height = 1u16;
 
-        // Logo
-        let logo_lines: Vec<Line> = LOGO.iter().map(|l| {
-            Line::from(Span::styled(*l, Style::default().fg(ACCENT).bg(SURFACE)))
-        }).collect();
+        let vert = Layout::vertical([
+            Constraint::Length(title_height),
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(hint_height),
+            Constraint::Length(cmd_bar_height),
+            Constraint::Length(status_height),
+        ]);
+        let areas = vert.split(area);
+        let title_a = areas[0];
+        let _sep_a = areas[1];
+        let output_a = areas[2];
+        let hint_a = areas[3];
+        let cmd_a = areas[4];
+        let status_a = areas[5];
+
+        // ── Title bar ──
+        let title_text = format!(
+            " HENKAN  \u{2192}  osu!mania \u{2194} StepMania Converter  {}",
+            if !self.results.is_empty() {
+                format!("| {} file{} converted", self.results.len(), if self.results.len() == 1 { "" } else { "s" })
+            } else {
+                String::new()
+            }
+        );
         f.render_widget(
-            Paragraph::new(logo_lines).style(Style::default().bg(SURFACE)).alignment(Alignment::Center),
-            logo_a,
+            Paragraph::new(Span::styled(&title_text, Style::default().fg(ACCENT).bold()))
+                .style(Style::default().bg(SURFACE)),
+            title_a,
+        );
+        // separator line
+        f.render_widget(
+            Paragraph::new(Span::styled(
+                "\u{2500}".repeat(area.width as usize),
+                Style::default().fg(BORDER),
+            )).style(Style::default().bg(BG)),
+            areas[1],
         );
 
-        // Button (no border)
-        let btn_text = if self.selecting {
-            "   Loading...   "
-        } else if self.results.is_empty() {
-            "  [Enter] Select files  "
-        } else {
-            "  [Enter] Select more  "
-        };
-        let btn_style = Style::default().fg(if self.selecting { BG } else { ACCENT })
-            .bg(if self.selecting { ACCENT } else { SURFACE });
-        self.drop_btn_area.set(Some(btn_a));
-        f.render_widget(
-            Paragraph::new(Span::styled(btn_text, btn_style))
-                .style(Style::default().bg(SURFACE)).alignment(Alignment::Center),
-            btn_a,
-        );
-
-        // Input box
-        let display = format!("> {}|", self.cmd_input);
-        let input_block = Block::default()
+        // ── Output area ──
+        let out_block = Block::default()
             .borders(Borders::ALL)
             .border_set(symbols::border::ROUNDED)
             .border_style(Style::default().fg(
-                if self.cmd_input.is_empty() && self.completions.is_empty() { DIM } else { ACCENT }
+                if self.output_lines.is_empty() && self.results.is_empty() { DIM } else { BORDER }
             ))
             .bg(SURFACE);
-        f.render_widget(
-            Paragraph::new(Span::styled(display, Style::default().fg(TEXT).bg(SURFACE)))
-                .block(input_block).style(Style::default().bg(SURFACE)),
-            input_a,
-        );
 
-        // Completions (vertical list)
-        if has_comps {
-            let comp_a = vert_areas[5];
-            let visible = self.completions.len().min(comp_a.height as usize);
-            let mut comp_lines: Vec<Line> = Vec::with_capacity(visible);
-            for i in 0..visible {
-                let selected = i == self.completion_idx;
-                let prefix = if selected { " \u{25B6} " } else { "   " };
-                let fg = if selected { ACCENT } else { TEXT };
-                let bg = if selected { Color::Rgb(30, 30, 45) } else { SURFACE };
-                comp_lines.push(Line::from(Span::styled(
-                    format!("{}{}", prefix, self.completions[i]),
-                    Style::default().fg(fg).bg(bg),
-                )));
-            }
+        if self.output_lines.is_empty() && self.results.is_empty() {
+            let welcome = vec![
+                Line::from(Span::styled("  Welcome to HENKAN", Style::default().fg(ACCENT).bold())),
+                Line::from(Span::styled("", Style::default().fg(DIM))),
+                Line::from(Span::styled("  Enter a file path to convert it, or type a command:", Style::default().fg(DIM))),
+                Line::from(Span::styled("", Style::default().fg(DIM))),
+                Line::from(Span::styled("  \u{2022} select     Open file dialog", Style::default().fg(DIM))),
+                Line::from(Span::styled("  \u{2022} help       Show available commands", Style::default().fg(DIM))),
+                Line::from(Span::styled("  \u{2022} settings   View current configuration", Style::default().fg(DIM))),
+                Line::from(Span::styled("", Style::default().fg(DIM))),
+                Line::from(Span::styled("  Press Enter to select files, or Esc to exit.", Style::default().fg(DIM))),
+            ];
             f.render_widget(
-                Paragraph::new(comp_lines).style(Style::default().bg(SURFACE)),
-                comp_a,
+                Paragraph::new(welcome).block(out_block)
+                    .style(Style::default().bg(SURFACE)),
+                output_a,
             );
-            self.comp_list_area.set(Some(comp_a));
+        } else {
+            let inner_h = output_a.height.saturating_sub(2);
+            let max_scroll = self.output_lines.len().saturating_sub(inner_h as usize);
+            let scroll = self.output_scroll.min(max_scroll);
+            let lines: Vec<Line> = self.output_lines.iter().map(|l| {
+                let fg = if l.contains("\u{2713}") {
+                    GREEN
+                } else if l.contains("\u{2717}") {
+                    RED
+                } else if l.starts_with("  >") {
+                    ACCENT
+                } else if l.starts_with('\u{2500}') {
+                    DIM
+                } else if l.contains("\u{2192}") || l.contains("\u{2190}") {
+                    YELLOW
+                } else {
+                    TEXT
+                };
+                Line::from(Span::styled(l.as_str(), Style::default().fg(fg).bg(SURFACE)))
+            }).collect();
+            f.render_widget(
+                Paragraph::new(lines).block(out_block)
+                    .style(Style::default().bg(SURFACE))
+                    .scroll((scroll as u16, 0)),
+                output_a,
+            );
+        }
+
+        // ── Hint popup (above command bar) ──
+        if has_comps && hint_height > 0 {
+            let vis = hint_items;
+            let mut hint_lines: Vec<Line> = Vec::with_capacity(vis + 2);
+            hint_lines.push(Line::from(Span::styled(
+                format!("\u{2500}{:w$}\u{2500}", "", w = hint_a.width.saturating_sub(2) as usize),
+                Style::default().fg(BORDER),
+            )));
+            for i in 0..vis {
+                let selected = i == self.completion_idx;
+                let cmd = &self.completions[i];
+                let desc = desc_for(cmd);
+                let arrow = if selected { "\u{276F}" } else { " " };
+                let item_fg = if selected { ACCENT } else { TEXT };
+                let item_bg = if selected { Color::Rgb(22, 22, 35) } else { BG };
+
+                let avail = hint_a.width.saturating_sub(5);
+                let desc_part = if avail > cmd.len() as u16 + 3 {
+                    let max_desc = (avail as usize).saturating_sub(cmd.len() + 3);
+                    let d = desc.chars().take(max_desc).collect::<String>();
+                    format!("  {}", d)
+                } else {
+                    String::new()
+                };
+
+                hint_lines.push(Line::from(vec![
+                    Span::styled(format!(" {} ", arrow), Style::default().fg(item_fg).bg(item_bg)),
+                    Span::styled(cmd.clone(), Style::default().fg(item_fg).bold().bg(item_bg)),
+                    Span::styled(desc_part, Style::default().fg(DIM).bg(item_bg)),
+                ]));
+            }
+            hint_lines.push(Line::from(Span::styled(
+                format!("\u{2500}{:w$}\u{2500}", "", w = hint_a.width.saturating_sub(2) as usize),
+                Style::default().fg(BORDER),
+            )));
+            let hint_h = hint_lines.len() as u16;
+            self.comp_list_area.set(Some(hint_a));
+            f.render_widget(
+                Paragraph::new(hint_lines).style(Style::default().bg(BG).fg(DIM)),
+                Rect::new(hint_a.x, hint_a.y, hint_a.width, hint_h),
+            );
         } else {
             self.comp_list_area.set(None);
         }
 
-        // Output area
-        if output_a.height >= 2 {
-            let out_block = Block::default()
-                .borders(Borders::ALL)
-                .border_set(symbols::border::ROUNDED)
-                .border_style(Style::default().fg(
-                    if self.output_lines.is_empty() { DIM } else { BORDER }
-                ))
-                .bg(SURFACE);
-
-            if self.output_lines.is_empty() {
-                f.render_widget(
-                    Paragraph::new(Span::styled("  No output yet", Style::default().fg(DIM).bg(SURFACE)))
-                        .block(out_block).style(Style::default().bg(SURFACE)),
-                    output_a,
-                );
-            } else {
-                let inner_h = output_a.height.saturating_sub(2);
-                let max_scroll = self.output_lines.len().saturating_sub(inner_h as usize);
-                let scroll = self.output_scroll.min(max_scroll);
-                let lines: Vec<Line> = self.output_lines.iter().map(|l| {
-                    let fg = if l.starts_with("  \u{2713}") {
-                        GREEN
-                    } else if l.starts_with("  \u{2717}") {
-                        RED
-                    } else if l.starts_with("  >") {
-                        ACCENT
-                    } else if l.starts_with('\u{2500}') {
-                        DIM
-                    } else {
-                        TEXT
-                    };
-                    Line::from(Span::styled(l.as_str(), Style::default().fg(fg).bg(SURFACE)))
-                }).collect();
-                f.render_widget(
-                    Paragraph::new(lines).block(out_block)
-                        .style(Style::default().bg(SURFACE))
-                        .scroll((scroll as u16, 0)),
-                    output_a,
-                );
-            }
-        }
-
-        // Status at bottom of box
-        let status_text = if !self.status_msg.is_empty() && self.results.is_empty() {
-            &self.status_msg
-        } else if !self.results.is_empty() {
-            "[Tab] cycle  [F1] results  [Esc] exit"
+        // ── Command input bar ──
+        let input_prompt = format!(" {} ", self.cmd_input);
+        let cursor_visible = self.completions.is_empty();
+        let input_display = if cursor_visible {
+            format!("{}\u{2588}", input_prompt)
         } else {
-            "[Tab] cycle  [Esc] exit"
+            input_prompt
         };
+        let cmd_block = Block::default()
+            .borders(Borders::ALL)
+            .border_set(symbols::border::ROUNDED)
+            .border_style(Style::default().fg(if has_comps { BORDER_ACTIVE } else { BORDER }))
+            .bg(SURFACE_LIGHT);
+        let cmd_prefix = Span::styled(" \u{276F} ", Style::default().fg(ACCENT).bold());
+        let cmd_text = Span::styled(&input_display, Style::default().fg(TEXT));
         f.render_widget(
-            Paragraph::new(Span::styled(status_text, Style::default().fg(DIM).bg(SURFACE)))
-                .style(Style::default().bg(SURFACE)).alignment(Alignment::Center),
-            Rect::new(box_area.x, box_area.y + box_area.height - 1, box_area.width, 1),
+            Paragraph::new(Line::from(vec![cmd_prefix, cmd_text]))
+                .block(cmd_block)
+                .style(Style::default().bg(SURFACE_LIGHT)),
+            cmd_a,
+        );
+
+        // ── Status bar ──
+        let (hint, left_hint) = if has_comps {
+            ("\u{2191}\u{2193} navigate  \u{23CE} select  Esc dismiss  Tab cycle", "")
+        } else if self.output_lines.is_empty() && self.results.is_empty() {
+            ("Enter select  Esc exit", "")
+        } else {
+            ("Esc exit", if !self.results.is_empty() { "[F1] results" } else { "" })
+        };
+        let status_bar = Line::from(vec![
+            Span::styled(format!(" {}", hint), Style::default().fg(DIM)),
+            Span::styled(
+                if !left_hint.is_empty() {
+                    format!("{:>w$}", left_hint, w = status_a.width.saturating_sub(hint.len() as u16 + 2) as usize)
+                } else {
+                    String::new()
+                },
+                Style::default().fg(DIM),
+            ),
+        ]);
+        f.render_widget(
+            Paragraph::new(status_bar).style(Style::default().bg(BG)),
+            status_a,
         );
     }
 
     fn draw_results(&self, f: &mut Frame, area: Rect) {
-        if area.width < 10 || area.height < 8 { return; }
-        let box_w = 60.min(area.width.saturating_sub(4));
-        let box_h = (area.height - 4).min(20);
-        let x = (area.width - box_w) / 2;
-        let y = (area.height - box_h) / 2;
-        let box_area = Rect::new(x, y, box_w, box_h);
+        if area.width < 30 || area.height < 10 { return; }
 
-        let outer = Block::default()
+        let status_height = 1u16;
+        let title_height = 1u16;
+
+        let vert = Layout::vertical([
+            Constraint::Length(title_height),
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(status_height),
+        ]);
+        let areas = vert.split(area);
+        let title_a = areas[0];
+        let _sep_a = areas[1];
+        let content_a = areas[2];
+        let status_a = areas[3];
+
+        // Title
+        let title = format!(
+            " Results  \u{2014}  {} file{} converted",
+            self.results.len(),
+            if self.results.len() == 1 { "" } else { "s" }
+        );
+        f.render_widget(
+            Paragraph::new(Span::styled(&title, Style::default().fg(ACCENT).bold()))
+                .style(Style::default().bg(SURFACE)),
+            title_a,
+        );
+        f.render_widget(
+            Paragraph::new(Span::styled(
+                "\u{2500}".repeat(area.width as usize),
+                Style::default().fg(BORDER),
+            )).style(Style::default().bg(BG)),
+            areas[1],
+        );
+
+        // Content area with results table
+        let content_block = Block::default()
             .borders(Borders::ALL)
             .border_set(symbols::border::ROUNDED)
             .border_style(Style::default().fg(BORDER))
             .bg(SURFACE);
-        f.render_widget(&outer, box_area);
-        let inner = outer.inner(box_area);
 
-        let vert = Layout::vertical([
-            Constraint::Length(2),
-            Constraint::Min(1),
-            Constraint::Length(3),
-        ]);
-        let [header_a, list_a, btn_a] = vert.areas(inner);
-
-        // Header
-        f.render_widget(
-            Paragraph::new(vec![
-                Line::from(Span::styled("  Export Results", Style::default().fg(ACCENT).bg(SURFACE))),
-                Line::from(Span::styled(format!("  {} file{} converted", self.results.len(), if self.results.len() == 1 { "" } else { "s" }), Style::default().fg(DIM).bg(SURFACE))),
-            ]).style(Style::default().bg(SURFACE)),
-            header_a,
-        );
-
-        // List
         let mut list_lines: Vec<Line> = Vec::new();
         if self.results.is_empty() {
             list_lines.push(Line::from(Span::styled("  No exports yet", Style::default().fg(DIM).bg(SURFACE))));
         } else {
             list_lines.push(Line::from(vec![
-                Span::styled("  #  ", Style::default().fg(DIM)),
-                Span::styled("Song", Style::default().fg(ACCENT)),
-                Span::styled("  Keys  Notes  Format", Style::default().fg(DIM)),
+                Span::styled("  #   ", Style::default().fg(DIM)),
+                Span::styled(format!("{:<25}", "Song"), Style::default().fg(ACCENT)),
+                Span::styled("  Keys  Notes  ", Style::default().fg(DIM)),
+                Span::styled("Format", Style::default().fg(DIM)),
             ]));
-            list_lines.push(Line::from(Span::styled("  ".repeat(50), Style::default().fg(DIM).bg(SURFACE))));
+            list_lines.push(Line::from(Span::styled(
+                "  ".repeat(content_a.width.saturating_sub(2).min(60) as usize),
+                Style::default().fg(DIM),
+            )));
             for (i, r) in self.results.iter().enumerate() {
-                let bg = if i % 2 == 0 { SURFACE } else { Color::Rgb(30, 30, 38) };
+                let bg = if i % 2 == 0 { SURFACE } else { SURFACE_LIGHT };
                 list_lines.push(Line::from(vec![
-                    Span::styled(format!("  {:<2} ", i + 1), Style::default().fg(DIM).bg(bg)),
+                    Span::styled(format!("  {:<3} ", i + 1), Style::default().fg(DIM).bg(bg)),
                     Span::styled(format!("{:<25}", r.title.chars().take(25).collect::<String>()), Style::default().fg(TEXT).bg(bg)),
                     Span::styled(format!(" {:<3} ", r.keys), Style::default().fg(ACCENT).bg(bg)),
                     Span::styled(format!("{:<5} ", r.notes), Style::default().fg(DIM).bg(bg)),
                     Span::styled(format!("{} \u{2192} {}", r.from, r.to), Style::default().fg(DIM).bg(bg)),
                 ]));
             }
+            list_lines.push(Line::from(Span::styled("", Style::default().fg(DIM))));
+            list_lines.push(Line::from(Span::styled(
+                "  [O] Open folder  [Esc] Back",
+                Style::default().fg(DIM),
+            )));
         }
+
+        let inner_h = content_a.height.saturating_sub(2);
+        let max_scroll = self.results.len().saturating_sub(inner_h as usize);
+        let scroll = self.results_scroll.min(max_scroll);
         f.render_widget(
-            Paragraph::new(list_lines).style(Style::default().bg(SURFACE)).scroll((self.results_scroll as u16, 0)),
-            list_a,
+            Paragraph::new(list_lines).block(content_block)
+                .style(Style::default().bg(SURFACE))
+                .scroll((scroll as u16, 0)),
+            content_a,
         );
 
-        // Button
-        let btn_block = Block::default()
-            .borders(Borders::ALL)
-            .border_set(symbols::border::ROUNDED)
-            .border_style(Style::default().fg(BORDER))
-            .bg(SURFACE);
-        let btn_text = vec![
-            Line::from(Span::styled("  Open export folder  ", Style::default().fg(ACCENT).bg(SURFACE))),
-            Line::from(Span::styled("  [Enter/O] open  [Esc] back  ", Style::default().fg(DIM).bg(SURFACE))),
-        ];
-        self.results_btn_area.set(Some(btn_a));
+        // Status
         f.render_widget(
-            Paragraph::new(btn_text).block(btn_block).style(Style::default().bg(SURFACE)).alignment(Alignment::Center),
-            btn_a,
+            Paragraph::new(Span::styled(
+                " [Esc] back to main  [O] open export folder",
+                Style::default().fg(DIM),
+            )).style(Style::default().bg(BG)),
+            status_a,
         );
     }
 
@@ -944,6 +1042,20 @@ if ($res -eq 'OK') { $d.FileNames -join "`n" }
 }
 
 // ── Help text drawing inside TUI ────────────────────────────────
+
+fn desc_for(cmd: &str) -> &'static str {
+    let trimmed = cmd.trim().strip_prefix("set ").unwrap_or(cmd.trim());
+    for (name, desc) in COMMAND_DESCS {
+        if *name == trimmed { return desc; }
+    }
+    for key in SETTING_KEYS {
+        if *key == trimmed { return "Configuration setting"; }
+    }
+    if trimmed == "set" {
+        return "Modify a configuration value (set <key> <value>)";
+    }
+    ""
+}
 
 fn onoff(v: bool) -> &'static str { if v { "on" } else { "off" } }
 
