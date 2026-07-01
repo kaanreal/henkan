@@ -8,3 +8,4 @@ tauri-private.key
 *.log
 src-tauri/gen/
 src-tauri/target/
+converts/
