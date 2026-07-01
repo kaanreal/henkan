@@ -89,6 +89,8 @@ pub struct ExportConfig {
     pub conversion_rate: f64,
     #[serde(default = "default_preserve_pitch")]
     pub preserve_pitch: bool,
+    #[serde(default = "default_fetch_avatar")]
+    pub fetch_avatar: bool,
 }
 
 impl Default for ExportConfig {
@@ -113,12 +115,14 @@ impl Default for ExportConfig {
             preview_time: 0.0,
             conversion_rate: 1.0,
             preserve_pitch: true,
+            fetch_avatar: true,
         }
     }
 }
 
 fn default_conversion_rate() -> f64 { 1.0 }
 fn default_preserve_pitch() -> bool { true }
+fn default_fetch_avatar() -> bool { true }
 
 /// Lightweight metadata returned by scan_pack for each .sm file found.
 #[derive(Debug, Clone, Serialize, Deserialize)]

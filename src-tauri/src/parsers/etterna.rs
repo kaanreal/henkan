@@ -127,7 +127,75 @@ pub fn parse_sm_difficulty(content: &str, index: usize) -> Result<Beatmap> {
     Ok(beatmap)
 }
 
-fn parse_headers(content: &str) -> std::collections::HashMap<String, String> {
+/// Parse all difficulties from an SM file, sharing one header/timing pass.
+/// Much faster than calling `parse_sm_difficulty` N times.
+pub fn parse_sm_all(content: &str) -> Result<Vec<Beatmap>> {
+    let raw = content.replace("\r\n", "\n");
+    let headers = parse_headers(&raw);
+    let sections = extract_all_notes_sections(&raw);
+
+    if sections.is_empty() {
+        anyhow::bail!("No #NOTES: sections found");
+    }
+
+    let offset: f64 = headers.get("OFFSET").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let sample_start: f64 = headers.get("SAMPLESTART").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let preview_time = sample_start * 1000.0;
+    let bpm_changes = parse_bpms(headers.get("BPMS").unwrap_or(&String::new()));
+    let stops = parse_stops(headers.get("STOPS").unwrap_or(&String::new()));
+    let timing_points = build_timing(&bpm_changes, &stops, offset);
+    let audio = headers.get("MUSIC").cloned();
+    let title = headers.get("TITLE").cloned().unwrap_or_default();
+    let artist = headers.get("ARTIST").cloned().unwrap_or_default();
+    let creator = headers.get("CREDIT").cloned().unwrap_or_default();
+    let source = headers.get("GENRE").cloned().unwrap_or_default();
+    let audio_filename = headers.get("MUSIC").cloned().unwrap_or_default();
+    let bg = headers.get("BACKGROUND").cloned()
+        .filter(|s| !s.is_empty())
+        .or_else(|| headers.get("BANNER").cloned().filter(|s| !s.is_empty()));
+    let banner = headers.get("BANNER").cloned().filter(|s| !s.is_empty());
+    let cdtitle = headers.get("CDTITLE").cloned().filter(|s| !s.is_empty());
+
+    let mut result = Vec::with_capacity(sections.len());
+    for notes_str in &sections {
+        let keys = detect_keys(notes_str);
+        let mut beatmap = Beatmap::new(keys);
+        beatmap.source_format = crate::models::beatmap::SourceFormat::Etterna;
+        beatmap.title = title.clone();
+        beatmap.artist = artist.clone();
+        beatmap.creator = creator.clone();
+        beatmap.source = source.clone();
+        beatmap.audio_filename = audio_filename.clone();
+        beatmap.background_filename = bg.clone();
+        beatmap.banner_filename = banner.clone();
+        beatmap.cdtitle_filename = cdtitle.clone();
+        beatmap.preview_time = preview_time;
+        beatmap.timing_points = timing_points.clone();
+
+        if let Some(notes) = parse_notes_data(notes_str, keys, &bpm_changes, &stops, offset) {
+            beatmap.notes = notes;
+        }
+        let dn = detect_difficulty(notes_str);
+        if !dn.is_empty() { beatmap.difficulty_name = dn; }
+
+        let _k = keys;
+        let _count = count_notes(notes_str);
+        beatmap.available_difficulties = sections.iter().map(|s| {
+            DiffInfo {
+                name: detect_difficulty(s),
+                keys: detect_keys(s),
+                note_count: count_notes(s),
+                audio_filename: audio.clone(),
+            }
+        }).collect();
+
+        beatmap.compute_duration();
+        result.push(beatmap);
+    }
+    Ok(result)
+}
+
+pub fn parse_headers(content: &str) -> std::collections::HashMap<String, String> {
     // Values routinely span multiple lines (#BPMS is almost always written
     // one change per line), so scan #KEY:VALUE; pairs across the whole file
     // instead of line by line.
