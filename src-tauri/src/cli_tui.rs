@@ -447,7 +447,39 @@ impl App {
         #[cfg(target_os = "linux")]
         let _ = Command::new("xdg-open").args([&path_str]).spawn();
         #[cfg(target_os = "windows")]
-        let _ = Command::new("explorer").args([&path_str]).spawn();
+        {
+            let _ = Command::new("explorer").args([&path_str]).spawn();
+            let (tx, rx) = mpsc::channel();
+            let script_path = path_str.clone();
+            let script = format!(r##"$path = '{path}'
+try {{
+    $shell = New-Object -ComObject Shell.Application
+    do {{
+        Start-Sleep -Milliseconds 500
+        $found = $false
+        $windows = $shell.Windows()
+        if ($windows -ne $null) {{
+            for ($i = 0; $i -lt $windows.Count; $i++) {{
+                $w = $windows.Item($i)
+                if ($w -ne $null -and $w.LocationURL -ne $null) {{
+                    if (([System.Uri]$w.LocationURL).LocalPath -eq $path) {{
+                        $found = $true
+                        break
+                    }}
+                }}
+            }}
+        }}
+    }} while ($found)
+}} catch {{}}
+"##, path = script_path.replace('\'', "''"));
+            thread::spawn(move || {
+                let _ = Command::new("powershell")
+                    .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+                    .status();
+                let _ = tx.send(());
+            });
+            self.quick_rx = Some(rx);
+        }
 
         #[cfg(target_os = "macos")]
         {
@@ -3246,16 +3278,24 @@ fn sanitize_path(s: &str) -> String {
 }
 
 fn deescape_path(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            if let Some(next) = chars.next() { out.push(next); }
-        } else {
-            out.push(c);
-        }
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, backslash is a path separator, not an escape character
+        s.to_string()
     }
-    out
+    #[cfg(not(target_os = "windows"))]
+    {
+        let mut out = String::with_capacity(s.len());
+        let mut chars = s.chars();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                if let Some(next) = chars.next() { out.push(next); }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
 }
 
 // ── Non-interactive mode ────────────────────────────────────
