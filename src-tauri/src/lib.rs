@@ -1,13 +1,16 @@
 pub mod converters;
 pub mod models;
 pub mod parsers;
+pub mod cli_tui;
 
 /// Public API exposed for integration tests and CLI.
 pub use parsers::etterna::parse_sm;
 pub use parsers::osu::parse_osu;
 pub use models::beatmap::{Beatmap, DiffInfo, ExportConfig, PackEntry, SourceFormat};
+use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
+use std::sync::{LazyLock, Mutex};
 use ureq::ResponseExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -90,8 +93,24 @@ pub fn cli_convert_beatmap(beatmap: &mut Beatmap, config: &ExportConfig) -> Resu
 }
 
 pub fn cli_export_beatmap(beatmap: &Beatmap, config: &ExportConfig, converted_content: &str, output_dir: &str) -> Result<String, String> {
-    let base = format!("{} [{}]", config.title, config.creator);
-    let safe_name = sanitize_filename(&base, 80);
+    cli_export_beatmap_named(beatmap, config, converted_content, output_dir, None)
+}
+
+/// Like `cli_export_beatmap` but allows overriding the folder name.
+/// When `folder_name` is `Some`, it is used directly as the output folder name
+/// (instead of deriving from `title [creator]`).
+pub fn cli_export_beatmap_named(beatmap: &Beatmap, config: &ExportConfig, converted_content: &str, output_dir: &str, folder_name: Option<&str>) -> Result<String, String> {
+    let safe_name = match folder_name {
+        Some(f) => sanitize_filename(f, 80),
+        None => {
+            let base = if beatmap.source_format == SourceFormat::Etterna {
+                format!("{} - {}", config.artist, config.title)
+            } else {
+                format!("{} [{}]", config.title, config.creator)
+            };
+            sanitize_filename(&base, 80)
+        }
+    };
     let out_ext = match beatmap.source_format {
         SourceFormat::OsuMania => "sm",
         SourceFormat::Etterna => "osu",
@@ -122,10 +141,22 @@ pub fn cli_export_beatmap(beatmap: &Beatmap, config: &ExportConfig, converted_co
         }
     }
     if beatmap.source_format == SourceFormat::OsuMania {
-        if let Some(ref cdt) = config.cdtitle_filename {
-            if !cdt.is_empty() {
+        let cdtitle_has_file = config.cdtitle_filename.as_ref().is_some_and(|s| !s.is_empty());
+        if cdtitle_has_file {
+            if let Some(ref cdt) = config.cdtitle_filename {
                 copy_media(&beatmap.source_dir, cdt, &export_path, "cdtitle.png")?;
             }
+        } else if config.fetch_avatar {
+            if let Some(avatar) = fetch_mapper_avatar(&beatmap.creator) {
+                fs::write(export_path.join("cdtitle.png"), &avatar)
+                    .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
+            } else {
+                fs::write(export_path.join("cdtitle.png"), DEFAULT_CDTITLE)
+                    .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
+            }
+        } else {
+            fs::write(export_path.join("cdtitle.png"), DEFAULT_CDTITLE)
+                .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
         }
     }
     Ok(export_path.to_string_lossy().to_string())
@@ -454,13 +485,43 @@ pub const IMAGE_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bm
 
 pub const DEFAULT_CDTITLE: &[u8] = include_bytes!("../assets/cdtitle_default.png");
 
-/// Try to fetch the osu! avatar for a given creator name.
-/// Falls back to None on any error (network, no user, etc.).
+fn url_encode_path(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b' ' => out.push_str("%20"),
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
+}
+
+static AVATAR_CACHE: LazyLock<Mutex<HashMap<String, Option<Vec<u8>>>>> = LazyLock::new(|| {
+    Mutex::new(HashMap::new())
+});
+
 pub fn fetch_mapper_avatar(creator: &str) -> Option<Vec<u8>> {
-    // Resolve username → user_id by following the osu! profile redirect
-    let profile_url = format!("https://osu.ppy.sh/users/{}", creator);
+    {
+        let cache = AVATAR_CACHE.lock().unwrap();
+        if let Some(cached) = cache.get(creator) {
+            return cached.clone();
+        }
+    }
+
+    let result = fetch_mapper_avatar_inner(creator);
+    let mut cache = AVATAR_CACHE.lock().unwrap();
+    cache.insert(creator.to_string(), result.clone());
+    result
+}
+
+fn fetch_mapper_avatar_inner(creator: &str) -> Option<Vec<u8>> {
+    let encoded = url_encode_path(creator);
+    let profile_url = format!("https://osu.ppy.sh/users/{}", encoded);
+    let ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36";
+
     let resp = ureq::get(&profile_url)
-        .header("User-Agent", "henkan/1.0")
+        .header("User-Agent", ua)
         .call()
         .ok()?;
     let final_url = resp.get_uri().to_string();
@@ -468,25 +529,38 @@ pub fn fetch_mapper_avatar(creator: &str) -> Option<Vec<u8>> {
 
     let user_id = final_url
         .strip_prefix("https://osu.ppy.sh/users/")
+        .or_else(|| final_url.strip_prefix("https://osu.ppy.sh/u/"))
         .or_else(|| final_url.strip_prefix("https://old.ppy.sh/users/"))
+        .or_else(|| final_url.strip_prefix("https://old.ppy.sh/u/"))
         .and_then(|rest| rest.split('/').next())
-        .and_then(|s| s.parse::<u64>().ok())?;
+        .and_then(|s| s.split('?').next())
+        .and_then(|s| s.parse::<u64>().ok())
+        .or_else(|| {
+            // Try extracting user_id from the final_url as a last resort
+            // Some redirect URLs contain the user_id in a different position
+            let path = final_url.trim_start_matches("https://");
+            let after_slash = path.split('/').nth(1)?;
+            after_slash.split('?').next()?.parse::<u64>().ok()
+        })?;
 
     let avatar_url = format!("https://a.ppy.sh/{}", user_id);
     let avatar_resp = ureq::get(&avatar_url)
-        .header("User-Agent", "henkan/1.0")
+        .header("User-Agent", ua)
         .call()
         .ok()?;
     if avatar_resp.status() != 200 {
+        eprintln!("[henkan] avatar fetch returned status {}", avatar_resp.status());
         return None;
     }
     let content_type = avatar_resp.headers().get("Content-Type")
         .and_then(|v| v.to_str().ok())?;
     if !content_type.starts_with("image/") {
+        eprintln!("[henkan] avatar content-type is {}", content_type);
         return None;
     }
     let mut buf = Vec::new();
     avatar_resp.into_body().as_reader().read_to_end(&mut buf).ok()?;
+    eprintln!("[henkan] fetched avatar for {} ({} bytes)", creator, buf.len());
     Some(buf)
 }
 
@@ -807,7 +881,11 @@ fn export_beatmap(
 ) -> Result<String, String> {
     // Find ffmpeg: dev path or production sidecar
     let ffmpeg_path = find_ffmpeg();
-    let base = format!("{} [{}]", config.title, config.creator);
+    let base = if beatmap.source_format == SourceFormat::Etterna {
+        format!("{} - {}", config.artist, config.title)
+    } else {
+        format!("{} [{}]", config.title, config.creator)
+    };
     let folder_name = if let Some(ref suffix) = filename_suffix {
         format!("{} {}", base, suffix)
     } else {
@@ -949,9 +1027,14 @@ fn export_beatmap(
                 if let Some(ref cdt) = config.cdtitle_filename {
                     copy_media(&beatmap.source_dir, cdt, &export_path, "cdtitle.png")?;
                 }
-            } else if let Some(avatar) = fetch_mapper_avatar(&beatmap.creator) {
-                fs::write(export_path.join("cdtitle.png"), &avatar)
-                    .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
+            } else if config.fetch_avatar {
+                if let Some(avatar) = fetch_mapper_avatar(&beatmap.creator) {
+                    fs::write(export_path.join("cdtitle.png"), &avatar)
+                        .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
+                } else {
+                    fs::write(export_path.join("cdtitle.png"), DEFAULT_CDTITLE)
+                        .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
+                }
             } else {
                 fs::write(export_path.join("cdtitle.png"), DEFAULT_CDTITLE)
                     .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
@@ -1097,7 +1180,11 @@ fn export_all_beatmaps(
 
     let pack_mode = pack_name.is_some();
 
-    let base = format!("{} [{}]", config.title, config.creator);
+    let base = if ext == "sm" {
+        format!("{} - {}", config.artist, config.title)
+    } else {
+        format!("{} [{}]", config.title, config.creator)
+    };
     let safe = sanitize_filename(&base, 80);
 
     let mut results = Vec::new();
@@ -1516,9 +1603,14 @@ fn export_all_beatmaps(
                 if let Some(ref cdt) = config.cdtitle_filename {
                     copy_media(&tmp_dir, cdt, &out_folder, "cdtitle.png")?;
                 }
-            } else if let Some(avatar) = fetch_mapper_avatar(&config.creator) {
-                fs::write(out_folder.join("cdtitle.png"), &avatar)
-                    .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
+            } else if config.fetch_avatar {
+                if let Some(avatar) = fetch_mapper_avatar(&config.creator) {
+                    fs::write(out_folder.join("cdtitle.png"), &avatar)
+                        .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
+                } else {
+                    fs::write(out_folder.join("cdtitle.png"), DEFAULT_CDTITLE)
+                        .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
+                }
             } else {
                 fs::write(out_folder.join("cdtitle.png"), DEFAULT_CDTITLE)
                     .map_err(|e| format!("Failed to write cdtitle.png: {}", e))?;
@@ -1778,7 +1870,11 @@ pub fn headless_process(paths: &[String]) {
             .to_string();
 
         // Write the converted file first, then best-effort media/cdtitle
-        let base = format!("{} [{}]", config.title, config.creator);
+        let base = if beatmap.source_format == SourceFormat::Etterna {
+            format!("{} - {}", config.artist, config.title)
+        } else {
+            format!("{} [{}]", config.title, config.creator)
+        };
         let safe_name = sanitize_filename(&base, 80);
         let out_ext = match beatmap.source_format {
             SourceFormat::OsuMania => "sm",
