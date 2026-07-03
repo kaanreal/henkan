@@ -1,0 +1,15 @@
+{
+  "name": "henkan-core",
+  "type": "module",
+  "version": "1.0.0",
+  "files": [
+    "henkan_core_bg.wasm",
+    "henkan_core.js",
+    "henkan_core.d.ts"
+  ],
+  "main": "henkan_core.js",
+  "types": "henkan_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
