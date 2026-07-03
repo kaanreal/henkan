@@ -24,6 +24,7 @@ interface OszData {
   mediaFiles: OszMediaFile[]
 }
 export const oszContentCache = new Map<string, OszData>()
+const oszCachedFiles = new Set<File>()
 
 const MEDIA_MIME_TYPES: Record<string, string> = {
   mp3: 'audio/mpeg',
@@ -57,14 +58,21 @@ function sourceDirFromPath(path: string): string {
 }
 
 async function extractOsz(path: string): Promise<OszData> {
-  const { fileInputCache, clearFileCache: clearCache } = await import('./fileCache')
+  const { fileInputCache } = await import('./fileCache')
 
   if (oszContentCache.has(path)) {
     // Cache hit: restore this OSZ's media files
     const cached = oszContentCache.get(path)!
-    clearCache()
+    // Remove previously cached OSZ media files (keep user-uploaded files)
+    for (const f of oszCachedFiles) {
+      const idx = fileInputCache.indexOf(f)
+      if (idx !== -1) fileInputCache.splice(idx, 1)
+    }
+    oszCachedFiles.clear()
     for (const mf of cached.mediaFiles) {
-      fileInputCache.push(new File([mf.blob], mf.name, { type: mimeTypeForFile(mf.name) }))
+      const f = new File([mf.blob], mf.name, { type: mimeTypeForFile(mf.name) })
+      fileInputCache.push(f)
+      oszCachedFiles.add(f)
     }
     return cached
   }
@@ -72,9 +80,12 @@ async function extractOsz(path: string): Promise<OszData> {
   const oszFile = getCachedFile(path)
   if (!oszFile) throw new Error(`File not found: ${path}`)
 
-  // Clear old media files from other sources before extracting
-  clearCache()
-  // (the OSZ file reference is held in oszFile, so it's not lost)
+  // Remove previously cached OSZ media files (keep user-uploaded files)
+  for (const f of oszCachedFiles) {
+    const idx = fileInputCache.indexOf(f)
+    if (idx !== -1) fileInputCache.splice(idx, 1)
+  }
+  oszCachedFiles.clear()
 
   let JSZip: any
   try {
@@ -135,6 +146,7 @@ async function extractOsz(path: string): Promise<OszData> {
       const fullName = mf.name
       const f = new File([blob], fullName, { type: mimeTypeForFile(fullName) })
       fileInputCache.push(f)
+      oszCachedFiles.add(f)
       cachedMediaFiles.push({ name: fullName, blob })
     }
   }
@@ -278,11 +290,19 @@ export async function convertBeatmap(
   if (beatmap.source_format === 'Etterna') {
     return await wasmConvertEtternaToOsu(beatmap, config)
   }
-  return await wasmConvertOsuToEtterna(
+  let result = await wasmConvertOsuToEtterna(
     beatmap,
     config.global_timing_ms,
     config.creator,
   )
+  // The WASM converter has a legacy fallback that writes #BANNER:bg.png when
+  // there's no explicit banner but a background exists. Remove it to match
+  // the desktop (native Rust converter) behavior.
+  const hasBanner = beatmap.banner_filename && beatmap.banner_filename.trim().length > 0
+  if (!hasBanner) {
+    result = result.replace(/^#BANNER:bg\.png;\n?/m, '')
+  }
+  return result
 }
 
 export async function scaleTimingForRate(

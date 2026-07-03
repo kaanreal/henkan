@@ -31,13 +31,8 @@ pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str
     if beatmap.background_filename.is_some() {
         writeln!(out, "#BACKGROUND:bg.png;")?;
     }
-    let banner_auto = beatmap.banner_filename.as_ref().map_or(true, |s| s.is_empty());
-    if beatmap.banner_filename.is_some() || beatmap.background_filename.is_some() {
-        if banner_auto {
-            writeln!(out, "#BANNER:bg.png;")?;
-        } else {
-            writeln!(out, "#BANNER:banner.png;")?;
-        }
+    if beatmap.banner_filename.as_ref().is_some_and(|s| !s.is_empty()) {
+        writeln!(out, "#BANNER:banner.png;")?;
     }
     writeln!(out, "#CDTITLE:cdtitle.png;")?;
 

@@ -19,7 +19,7 @@ import { PackSettingsDialog } from './components/PackSettingsDialog'
 import { WebAudioPlayer } from './lib/WebAudioPlayer'
 import { isTauri } from './services/environment'
 import { openFiles as dialogOpenFiles, openDirectory as dialogOpenDirectory, saveFile as dialogSaveFile } from './services/dialogs'
-import { fileInputCache, getCachedFile } from './services/fileCache'
+import { fileInputCache, getCachedFile, clearFileCache } from './services/fileCache'
 import { readFileAsDataUrl, resolveMediaFile, saveBlobToFile } from './services/files'
 import { parseFile, selectDifficulty, convertBeatmap, ensureOszMediaCached } from './services/convert'
 import { exportBeatmap, exportAllBeatmaps, zipFolder, addCdtitleToZip } from './services/export'
@@ -381,6 +381,7 @@ function App() {
   }, [queueItems, queueActiveId, queueRemoveItem, queueSetActiveId, setDirection, setBeatmap, loadQueueMedia, reset])
 
   const handleQueueClearAll = useCallback(() => {
+    clearFileCache()
     queueClearAll()
     reset()
   }, [queueClearAll, reset])
@@ -735,12 +736,14 @@ function App() {
       if (!picked) return
       folder = picked
     }
+    clearFileCache()
     setPackFolder(folder)
     setPackEditing(null)
     setPackSelected(new Set())
     setPackLoading(true)
     setError(null)
     setPackBannerUrl(null)
+    setPackBannerPath(null)
     try {
       const entries = await scanPack(folder)
       setPackEntries(entries)
@@ -844,6 +847,7 @@ function App() {
       const cur = useConverterStore.getState().config
       packConfigsRef.current.set(packEditing, { ...cur })
     }
+    clearFileCache()
     setPackFolder(null)
     setPackEntries([])
     setPackEditing(null)
@@ -1085,6 +1089,7 @@ function App() {
   }, [lastExportPath, exportPath])
 
   const handleReset = useCallback(() => {
+    clearFileCache()
     queueClearAll()
     reset()
   }, [queueClearAll, reset])
