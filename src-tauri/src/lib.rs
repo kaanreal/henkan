@@ -93,13 +93,15 @@ pub fn cli_convert_beatmap(beatmap: &mut Beatmap, config: &ExportConfig) -> Resu
 }
 
 pub fn cli_export_beatmap(beatmap: &Beatmap, config: &ExportConfig, converted_content: &str, output_dir: &str) -> Result<String, String> {
-    cli_export_beatmap_named(beatmap, config, converted_content, output_dir, None)
+    cli_export_beatmap_named(beatmap, config, converted_content, output_dir, None, false)
 }
 
 /// Like `cli_export_beatmap` but allows overriding the folder name.
 /// When `folder_name` is `Some`, it is used directly as the output folder name
 /// (instead of deriving from `title [creator]`).
-pub fn cli_export_beatmap_named(beatmap: &Beatmap, config: &ExportConfig, converted_content: &str, output_dir: &str, folder_name: Option<&str>) -> Result<String, String> {
+/// When `skip_subfolder` is `true`, writes directly to `output_dir` instead of
+/// creating a `output_dir/{folder_name}` subfolder.
+pub fn cli_export_beatmap_named(beatmap: &Beatmap, config: &ExportConfig, converted_content: &str, output_dir: &str, folder_name: Option<&str>, skip_subfolder: bool) -> Result<String, String> {
     let safe_name = match folder_name {
         Some(f) => sanitize_filename(f, 80),
         None => {
@@ -116,7 +118,11 @@ pub fn cli_export_beatmap_named(beatmap: &Beatmap, config: &ExportConfig, conver
         SourceFormat::Etterna => "osu",
     };
     let out_filename = format!("{}.{}", safe_name, out_ext);
-    let export_path = Path::new(output_dir).join(&safe_name);
+    let export_path = if skip_subfolder {
+        PathBuf::from(output_dir)
+    } else {
+        Path::new(output_dir).join(&safe_name)
+    };
     std::fs::create_dir_all(&export_path)
         .map_err(|e| format!("Failed to create export dir: {}", e))?;
     if !config.audio_filename.is_empty() {
@@ -878,6 +884,7 @@ fn export_beatmap(
     converted_content: String,
     output_dir: String,
     filename_suffix: Option<String>,
+    skip_subfolder: Option<bool>,
 ) -> Result<String, String> {
     // Find ffmpeg: dev path or production sidecar
     let ffmpeg_path = find_ffmpeg();
@@ -974,8 +981,12 @@ fn export_beatmap(
         Ok(osz_path.to_string_lossy().to_string())
     } else {
         // ── folder output ──
-        // output_dir is the PARENT directory; we create a subfolder
-        let export_path = Path::new(&output_dir).join(&safe_name);
+        // output_dir is the PARENT directory; we create a subfolder (unless skip_subfolder is true)
+        let export_path = if skip_subfolder.unwrap_or(false) {
+            PathBuf::from(&output_dir)
+        } else {
+            Path::new(&output_dir).join(&safe_name)
+        };
         fs::create_dir_all(&export_path)
             .map_err(|e| format!("Failed to create export dir: {}", e))?;
 
@@ -1814,6 +1825,16 @@ fn save_file(path: String, content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn write_file_bytes(path: String, content: Vec<u8>) -> Result<(), String> {
+    if let Some(parent) = Path::new(&path).parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    fs::write(&path, content)
+        .map_err(|e| format!("Failed to write file: {}", e))
+}
+
+#[tauri::command]
 fn clean_dir(path: String) -> Result<(), String> {
     let dir = Path::new(&path);
     if dir.exists() {
@@ -1978,6 +1999,7 @@ pub fn run() {
             create_dummy_diff,
             zip_folder,
             save_file,
+            write_file_bytes,
             clean_dir,
             scan_pack,
             find_pack_banner,

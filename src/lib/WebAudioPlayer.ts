@@ -28,46 +28,80 @@ export class WebAudioPlayer {
     })
   }
 
-  async load(dataUrl: string) {
+  async load(source: string | File) {
     this.stop()
 
+    // Revoke previous blob URL
     if (this._currentBlobUrl) {
       URL.revokeObjectURL(this._currentBlobUrl)
       this._currentBlobUrl = null
     }
 
-    let targetUrl = dataUrl
+    let targetUrl: string
 
-    // Decode MP3s to WAV to fix Chromium VBR seek inaccuracies and strip LAME padding natively
-    if (dataUrl.startsWith('data:audio/mpeg;base64,')) {
+    if (source instanceof File) {
+      // Web path: File object → WAV blob URL if MP3
       try {
-        const b64 = dataUrl.substring(dataUrl.indexOf(',') + 1)
+        if (source.type === 'audio/mpeg') {
+          const buf = await source.arrayBuffer()
+          const ctx = new AudioContext()
+          const audioBuffer = await ctx.decodeAudioData(buf)
+          ctx.close()
+          targetUrl = URL.createObjectURL(audioBufferToWavBlob(audioBuffer))
+          this._currentBlobUrl = targetUrl
+        } else {
+          targetUrl = URL.createObjectURL(source)
+          this._currentBlobUrl = targetUrl
+        }
+      } catch {
+        targetUrl = URL.createObjectURL(source)
+        this._currentBlobUrl = targetUrl
+      }
+    } else if (source.startsWith('data:audio/mpeg;base64,')) {
+      // Tauri path: base64 data URL → WAV blob URL
+      try {
+        const b64 = source.substring(source.indexOf(',') + 1)
         const binaryStr = atob(b64)
         const len = binaryStr.length
         const bytes = new Uint8Array(len)
         for (let i = 0; i < len; i++) {
           bytes[i] = binaryStr.charCodeAt(i)
         }
-        
+        const buf = bytes.buffer
         const ctx = new AudioContext()
-        const audioBuffer = await ctx.decodeAudioData(bytes.buffer)
+        const audioBuffer = await ctx.decodeAudioData(buf)
         ctx.close()
-        
-        const wavBlob = audioBufferToWavBlob(audioBuffer)
-        targetUrl = URL.createObjectURL(wavBlob)
+        targetUrl = URL.createObjectURL(audioBufferToWavBlob(audioBuffer))
         this._currentBlobUrl = targetUrl
-      } catch (err: any) {
-        console.warn('Failed to decode MP3 to WAV, falling back to raw dataUrl', err)
+      } catch {
+        targetUrl = source
+      }
+    } else {
+      targetUrl = source
+      if (targetUrl.startsWith('blob:')) {
+        this._currentBlobUrl = targetUrl
       }
     }
 
     this.el.src = targetUrl
 
-    // Wait for metadata so duration is known
+    // Wait for metadata so duration is known (or error)
     if (this.el.readyState < 1) {
       await new Promise<void>((resolve) => {
-        const onMeta = () => { this.el.removeEventListener('loadedmetadata', onMeta); resolve() }
+        let cancelled = false
+        const onMeta = () => { if (!cancelled) { cancelled = true; cleanup(); resolve() } }
+        const onError = () => {
+          if (!cancelled) {
+            cancelled = true; cleanup()
+            resolve()
+          }
+        }
+        const cleanup = () => {
+          this.el.removeEventListener('loadedmetadata', onMeta)
+          this.el.removeEventListener('error', onError)
+        }
         this.el.addEventListener('loadedmetadata', onMeta)
+        this.el.addEventListener('error', onError)
       })
     }
   }

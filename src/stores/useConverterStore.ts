@@ -5,6 +5,7 @@ interface MediaUrls {
   audio: string | null
   background: string | null
   banner: string | null
+  cdtitle: string | null
 }
 
 interface ConverterState {
@@ -74,7 +75,7 @@ export const useConverterStore = create<ConverterState>((set) => ({
   sourceFile: null,
   beatmap: null,
   direction: 'osu-to-etterna',
-  mediaUrls: { audio: null, background: null, banner: null },
+  mediaUrls: { audio: null, background: null, banner: null, cdtitle: null },
   config: buildConfig(null),
   isConverting: false,
   convertedContent: null,
@@ -121,6 +122,6 @@ export const useConverterStore = create<ConverterState>((set) => ({
     sourceFile: null, beatmap: null, convertedContent: null,
     exportPath: null, error: null, isConverting: false,
     config: buildConfig(null),
-    mediaUrls: { audio: null, background: null, banner: null },
+    mediaUrls: { audio: null, background: null, banner: null, cdtitle: null },
   }),
 }))

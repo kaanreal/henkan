@@ -1,5 +1,9 @@
 import { useState, useCallback } from 'react'
 import type { PackEntry } from '../types/beatmap'
+import { openDirectory } from '../services/dialogs'
+import { scanPack } from '../services/pack'
+import { selectDifficulty, convertBeatmap } from '../services/convert'
+import { exportBeatmap } from '../services/export'
 
 interface Props {
   open: boolean
@@ -21,16 +25,14 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
   }
 
   const pickFolder = useCallback(async () => {
-    const { open: openDialog } = await import('@tauri-apps/plugin-dialog')
-    const picked = await openDialog({ directory: true, title: 'Select pack folder' })
+    const picked = await openDirectory({ title: 'Select pack folder' })
     if (!picked) return
     setFolder(picked)
     setScanning(true)
     setEntries([])
     setSelected(new Set())
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const result = await invoke<PackEntry[]>('scan_pack', { folder: picked })
+      const result = await scanPack(picked)
       setEntries(result.map(e => ({ ...e, expanded: true })))
     } catch (e) {
       console.error('Scan failed', e)
@@ -98,13 +100,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
     setProgress(null)
 
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const { open: openDialog } = await import('@tauri-apps/plugin-dialog')
-
-      const exportDir = await openDialog({
-        directory: true,
-        title: 'Choose export folder',
-      })
+      const exportDir = await openDirectory({ title: 'Choose export folder' })
       if (!exportDir) { setConverting(false); return }
 
       const sel = [...selected]
@@ -117,12 +113,9 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
         if (!entry) continue
 
         setProgress(`${entry.artist} — ${entry.title} [${entry.available_difficulties[di]?.name ?? ''}]`)
-        await new Promise(r => setTimeout(r, 10)) // yield to render
+        await new Promise(r => setTimeout(r, 10))
 
-        const bm = await invoke('select_difficulty', {
-          path: entry.source_file,
-          index: di,
-        })
+        const bm = await selectDifficulty(entry.source_file, di)
 
         const cfg = {
           title: entry.title,
@@ -136,19 +129,16 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
           banner_filename: null,
           cdtitle_filename: null,
           global_timing_ms: 50,
-          output_format: 'osz',
+          output_format: 'osz' as const,
           hp_drain: 7,
           overall_difficulty: 7,
           preview_time: 0,
+          conversion_rate: 1,
+          preserve_pitch: true,
         }
 
-        const content = await invoke<string>('convert_beatmap', { beatmap: bm, config: cfg })
-        const result = await invoke<string>('export_beatmap', {
-          beatmap: bm,
-          config: cfg,
-          convertedContent: content,
-          outputDir: exportDir,
-        })
+        const content = await convertBeatmap(bm, cfg)
+        const result = await exportBeatmap(bm, cfg, content, exportDir)
         results.push(result)
         converted++
       }

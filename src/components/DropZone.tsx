@@ -1,5 +1,7 @@
 import { useRef, useCallback } from 'react'
 import type { ConvertDirection } from '../types/beatmap'
+import { openFiles } from '../services/dialogs'
+import { fileInputCache } from '../services/fileCache'
 
 interface DropZoneProps {
   dragging: boolean
@@ -12,23 +14,24 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
 
   const handleClick = useCallback(async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog')
-      const selected = await open({
+      const selected = await openFiles({
         multiple: true,
-        filters: [
-          {
-            name: 'Beatmap Files',
-            extensions: ['osu', 'osz', 'sm'],
-          },
-        ],
+        filters: [{ name: 'Beatmap Files', extensions: ['osu', 'osz', 'sm'] }],
       })
       if (selected) {
-        const paths = Array.isArray(selected) ? selected : [selected]
-        onFilesSelected(paths)
+        onFilesSelected(selected)
       }
     } catch {
       inputRef.current?.click()
     }
+  }, [onFilesSelected])
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    fileInputCache.push(...files)
+    const paths = files.map(f => (f as any).path || f.name)
+    onFilesSelected(paths)
   }, [onFilesSelected])
 
   return (
@@ -61,11 +64,8 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
         type="file"
         accept=".osu,.osz,.sm"
         className="hidden"
-        onChange={(e) => {
-          const files = Array.from(e.target.files || [])
-          const paths = files.map(f => (f as File & { path: string }).path).filter(Boolean)
-          if (paths.length > 0) onFilesSelected(paths)
-        }}
+        multiple
+        onChange={handleFileChange}
       />
 
       <div className="flex flex-col items-center gap-4 sm:gap-5 py-10 sm:py-16 px-6 sm:px-8 relative">

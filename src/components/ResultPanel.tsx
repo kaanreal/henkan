@@ -1,3 +1,6 @@
+import { saveContentToFile } from '../services/files'
+import { saveFile } from '../services/dialogs'
+
 interface ResultPanelProps {
   content: string
   filename: string
@@ -6,14 +9,12 @@ interface ResultPanelProps {
 export function ResultPanel({ content, filename }: ResultPanelProps) {
   const handleSave = async () => {
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const { save } = await import('@tauri-apps/plugin-dialog')
-      const path = await save({
+      const path = await saveFile({
         defaultPath: filename,
         filters: [{ name: 'Beatmap', extensions: [filename.replace('.', '')] }],
       })
       if (path) {
-        await invoke('save_file', { path, content })
+        await saveContentToFile(path, content)
       }
     } catch {
       const blob = new Blob([content], { type: 'text/plain' })

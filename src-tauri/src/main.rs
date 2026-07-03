@@ -38,7 +38,7 @@ fn main() {
     #[cfg(not(windows))]
     {
         use crossterm::tty::IsTty;
-        if std::io::stdout().is_tty() && args.len() == 1 {
+        if std::io::stdin().is_tty() && std::io::stdout().is_tty() && args.len() == 1 {
             let _ = henkan_lib::cli_tui::run(&args);
             return;
         }

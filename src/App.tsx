@@ -3,7 +3,7 @@ import { useCallback, useState, useEffect, useRef, startTransition } from 'react
 import { useConverterStore } from './stores/useConverterStore'
 import { useQueueStore, type QueueItem, buildConfig, emptyConfig, generateId, detectDirection } from './stores/useQueueStore'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { trackEvent } from '@aptabase/tauri'
+import { trackEvent } from './services/analytics'
 import { Header } from './components/Header'
 import { DropZone } from './components/DropZone'
 import { ConversionQueue } from './components/ConversionQueue'
@@ -17,7 +17,14 @@ import { PackBrowser } from './components/PackBrowser'
 import { FallingArrows } from './components/FallingArrows'
 import { PackSettingsDialog } from './components/PackSettingsDialog'
 import { WebAudioPlayer } from './lib/WebAudioPlayer'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { isTauri } from './services/environment'
+import { openFiles as dialogOpenFiles, openDirectory as dialogOpenDirectory, saveFile as dialogSaveFile } from './services/dialogs'
+import { fileInputCache, getCachedFile } from './services/fileCache'
+import { readFileAsDataUrl, resolveMediaFile, saveBlobToFile } from './services/files'
+import { parseFile, selectDifficulty, convertBeatmap, ensureOszMediaCached } from './services/convert'
+import { exportBeatmap, exportAllBeatmaps, zipFolder, addCdtitleToZip } from './services/export'
+import { scanPack, loadPackBannerUrl, createDummyDiff, cleanDir, generateDummyDiffContent } from './services/pack'
+import { openFile } from './services/platform'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
@@ -46,9 +53,42 @@ function configFromEntry(entry: PackEntry): ExportConfig {
 
 async function loadMediaAsDataUrl(sourceDir: string, filename: string | null | undefined): Promise<string | null> {
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const resolved = await invoke<string>('resolve_file', { sourceDir, filename: filename ?? '' })
-    return await invoke<string>('read_file_as_data_url', { path: resolved })
+    const resolved = await resolveMediaFile(sourceDir, filename ?? '')
+    if (!resolved) return null
+    return await readFileAsDataUrl(resolved)
+  } catch {
+    return null
+  }
+}
+
+const _avatarCache = new Map<string, string>()
+
+async function loadCdtitleAsDataUrl(sourceDir: string, filename: string | null | undefined, creator?: string | null): Promise<string | null> {
+  try {
+    if (filename) {
+      const resolved = await resolveMediaFile(sourceDir, filename)
+      if (resolved) return await readFileAsDataUrl(resolved)
+    }
+  } catch { /* fall through */ }
+
+  if (creator) {
+    const cached = _avatarCache.get(creator)
+    if (cached) return cached
+    try {
+      const resp = await fetch(`/api/avatar?user=${encodeURIComponent(creator)}`)
+      if (resp.ok) {
+        const blob = await resp.blob()
+        const url = URL.createObjectURL(blob)
+        _avatarCache.set(creator, url)
+        return url
+      }
+    } catch { /* fall through */ }
+  }
+
+  try {
+    const resp = await fetch('/cdtitle_default.png')
+    const blob = await resp.blob()
+    return URL.createObjectURL(blob)
   } catch {
     return null
   }
@@ -57,8 +97,8 @@ async function loadMediaAsDataUrl(sourceDir: string, filename: string | null | u
 async function resolveMediaName(sourceDir: string, filename: string | null | undefined): Promise<string | null> {
   if (filename) return filename
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const resolved = await invoke<string>('resolve_file', { sourceDir, filename: '' })
+    const resolved = await resolveMediaFile(sourceDir, '')
+    if (!resolved) return null
     return resolved.split(/[/\\]+/).pop() || null
   } catch {
     return null
@@ -107,6 +147,7 @@ function App() {
 
   // Shared audio player — owned by App, used by AudioPlayer and PreviewOverlay
   const audioPlayerRef = useRef<WebAudioPlayer | null>(null)
+  const audioFileRef = useRef<File | string | null>(null)
   const [audioLoading, setAudioLoading] = useState(false)
   const [audioPlaying, setAudioPlaying] = useState(false)
   const [audioDuration, setAudioDuration] = useState(0)
@@ -119,7 +160,13 @@ function App() {
       if (e.key === 'F12') e.preventDefault()
       if (e.code === 'Space' && beatmap && mediaUrls.audio) {
         e.preventDefault()
-        if (!showPreview) setShowPreview(true)
+        if (!showPreview) {
+          const player = audioPlayerRef.current
+          if (player && player.paused && player.el.readyState >= 2) {
+            player.play().catch(() => {})
+          }
+          setShowPreview(true)
+        }
       }
       if (e.key === 'Escape') setShowPreview(false)
     }
@@ -165,7 +212,8 @@ function App() {
     if (!player) return
     if (mediaUrls.audio) {
       setAudioLoading(true)
-      player.load(mediaUrls.audio).finally(() => {
+      const source = audioFileRef.current || mediaUrls.audio
+      player.load(source).finally(() => {
         setAudioLoading(false)
         const bm = useConverterStore.getState().beatmap
         if (bm && bm.preview_time > 0) {
@@ -173,10 +221,11 @@ function App() {
         } else {
           player.currentTime = 0
         }
-        player.play().catch(() => {})
+        // Stay paused at preview point — no autoplay
       })
     } else {
       player.stop()
+      audioFileRef.current = null
     }
   }, [mediaUrls.audio])
 
@@ -194,12 +243,20 @@ function App() {
   // ── Multi-file queue ─────────────────────────────────────────
 
   const loadQueueMedia = useCallback(async (bm: Beatmap) => {
-    const [audio, bg, banner] = await Promise.all([
-      loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
+    if (bm.source_file) {
+      await ensureOszMediaCached(bm.source_file)
+    }
+    const audioFile = bm.audio_filename
+      ? await resolveMediaFile(bm.source_dir, bm.audio_filename).then(r => r ? getCachedFile(r) ?? null : null)
+      : null
+    audioFileRef.current = audioFile
+    const [audio, bg, banner, cdtitle] = await Promise.all([
+      audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
       loadMediaAsDataUrl(bm.source_dir, bm.background_filename),
       loadMediaAsDataUrl(bm.source_dir, bm.banner_filename),
+      loadCdtitleAsDataUrl(bm.source_dir, bm.cdtitle_filename, bm.creator),
     ])
-    setMediaUrls({ audio, background: bg, banner })
+    setMediaUrls({ audio, background: bg, banner, cdtitle })
   }, [setMediaUrls])
 
   const handleFilesSelected = useCallback(async (paths: string[]) => {
@@ -221,9 +278,8 @@ function App() {
       const path = paths[i]
       const id = newIds[i]
       try {
-        const { invoke } = await import('@tauri-apps/api/core')
         const dir = detectDirection(path)
-        const result = await invoke<Beatmap>('parse_file', { path, direction: dir })
+        const result = await parseFile(path, dir)
         const cfg = buildConfig(result)
         queueUpdateItem(id, { beatmap: result, config: cfg, status: 'ready' })
 
@@ -237,6 +293,7 @@ function App() {
         }
       } catch (e: unknown) {
         const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to parse file'
+        console.error('ParseFile error:', e)
         queueUpdateItem(id, { status: 'error', error: msg })
       }
     }
@@ -256,7 +313,8 @@ function App() {
     // Clear old content immediately to prevent flash
     setQueueLoading(true)
     setBeatmap(null)
-    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null })
+    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null, cdtitle: null })
+    audioFileRef.current = null
     audioPlayerRef.current?.stop()
     setAudioPlaying(false)
     setLastExportPath(null)
@@ -265,12 +323,21 @@ function App() {
     queueSetActiveId(item.id)
     setDirection(item.direction)
     try {
-      const [audio, bg, banner] = await Promise.all([
-        loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.audio_filename),
+      // Ensure media files for this source are in the cache (restores OSZ media if previously cleared)
+      if (item.beatmap.source_file) {
+        await ensureOszMediaCached(item.beatmap.source_file)
+      }
+      const audioFile = item.beatmap.audio_filename
+        ? await resolveMediaFile(item.beatmap.source_dir, item.beatmap.audio_filename).then(r => r ? getCachedFile(r) ?? null : null)
+        : null
+      audioFileRef.current = audioFile
+      const [audio, bg, banner, cdtitle] = await Promise.all([
+        audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.audio_filename),
         loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.background_filename),
         loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.banner_filename),
+        loadCdtitleAsDataUrl(item.beatmap.source_dir, item.beatmap.cdtitle_filename, item.beatmap.creator),
       ])
-      useConverterStore.getState().setMediaUrls({ audio, background: bg, banner })
+      useConverterStore.getState().setMediaUrls({ audio, background: bg, banner, cdtitle })
       setBeatmap(item.beatmap, item.direction)
       useConverterStore.getState().updateConfig(item.config)
     } catch {
@@ -281,14 +348,12 @@ function App() {
   }, [queueActiveId, queueUpdateItem, queueSetActiveId, setDirection, setBeatmap, loadMediaAsDataUrl])
 
   const handleQueueAddFiles = useCallback(async () => {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const selected = await open({
+    const selected = await dialogOpenFiles({
       multiple: true,
       filters: [{ name: 'Beatmap Files', extensions: ['osu', 'osz', 'sm'] }],
     })
     if (selected) {
-      const paths = Array.isArray(selected) ? selected : [selected]
-      handleFilesSelected(paths)
+      handleFilesSelected(selected)
     }
   }, [handleFilesSelected])
 
@@ -363,40 +428,99 @@ function App() {
     setError(null)
     setLastExportPath(null)
 
-    const { invoke } = await import('@tauri-apps/api/core')
-    const { open } = await import('@tauri-apps/plugin-dialog')
-
-    const baseDir = await open({ directory: true, title: 'Export all to folder' })
-    if (!baseDir) { setConverting(false); return }
+    const baseDir = isTauri() ? await dialogOpenDirectory({ title: 'Export all to folder' }) : ''
+    if (baseDir === null) { setConverting(false); return }
 
     const allPaths: string[] = []
 
     for (const item of readyItems) {
-      // Use chosen output_format for all items; preserve per-item metadata edits
       const cfg = { ...item.config, output_format: activeCfg.output_format }
       queueUpdateItem(item.id, { status: 'converting' })
       try {
-        const ext = item.filePath.split('.').pop()?.toLowerCase() || ''
+        const diffCount = item.beatmap?.available_difficulties?.length || 1
 
-        if (ext === 'sm' || ext === 'osz') {
-          const paths = await invoke<string[]>('export_all_beatmaps', {
-            sourceFile: item.filePath,
-            config: cfg,
-            outputDir: baseDir,
-          })
-          allPaths.push(...paths)
-        } else {
-          const maxIdx = item.beatmap!.available_difficulties.length
-          for (let i = 0; i < Math.max(1, maxIdx); i++) {
-            const bm = await invoke<Beatmap>('select_difficulty', { path: item.filePath, index: i })
-            const content = await invoke<string>('convert_beatmap', { beatmap: bm, config: cfg })
-            const result = await invoke<string>('export_beatmap', {
-              beatmap: bm, config: cfg,
-              convertedContent: content, outputDir: baseDir,
-              filenameSuffix: bm.difficulty_name,
-            })
-            allPaths.push(result)
+        if (isTauri()) {
+          if (diffCount <= 1) {
+            // Single diff — export flat
+            if (item.filePath.endsWith('.sm') || item.filePath.endsWith('.osz')) {
+              const paths = await exportAllBeatmaps(item.filePath, cfg, baseDir)
+              allPaths.push(...paths)
+            } else {
+              const bm = await selectDifficulty(item.filePath, 0)
+              const content = await convertBeatmap(bm, cfg)
+              const result = await exportBeatmap(bm, cfg, content, baseDir, bm.difficulty_name)
+              allPaths.push(result)
+            }
+          } else {
+            // Multi-diff — export to baseDir/songName/diffName/file.sm
+            const itemTitle = cfg.title || item.beatmap?.title || item.fileName.replace(/\.[^.]+$/, '')
+            const safeName = itemTitle.replace(/[/\\?%*:|"<>]/g, '_')
+            const { invoke } = await import('@tauri-apps/api/core')
+            for (let i = 0; i < diffCount; i++) {
+              const bm = await selectDifficulty(item.filePath, i)
+              const diffName = bm.difficulty_name || `Diff ${i+1}`
+              const safeDiff = diffName.replace(/[/\\?%*:|"<>]/g, '_')
+              const diffDir = `${baseDir}/${safeName}/${safeDiff}`
+              try { await invoke('clean_dir', { path: diffDir }) } catch {}
+              const diffCfg = {
+                ...cfg,
+                audio_filename: bm.audio_filename || cfg.audio_filename,
+                background_filename: bm.background_filename ?? cfg.background_filename,
+                difficulty_name: bm.difficulty_name,
+              }
+              const content = await convertBeatmap(bm, diffCfg)
+              const result = await exportBeatmap(bm, diffCfg, content, diffDir, diffName, true)
+              allPaths.push(result)
+            }
           }
+        } else if (diffCount > 1) {
+          // Web multi-diff: single zip with folder structure
+          const itemTitle = cfg.title || item.beatmap?.title || item.fileName.replace(/\.[^.]+$/, '')
+          const safeName = itemTitle.replace(/[/\\?%*:|"<>]/g, '_')
+          const JSZip = (await import('jszip')).default
+          const zip = new JSZip()
+          const addedMedia = new Set<string>()
+          for (let i = 0; i < diffCount; i++) {
+            const bm = await selectDifficulty(item.filePath, i)
+            const diffName = bm.difficulty_name || `Diff ${i+1}`
+            const safeDiff = diffName.replace(/[/\\?%*:|"<>]/g, '_')
+            const diffCfg = {
+              ...cfg,
+              audio_filename: bm.audio_filename || cfg.audio_filename,
+              background_filename: bm.background_filename ?? cfg.background_filename,
+              difficulty_name: bm.difficulty_name,
+            }
+            const content = await convertBeatmap(bm, diffCfg)
+            const ext = bm.source_format === 'OsuMania' ? '.sm' : '.osu'
+            const filename = `${safeName}${diffName ? ` [${diffName}]` : ''}${ext}`
+            zip.file(`${safeName}/${safeDiff}/${filename}`, content)
+            const mediaFields: string[] = [diffCfg.audio_filename]
+            if (diffCfg.background_filename) mediaFields.push(diffCfg.background_filename)
+            if (bm.banner_filename) mediaFields.push(bm.banner_filename)
+            for (const field of mediaFields) {
+              if (!field) continue
+              const key = await resolveMediaFile(bm.source_dir, field)
+              if (!key) continue
+              const file = getCachedFile(key)
+              if (!file) continue
+              const mediaName = field.split('/').pop() || field
+              const mediaPath = `${safeName}/${safeDiff}/${mediaName}`
+              if (addedMedia.has(mediaPath)) continue
+              addedMedia.add(mediaPath)
+              zip.file(mediaPath, await file.arrayBuffer())
+            }
+            await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, `${safeName}/${safeDiff}/cdtitle.png`, bm.creator)
+          }
+          const blob = await zip.generateAsync({ type: 'blob' })
+          const zipName = `${safeName}.zip`
+          await saveBlobToFile(blob, zipName)
+          allPaths.push(zipName)
+        } else {
+          // Web single-diff: download individually
+          const bm = await selectDifficulty(item.filePath, 0)
+          const content = await convertBeatmap(bm, cfg)
+          const result = await exportBeatmap(bm, cfg, content, '', bm.difficulty_name)
+          allPaths.push(result)
         }
         queueUpdateItem(item.id, { status: 'completed', exportPath: allPaths[allPaths.length - 1], config: cfg })
       } catch (e: unknown) {
@@ -426,61 +550,123 @@ function App() {
 
     const cur = useConverterStore.getState().config
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-
       let exportDir: string | null = null
 
-      if (cur.output_format === 'osz') {
-        const { save } = await import('@tauri-apps/plugin-dialog')
-        exportDir = await save({
-          title: 'Export as .osz',
-          defaultPath: `${cur.artist} - ${cur.title} (${cur.creator}).osz`,
-          filters: [{ name: 'osu! beatmap package', extensions: ['osz'] }],
-        })
+      if (isTauri()) {
+        if (cur.output_format === 'osz') {
+          exportDir = await dialogSaveFile({
+            title: 'Export as .osz',
+            defaultPath: `${cur.artist} - ${cur.title} (${cur.creator}).osz`,
+            filters: [{ name: 'osu! beatmap package', extensions: ['osz'] }],
+          })
+        } else {
+          exportDir = await dialogOpenDirectory({
+            title: 'Choose export folder',
+          })
+        }
       } else {
-        const { open } = await import('@tauri-apps/plugin-dialog')
-        exportDir = await open({
-          directory: true,
-          title: 'Choose export folder',
-        })
+        exportDir = ''
       }
 
-      if (!exportDir) { setConverting(false); return }
+      if (exportDir === null) { setConverting(false); return }
 
       const allPaths: string[] = []
 
       if (separateSongs) {
-        for (const idx of indices) {
-          const bm = await invoke<Beatmap>('select_difficulty', { path: beatmap.source_file, index: idx })
-          const diffLabel = bm.difficulty_name || `Diff ${idx}`
-          const diffCfg = {
-            ...cur,
-            audio_filename: bm.audio_filename || cur.audio_filename,
-            background_filename: bm.background_filename ?? cur.background_filename,
-            difficulty_name: bm.difficulty_name,
-            preview_time: bm.preview_time,
+        if (!isTauri() && indices.length > 1) {
+          // Web multi-diff: single zip with folder structure
+          const songName = cur.title || beatmap?.title || 'export'
+          const safeName = songName.replace(/[/\\?%*:|"<>]/g, '_')
+          const JSZip = (await import('jszip')).default
+          const zip = new JSZip()
+          const addedMedia = new Set<string>()
+          for (const idx of indices) {
+            const bm = await selectDifficulty(beatmap.source_file, idx)
+            const diffLabel = bm.difficulty_name || `Diff ${idx}`
+            const safeDiff = diffLabel.replace(/[/\\?%*:|"<>]/g, '_')
+            const diffCfg = {
+              ...cur,
+              audio_filename: bm.audio_filename || cur.audio_filename,
+              background_filename: bm.background_filename ?? cur.background_filename,
+              difficulty_name: bm.difficulty_name,
+              preview_time: bm.preview_time,
+            }
+            const content = await convertBeatmap(bm, diffCfg)
+            const ext = bm.source_format === 'OsuMania' ? '.sm' : '.osu'
+            const filename = `${safeName}${diffLabel ? ` [${diffLabel}]` : ''}${ext}`
+            zip.file(`${safeName}/${safeDiff}/${filename}`, content)
+            const mediaFields: string[] = [diffCfg.audio_filename]
+            if (diffCfg.background_filename) mediaFields.push(diffCfg.background_filename)
+            if (bm.banner_filename) mediaFields.push(bm.banner_filename)
+            for (const field of mediaFields) {
+              if (!field) continue
+              const key = await resolveMediaFile(bm.source_dir, field)
+              if (!key) continue
+              const file = getCachedFile(key)
+              if (!file) continue
+              const mediaName = field.split('/').pop() || field
+              const mediaPath = `${safeName}/${safeDiff}/${mediaName}`
+              if (addedMedia.has(mediaPath)) continue
+              addedMedia.add(mediaPath)
+              zip.file(mediaPath, await file.arrayBuffer())
+            }
+            await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, `${safeName}/${safeDiff}/cdtitle.png`, bm.creator)
           }
-          const content = await invoke<string>('convert_beatmap', { beatmap: bm, config: diffCfg })
-          const result = await invoke<string>('export_beatmap', { beatmap: bm, config: diffCfg, convertedContent: content, outputDir: exportDir, filenameSuffix: diffLabel })
-          allPaths.push(result)
+          const blob = await zip.generateAsync({ type: 'blob' })
+          const zipName = `${safeName}.zip`
+          await saveBlobToFile(blob, zipName)
+          allPaths.push(zipName)
+        } else if (isTauri() && indices.length > 1) {
+          // Desktop multi-diff
+          for (const idx of indices) {
+            const bm = await selectDifficulty(beatmap.source_file, idx)
+            const diffLabel = bm.difficulty_name || `Diff ${idx}`
+            const diffCfg = {
+              ...cur,
+              audio_filename: bm.audio_filename || cur.audio_filename,
+              background_filename: bm.background_filename ?? cur.background_filename,
+              difficulty_name: bm.difficulty_name,
+              preview_time: bm.preview_time,
+            }
+            const content = await convertBeatmap(bm, diffCfg)
+            const songName = cur.title || beatmap?.title || 'export'
+            const safeName = songName.replace(/[/\\?%*:|"<>]/g, '_')
+            const safeDiff = diffLabel.replace(/[/\\?%*:|"<>]/g, '_')
+            const diffDir = `${exportDir}/${safeName}/${safeDiff}`
+            const { invoke } = await import('@tauri-apps/api/core')
+            try { await invoke('clean_dir', { path: diffDir }) } catch {}
+            const result = await exportBeatmap(bm, diffCfg, content, diffDir, diffLabel, true)
+            allPaths.push(result)
+          }
+        } else {
+          // Single-diff (both platforms)
+          for (const idx of indices) {
+            const bm = await selectDifficulty(beatmap.source_file, idx)
+            const diffLabel = bm.difficulty_name || `Diff ${idx}`
+            const diffCfg = {
+              ...cur,
+              audio_filename: bm.audio_filename || cur.audio_filename,
+              background_filename: bm.background_filename ?? cur.background_filename,
+              difficulty_name: bm.difficulty_name,
+              preview_time: bm.preview_time,
+            }
+            const content = await convertBeatmap(bm, diffCfg)
+            const result = await exportBeatmap(bm, diffCfg, content, exportDir, diffLabel)
+            allPaths.push(result)
+          }
         }
       } else {
         const allAtOne = Math.abs(cur.conversion_rate - 1) < 0.01
         const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
         if (isOsz && direction === 'osu-to-etterna' && indices.length > 1 && allAtOne) {
-          const paths = await invoke<string[]>('export_all_beatmaps', {
-            sourceFile: beatmap.source_file,
-            config: cur,
-            outputDir: exportDir,
-            indices,
-          })
+          const paths = await exportAllBeatmaps(beatmap.source_file, cur, exportDir, indices)
           allPaths.push(...paths)
         } else {
           for (const idx of indices) {
-            const bm = await invoke<Beatmap>('select_difficulty', { path: beatmap.source_file, index: idx })
+            const bm = await selectDifficulty(beatmap.source_file, idx)
             const cfg = { ...cur }
-            const content = await invoke<string>('convert_beatmap', { beatmap: bm, config: cfg })
-            const result = await invoke<string>('export_beatmap', { beatmap: bm, config: cfg, convertedContent: content, outputDir: exportDir })
+            const content = await convertBeatmap(bm, cfg)
+            const result = await exportBeatmap(bm, cfg, content, exportDir)
             allPaths.push(result)
           }
         }
@@ -545,8 +731,7 @@ function App() {
 
   const handleOpenPack = useCallback(async (folder?: string) => {
     if (!folder) {
-      const { open } = await import('@tauri-apps/plugin-dialog')
-      const picked = await open({ directory: true, title: 'Select pack folder' })
+      const picked = await dialogOpenDirectory({ title: 'Select pack folder' })
       if (!picked) return
       folder = picked
     }
@@ -557,8 +742,7 @@ function App() {
     setError(null)
     setPackBannerUrl(null)
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const entries = await invoke<PackEntry[]>('scan_pack', { folder })
+      const entries = await scanPack(folder)
       setPackEntries(entries)
     } catch (e: unknown) {
       setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to scan pack')
@@ -568,12 +752,10 @@ function App() {
     }
     // Load pack banner separately so a failure doesn't undo the pack
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const banner = await invoke<string | null>('find_pack_banner', { folder })
-      if (banner) {
-        setPackBannerPath(banner)
-        const url = await invoke<string>('read_file_as_data_url', { path: banner })
-        setPackBannerUrl(url)
+      const result = await loadPackBannerUrl(folder)
+      if (result) {
+        setPackBannerPath(result.filePath)
+        setPackBannerUrl(result.url)
       }
     } catch {
       // banner is optional
@@ -597,7 +779,8 @@ function App() {
 
     // Clear previous song immediately to prevent flash
     useConverterStore.getState().setBeatmap(null)
-    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null })
+    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null, cdtitle: null })
+    audioFileRef.current = null
     const audio = audioPlayerRef.current
     if (audio) {
       audio.stop()
@@ -605,19 +788,20 @@ function App() {
     setAudioPlaying(false)
 
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const bm = await invoke<Beatmap>('parse_file', {
-        path: entry.source_file,
-        direction: 'etterna-to-osu',
-      })
+      const bm = await parseFile(entry.source_file, 'etterna-to-osu')
 
       // Load media
-      const [newAudio, bg, bgName] = await Promise.all([
-        loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
+      const audioFile = bm.audio_filename
+        ? await resolveMediaFile(bm.source_dir, bm.audio_filename).then(r => r ? getCachedFile(r) ?? null : null)
+        : null
+      audioFileRef.current = audioFile
+      const [newAudio, bg, cdtitle, bgName] = await Promise.all([
+        audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
         loadMediaAsDataUrl(bm.source_dir, bm.background_filename),
+        loadCdtitleAsDataUrl(bm.source_dir, bm.cdtitle_filename, bm.creator),
         resolveMediaName(bm.source_dir, bm.background_filename),
       ])
-      useConverterStore.getState().setMediaUrls({ audio: newAudio, background: bg, banner: null })
+      useConverterStore.getState().setMediaUrls({ audio: newAudio, background: bg, banner: null, cdtitle })
       useConverterStore.getState().setBeatmap(bm, 'etterna-to-osu')
 
       // Restore any saved config for this song (after setBeatmap resets it)
@@ -646,7 +830,8 @@ function App() {
     }
     setPackEditing(null)
     useConverterStore.getState().setBeatmap(null)
-    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null })
+    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null, cdtitle: null })
+    audioFileRef.current = null
     const audio = audioPlayerRef.current
     if (audio) {
       audio.stop()
@@ -700,67 +885,128 @@ function App() {
     setConverting(true)
     setError(null)
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const { open } = await import('@tauri-apps/plugin-dialog')
-
       const packFolderName = packFolder ? packFolder.split(/[/\\]+/).filter(Boolean).pop() || 'pack' : 'pack'
       const useOsz = settings.mode === 'osz'
 
-      const exportDir = await open({
-        directory: true,
-        title: useOsz ? 'Choose where to save the .osz' : 'Choose export folder',
-      })
-      if (!exportDir) { setConverting(false); return }
+      if (!isTauri()) {
+        // Web path: single .osz matching desktop pack output
+        const JSZip = (await import('jszip')).default
+        const zip = new JSZip()
+        const { parseSmAll } = await import('./services/convert')
+        const addedMedia = new Set<string>()
 
-      const workDir = useOsz
-        ? `${exportDir}/__henkan_pack_${packFolderName}`
-        : `${exportDir}/${packFolderName}`
+        for (const idx of indices) {
+          const entry = packEntries[idx]
+          if (!entry) continue
 
-      // Clean the workDir so stale files from previous conversions don't persist
-      await invoke('clean_dir', { path: workDir })
+          const savedCfg = packConfigsRef.current.get(idx)
+          const baseCfg = savedCfg || configFromEntry(entry)
 
-      const allPaths: string[] = []
+          const beatmaps = await parseSmAll(entry.source_file)
 
-      for (const idx of indices) {
-        const entry = packEntries[idx]
-        if (!entry) continue
-        const savedCfg = packConfigsRef.current.get(idx)
-        const cfg = {
-          ...(savedCfg || configFromEntry(entry)),
-          output_format: 'folder' as const,
-          creator: settings.creator || (savedCfg || configFromEntry(entry)).creator,
-          hp_drain: settings.hp_drain,
-          overall_difficulty: settings.overall_difficulty,
+          const cfg = {
+            ...baseCfg,
+            output_format: 'folder' as const,
+            creator: settings.creator || baseCfg.creator,
+            hp_drain: settings.hp_drain,
+            overall_difficulty: settings.overall_difficulty,
+          }
+
+          for (let bi = 0; bi < beatmaps.length; bi++) {
+            const bm = beatmaps[bi]
+            if (!bm) continue
+            const content = await convertBeatmap(bm, cfg)
+            const safeTitle = (cfg.title || bm.title).replace(/[/\\?%*:|"<>]/g, '_')
+            const safeDiff = (cfg.difficulty_name || bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
+            const ext = '.osu'
+            const filename = safeDiff ? `${safeTitle} [${safeDiff}]${ext}` : `${safeTitle}${ext}`
+            zip.file(filename, content)
+          }
+
+          const mediaFields: string[] = []
+          if (entry.available_difficulties[0]?.audio_filename) {
+            mediaFields.push(entry.available_difficulties[0].audio_filename)
+          }
+          if (entry.background_filename) {
+            mediaFields.push(entry.background_filename)
+          }
+          for (const field of mediaFields) {
+            const key = await resolveMediaFile(entry.source_dir, field)
+            if (!key) continue
+            const file = getCachedFile(key)
+            if (!file) continue
+            const name = key.split('/').pop() || key
+            if (addedMedia.has(name)) continue
+            addedMedia.add(name)
+            zip.file(name, await file.arrayBuffer())
+          }
         }
-        const paths = await invoke<string[]>('export_all_beatmaps', {
-          sourceFile: entry.source_file,
-          config: cfg,
-          outputDir: workDir,
-          packName: packFolderName,
-        })
-        allPaths.push(...paths)
-      }
 
-      // Pack-identifying dummy .osu (just shows the pack banner in song select)
-      const firstEntry = packEntries[indices[0]]
-      const firstCfg = packConfigsRef.current.get(indices[0]) || configFromEntry(firstEntry)
-      await invoke<string>('create_dummy_diff', {
-        title: packFolderName,
-        creator: settings.creator || firstCfg.creator,
-        packBannerPath,
-        outputDir: workDir,
-      })
+          // Add cdtitle.png (default fallback)
+          await addCdtitleToZip(zip, '', null, 'cdtitle.png')
 
-      if (useOsz) {
-        const oszPath = `${exportDir}/${packFolderName}.osz`
-        await invoke<string>('zip_folder', { folderPath: workDir, outputPath: oszPath })
-        setLastExportPath(oszPath)
-        setExportPath(oszPath)
+          // Add dummy diff
+          const bannerName = packBannerPath?.split('/').pop()
+          const dummyContent = generateDummyDiffContent(packFolderName, settings.creator, bannerName)
+          zip.file(`${packFolderName}.osu`, dummyContent)
+
+          // Add pack banner at root
+        if (packBannerPath && bannerName) {
+          const bannerFile = getCachedFile(packBannerPath)
+          if (bannerFile) {
+            zip.file(bannerName, await bannerFile.arrayBuffer())
+          }
+        }
+
+        const blob = await zip.generateAsync({ type: 'blob' })
+        await saveBlobToFile(blob, `${packFolderName}.osz`)
+        setLastExportPath(`${packFolderName}.osz`)
+        trackEvent('pack_conversion_completed', { count: String(indices.length), mode: 'osz' })
       } else {
-        setLastExportPath(allPaths.join('\n'))
-        setExportPath(exportDir)
+        // Tauri path
+        const exportDir = await dialogOpenDirectory({
+          title: useOsz ? 'Choose where to save the .osz' : 'Choose export folder',
+        })
+        if (!exportDir) { setConverting(false); return }
+
+        const workDir = useOsz
+          ? `${exportDir}/__henkan_pack_${packFolderName}`
+          : `${exportDir}/${packFolderName}`
+
+        await cleanDir(workDir)
+
+        const allPaths: string[] = []
+
+        for (const idx of indices) {
+          const entry = packEntries[idx]
+          if (!entry) continue
+          const savedCfg = packConfigsRef.current.get(idx)
+          const cfg = {
+            ...(savedCfg || configFromEntry(entry)),
+            output_format: 'folder' as const,
+            creator: settings.creator || (savedCfg || configFromEntry(entry)).creator,
+            hp_drain: settings.hp_drain,
+            overall_difficulty: settings.overall_difficulty,
+          }
+          const paths = await exportAllBeatmaps(entry.source_file, cfg, workDir, undefined, packFolderName)
+          allPaths.push(...paths)
+        }
+
+        const firstEntry = packEntries[indices[0]]
+        const firstCfg = packConfigsRef.current.get(indices[0]) || configFromEntry(firstEntry)
+        await createDummyDiff(packFolderName, settings.creator || firstCfg.creator, packBannerPath, workDir)
+
+        if (useOsz) {
+          const oszPath = `${exportDir}/${packFolderName}.osz`
+          await zipFolder(workDir, oszPath)
+          setLastExportPath(oszPath)
+          setExportPath(oszPath)
+        } else {
+          setLastExportPath(allPaths.join('\n'))
+          setExportPath(exportDir)
+        }
+        trackEvent('pack_conversion_completed', { count: String(indices.length), mode: settings.mode })
       }
-      trackEvent('pack_conversion_completed', { count: String(indices.length), mode: settings.mode })
     } catch (e: unknown) {
       const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Pack conversion failed'
       setError(msg)
@@ -779,8 +1025,7 @@ function App() {
     setError(null)
     setSwitchingDifficulty(true)
     try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const bm = await invoke<Beatmap>('select_difficulty', { path: beatmap.source_file, index })
+      const bm = await selectDifficulty(beatmap.source_file, index)
 
       // Update beatmap + config first (preserves user-customized fields, syncs rest from new beatmap)
       useConverterStore.getState().updateBeatmapDifficulty(bm)
@@ -791,12 +1036,18 @@ function App() {
       // Load media using config values — now correctly reflects user customizations
       // while falling back to the new difficulty's defaults for non-customized fields
       const cfg = useConverterStore.getState().config
-      const [audio, bg, banner] = await Promise.all([
-        loadMediaAsDataUrl(bm.source_dir, cfg.audio_filename || bm.audio_filename),
+      const audioFilename = cfg.audio_filename || bm.audio_filename
+      const audioFile = audioFilename
+        ? await resolveMediaFile(bm.source_dir, audioFilename).then(r => r ? getCachedFile(r) ?? null : null)
+        : null
+      audioFileRef.current = audioFile
+      const [audio, bg, banner, cdtitle] = await Promise.all([
+        audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(bm.source_dir, audioFilename),
         loadMediaAsDataUrl(bm.source_dir, cfg.background_filename || bm.background_filename),
         loadMediaAsDataUrl(bm.source_dir, cfg.banner_filename || bm.banner_filename),
+        loadCdtitleAsDataUrl(bm.source_dir, cfg.cdtitle_filename || bm.cdtitle_filename, cfg.creator || bm.creator),
       ])
-      useConverterStore.getState().setMediaUrls({ audio, background: bg, banner })
+      useConverterStore.getState().setMediaUrls({ audio, background: bg, banner, cdtitle })
     } catch (e: unknown) {
       setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to select difficulty')
     } finally {
@@ -806,20 +1057,19 @@ function App() {
 
   const handleChangeFile = useCallback(async (field: string, _current: string | null): Promise<void> => {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog')
-      const selected = await open({
+      const selected = await dialogOpenFiles({
         multiple: false,
         filters: [
           { name: 'Media files', extensions: ['mp3', 'ogg', 'wav', 'jpg', 'jpeg', 'png', 'gif'] },
         ],
       })
-      if (selected) {
-        const { invoke } = await import('@tauri-apps/api/core')
-        const url = await invoke<string>('read_file_as_data_url', { path: selected })
+      if (selected && selected.length > 0) {
+        const path = selected[0]
+        const url = await readFileAsDataUrl(path)
         const key = field === 'cdtitle' ? 'cdtitle_filename' : `${field}_filename`
         const store = useConverterStore.getState()
-        store.updateConfig({ [key]: selected })
-        if (field !== 'cdtitle') {
+        store.updateConfig({ [key]: path })
+        if (url) {
           store.setMediaUrls({ ...store.mediaUrls, [field]: url })
         }
       }
@@ -829,9 +1079,8 @@ function App() {
   const handleOpenInOsu = useCallback(async () => {
     const path = exportPath || lastExportPath
     if (!path) return
-    const { invoke } = await import('@tauri-apps/api/core')
     try {
-      await invoke('open_file', { path })
+      await openFile(path)
     } catch { /* ignore */ }
   }, [lastExportPath, exportPath])
 
@@ -844,36 +1093,43 @@ function App() {
     setLastExportPath(null)
   }, [])
 
-  // Drag-and-drop (Tauri native events provide real paths)
+  // Drag-and-drop
   const lastDropRef = useRef(0)
   useEffect(() => {
     let unlisten: (() => void) | undefined
     let cancelled = false
-    getCurrentWindow().onDragDropEvent((evt) => {
-      if (cancelled) return
-      if (evt.payload.type === 'enter') {
-        setDragging(true)
-      } else if (evt.payload.type === 'leave') {
-        setDragging(false)
-      } else if (evt.payload.type === 'drop') {
-        setDragging(false)
-        const now = Date.now()
-        if (now - lastDropRef.current < 500) return
-        lastDropRef.current = now
-        const seen = new Set<string>()
-        const files: string[] = []
-        const dirs: string[] = []
-        for (const p of evt.payload.paths) {
-          if (seen.has(p)) continue
-          seen.add(p)
-          const ext = p.match(/\.[^.]+$/)?.[0]?.toLowerCase()
-          if (!ext || !ACCEPTED_EXTS.includes(ext)) dirs.push(p)
-          else files.push(p)
-        }
-        if (dirs.length > 0) handleOpenPack(dirs[0])
-        if (files.length > 0) handleFilesSelected(files)
-      }
-    }).then(fn => { unlisten = fn })
+
+    if (isTauri()) {
+      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+        if (cancelled) return
+        getCurrentWindow().onDragDropEvent((evt) => {
+          if (cancelled) return
+          if (evt.payload.type === 'enter') {
+            setDragging(true)
+          } else if (evt.payload.type === 'leave') {
+            setDragging(false)
+          } else if (evt.payload.type === 'drop') {
+            setDragging(false)
+            const now = Date.now()
+            if (now - lastDropRef.current < 500) return
+            lastDropRef.current = now
+            const seen = new Set<string>()
+            const files: string[] = []
+            const dirs: string[] = []
+            for (const p of evt.payload.paths) {
+              if (seen.has(p)) continue
+              seen.add(p)
+              const ext = p.match(/\.[^.]+$/)?.[0]?.toLowerCase()
+              if (!ext || !ACCEPTED_EXTS.includes(ext)) dirs.push(p)
+              else files.push(p)
+            }
+            if (dirs.length > 0) handleOpenPack(dirs[0])
+            if (files.length > 0) handleFilesSelected(files)
+          }
+        }).then(fn => { unlisten = fn })
+      }).catch(() => {})
+    }
+
     return () => {
       cancelled = true
       unlisten?.()
@@ -893,6 +1149,26 @@ function App() {
         onDrop={(e) => {
           e.preventDefault()
           setDragging(false)
+          if (isTauri()) return
+          const files = Array.from(e.dataTransfer?.files || [])
+          if (!files.length) return
+          const now = Date.now()
+          if (now - lastDropRef.current < 500) return
+          lastDropRef.current = now
+          fileInputCache.push(...files)
+          const seen = new Set<string>()
+          const filePaths: string[] = []
+          const dirs: string[] = []
+          for (const f of files) {
+            const p = (f as any).path || f.name
+            if (seen.has(p)) continue
+            seen.add(p)
+            const ext = p.match(/\.[^.]+$/)?.[0]?.toLowerCase()
+            if (!ext || !ACCEPTED_EXTS.includes(ext)) dirs.push(p)
+            else filePaths.push(p)
+          }
+          if (dirs.length > 0) handleOpenPack(dirs[0])
+          if (filePaths.length > 0) handleFilesSelected(filePaths)
         }}
       >
         {mediaUrls.background && (
@@ -1126,19 +1402,21 @@ function App() {
 
         {/* Preview overlay */}
         {showPreview && beatmap && mediaUrls.audio && (
-          <PreviewOverlay
-            audioPlayerRef={audioPlayerRef}
-            playing={audioPlaying}
-            duration={audioDuration}
-            notes={beatmap.notes}
-            keys={beatmap.keys}
-            bpm={Math.round(60000 / (beatmap.timing_points.find(tp => tp.uninherited)?.beat_length ?? 600))}
-            backgroundUrl={mediaUrls.background}
-            previewTime={beatmap.preview_time}
-            sourceFormat={beatmap.source_format}
-            onSetPreviewTime={handleSetPreviewTime}
-            onClose={() => setShowPreview(false)}
-          />
+          <div>
+            <PreviewOverlay
+              audioPlayerRef={audioPlayerRef}
+              playing={audioPlaying}
+              duration={audioDuration}
+              notes={beatmap.notes}
+              keys={beatmap.keys}
+              bpm={Math.round(60000 / (beatmap.timing_points.find(tp => tp.uninherited)?.beat_length ?? 600))}
+              backgroundUrl={mediaUrls.background}
+              previewTime={beatmap.preview_time}
+              sourceFormat={beatmap.source_format}
+              onSetPreviewTime={handleSetPreviewTime}
+              onClose={() => setShowPreview(false)}
+            />
+          </div>
         )}
 
         {/* Convert dialog */}
@@ -1204,13 +1482,15 @@ function App() {
                   ))}
                 </div>
                 <div className="flex gap-3 justify-center animate-fade-in">
-                  <button
-                    onClick={handleOpenInOsu}
-                    className="px-6 py-2.5 rounded-xl bg-accent text-white font-medium text-sm
-                               hover:bg-accent-hover active:scale-[0.97] transition-all duration-75 shadow-lg shadow-accent/25"
-                  >
-                    {direction === 'etterna-to-osu' ? 'Open in osu!' : 'Show in explorer'}
-                  </button>
+                  {isTauri() && (
+                    <button
+                      onClick={handleOpenInOsu}
+                      className="px-6 py-2.5 rounded-xl bg-accent text-white font-medium text-sm
+                                 hover:bg-accent-hover active:scale-[0.97] transition-all duration-75 shadow-lg shadow-accent/25"
+                    >
+                      {direction === 'etterna-to-osu' ? 'Open in osu!' : 'Show in explorer'}
+                    </button>
+                  )}
                   <button
                     onClick={handleDismissExport}
                     className="px-6 py-2.5 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-400 font-medium text-sm
