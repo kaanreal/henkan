@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { PackEntry } from '../types/beatmap'
+import { resolveMediaFile, readFileAsDataUrl } from '../services/files'
 
 const _bgCache = new Map<string, string>()
 
@@ -34,14 +35,10 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
     if (_bgCache.has(key)) return
     const load = async () => {
       try {
-        const { invoke } = await import('@tauri-apps/api/core')
-        const resolved = await invoke<string>('resolve_file', {
-          sourceDir: entry.source_dir,
-          filename: entry.background_filename ?? '',
-        })
-        if (cancelled) return
-        const url = await invoke<string>('read_file_as_data_url', { path: resolved })
-        if (cancelled) return
+        const resolved = await resolveMediaFile(entry.source_dir, entry.background_filename ?? '')
+        if (cancelled || !resolved) return
+        const url = await readFileAsDataUrl(resolved)
+        if (cancelled || !url) return
         _bgCache.set(key, url)
         setBgUrl(url)
       } catch {

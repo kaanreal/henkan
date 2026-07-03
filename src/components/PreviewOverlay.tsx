@@ -36,7 +36,6 @@ const FLASH_DURATION = 120
 const LOOK_AHEAD_MIN = 150
 const LOOK_AHEAD_MAX = 600
 const LOOK_AHEAD_DEFAULT = 380
-const CLOSE_ANIM_MS = 150
 const TIMING_OFFSET = 0 // Web Audio API's decodeAudioData handles LAME padding natively; no manual shift needed
 
 // Persist settings across preview open/close
@@ -65,6 +64,7 @@ export function PreviewOverlay({
   const toastTimer = useRef<number | undefined>(undefined)
 
   const smoothTimeRef = useRef(0)
+  const warmupFrames = useRef(2)
 
   // Sync rate + preservePitch from store on mount (in case they changed since last preview session)
   useEffect(() => {
@@ -104,7 +104,7 @@ export function PreviewOverlay({
   const close = useCallback(() => {
     if (closing) return
     setClosing(true)
-    setTimeout(() => onCloseRef.current(), CLOSE_ANIM_MS)
+    setTimeout(() => onCloseRef.current(), 200)
   }, [closing])
 
   const showToast = useCallback((msg: string) => {
@@ -177,6 +177,8 @@ export function PreviewOverlay({
       audioCtxRef.current = null
     }
   }, [audioPlayerRef, ensureClap])
+
+
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -309,66 +311,70 @@ export function PreviewOverlay({
         ctx.stroke()
       }
 
-      // Hit flashes + hitsounds
-      const flashes = new Array(cols).fill(0)
-      const hsOn = hitsoundRef.current
-      for (let i = 0; i < allNotes.length; i++) {
-        const nt = allNotes[i]
-        const t = nt.time_ms
-        if (t > nowMs + FLASH_DURATION) continue
-        if (t + 200 < nowMs) continue
+      const drawNotes = warmupFrames.current <= 0
+      if (drawNotes) {
+        // Hit flashes + hitsounds
+        const flashes = new Array(cols).fill(0)
+        const hsOn = hitsoundRef.current
+        for (let i = 0; i < allNotes.length; i++) {
+          const nt = allNotes[i]
+          const t = nt.time_ms
+          if (t > nowMs + FLASH_DURATION) continue
+          if (t + 200 < nowMs) continue
 
-        if (t >= nowMs - FLASH_DURATION && t <= nowMs) {
-          const age = (nowMs - t) / FLASH_DURATION
-          flashes[nt.column] = Math.max(flashes[nt.column], 1 - age)
-        }
+          if (t >= nowMs - FLASH_DURATION && t <= nowMs) {
+            const age = (nowMs - t) / FLASH_DURATION
+            flashes[nt.column] = Math.max(flashes[nt.column], 1 - age)
+          }
 
-        if (hsOn && el && !el.paused) {
-          const diff = Math.abs(t - nowMs)
-          if (diff < 30) {
-            const bucket = Math.round(t / 10) * 10
-            const key = `b:${bucket}`
-            if (!firedKeys.current.has(key)) {
-              firedKeys.current.add(key)
-              const bucketCount = (groups.current.get(bucket) ?? 0) + 1
-              groups.current.set(bucket, bucketCount)
+          if (hsOn && el && !el.paused) {
+            const diff = Math.abs(t - nowMs)
+            if (diff < 30) {
+              const bucket = Math.round(t / 10) * 10
+              const key = `b:${bucket}`
+              if (!firedKeys.current.has(key)) {
+                firedKeys.current.add(key)
+                const bucketCount = (groups.current.get(bucket) ?? 0) + 1
+                groups.current.set(bucket, bucketCount)
+              }
             }
           }
         }
-      }
 
-      // Fire batched hitsounds
-      if (groups.current.size > 0) {
-        for (const count of groups.current.values()) {
-          playHit(gainForCount(count))
+        // Fire batched hitsounds
+        if (groups.current.size > 0) {
+          for (const count of groups.current.values()) {
+            playHit(gainForCount(count))
+          }
+          groups.current.clear()
         }
-        groups.current.clear()
+
+        // Receptor — dark by default, bright flash on hit
+        const glowH = colW * 0.5
+        const linePad = 4 * dpr
+        for (let i = 0; i < cols; i++) {
+          const f = flashes[i]
+          const isHit = f > 0
+
+          // Fade below the line
+          const glowAlpha = isHit ? 0.1 + f * 0.5 : 0.03
+          const grad = ctx.createLinearGradient(0, hitY, 0, hitY + glowH)
+          grad.addColorStop(0, `rgba(255,255,255,${glowAlpha})`)
+          grad.addColorStop(1, 'transparent')
+          ctx.fillStyle = grad
+          ctx.fillRect(i * colW + 2, hitY, colW - 4, glowH)
+
+          // Hit line
+          const lineAlpha = isHit ? f : 0.15
+          ctx.strokeStyle = `rgba(255,255,255,${lineAlpha})`
+          ctx.lineWidth = 1.5 * dpr
+          ctx.strokeRect(i * colW + linePad, hitY - 0.5 * dpr, colW - linePad * 2, 1 * dpr)
+        }
       }
-
-      // Receptor — dark by default, bright flash on hit
-      const glowH = colW * 0.5
-      const linePad = 4 * dpr
-      for (let i = 0; i < cols; i++) {
-        const f = flashes[i]
-        const isHit = f > 0
-
-        // Fade below the line
-        const glowAlpha = isHit ? 0.1 + f * 0.5 : 0.03
-        const grad = ctx.createLinearGradient(0, hitY, 0, hitY + glowH)
-        grad.addColorStop(0, `rgba(255,255,255,${glowAlpha})`)
-        grad.addColorStop(1, 'transparent')
-        ctx.fillStyle = grad
-        ctx.fillRect(i * colW + 2, hitY, colW - 4, glowH)
-
-        // Hit line
-        const lineAlpha = isHit ? f : 0.15
-        ctx.strokeStyle = `rgba(255,255,255,${lineAlpha})`
-        ctx.lineWidth = 1.5 * dpr
-        ctx.strokeRect(i * colW + linePad, hitY - 0.5 * dpr, colW - linePad * 2, 1 * dpr)
-      }
+      if (warmupFrames.current > 0) warmupFrames.current--
 
       // Notes
-      for (let i = 0; i < allNotes.length; i++) {
+      if (drawNotes) for (let i = 0; i < allNotes.length; i++) {
         const note = allNotes[i]
         const t = note.time_ms
         if (t > nowMs + lookAhead) continue
@@ -431,7 +437,6 @@ export function PreviewOverlay({
     return b
   }, [notes, duration])
   const maxCount = Math.max(...buckets, 1)
-  const [mounted] = useState(true)
 
   return (
     <div className={`fixed inset-0 z-50 flex flex-col select-none bg-[#080c18] ${closing ? 'animate-fade-out' : 'animate-fade-in'}`}
@@ -525,10 +530,6 @@ export function PreviewOverlay({
 
       {/* Timeline */}
       <style>{`
-        @keyframes dotPop {
-          from { opacity: 0; transform: scaleY(0); }
-          to { opacity: 1; transform: scaleY(1); }
-        }
         @keyframes toastIn {
           from { opacity: 0; transform: translateY(-16px) scale(0.92); }
           to { opacity: 1; transform: translateY(0) scale(1); }
@@ -575,11 +576,7 @@ export function PreviewOverlay({
                   <div
                     key={i}
                     className="flex-1 flex flex-col-reverse items-center"
-                    style={{
-                      animation: mounted ? `dotPop 0.35s ${i * 12}ms ease-out both` : 'none',
-                      transformOrigin: 'bottom',
-                      gap: '1px',
-                    }}
+                    style={{ gap: '1px' }}
                   >
                     {Array.from({ length: MAX_DOTS }).map((_, j) => {
                       const isOn = j < numDots

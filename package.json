@@ -16,6 +16,7 @@
     "@tauri-apps/api": "^2.5.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-fs": "^2.5.1",
+    "jszip": "^3.10.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "zustand": "^5.0.0"
@@ -27,6 +28,7 @@
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vercel/node": "^5.8.22",
     "@vitejs/plugin-react": "^6.0.1",
     "esbuild": "^0.28.0",
     "eslint": "^10.3.0",

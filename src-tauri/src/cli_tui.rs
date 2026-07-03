@@ -1705,16 +1705,26 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let out_dir = self.resolve_output_dir();
         self.last_export_dir = std::path::PathBuf::from(&out_dir);
 
-        // Include difficulty name in folder to prevent overwriting when
-        // multiple diffs with different audio are exported to the same parent.
+        // Match desktop/web: output_dir/song_name/diff_name/file + media
         let diff_safe = henkan_lib::sanitize_filename(&config.difficulty_name, 40);
+        let song_name = format!("{} - {}", config.artist, config.title);
+        let safe_sub = henkan_lib::sanitize_filename(&song_name, 60);
+        let export_dir = if diff_safe.is_empty() {
+            std::path::PathBuf::from(&out_dir).join(&safe_sub)
+        } else {
+            std::path::PathBuf::from(&out_dir).join(&safe_sub).join(&diff_safe)
+        };
+        if let Err(e) = std::fs::create_dir_all(&export_dir) {
+            self.output_lines.push(format!("  \u{2717} Dir error: {}", e));
+            return;
+        }
         let folder_name = if diff_safe.is_empty() {
             None
         } else {
-            Some(format!("{} [{}] ({})", config.title, config.creator, diff_safe))
+            Some(format!("{} [{}]", config.title, diff_safe))
         };
 
-        match henkan_lib::cli_export_beatmap_named(&bm, &config, &content, &out_dir, folder_name.as_deref()) {
+        match henkan_lib::cli_export_beatmap_named(&bm, &config, &content, &export_dir.to_string_lossy(), folder_name.as_deref(), true) {
             Ok(_) => {
                 self.results.push(ExportResult {
                     title: config.title.clone(),
@@ -2864,7 +2874,7 @@ if ($res -eq 'OK') { $d.SelectedPath }
                             let title = if !m.title_ov.is_empty() { &m.title_ov } else { &m.name };
                             let artist = if !m.artist_ov.is_empty() { &m.artist_ov } else { &m.artist };
                             let creator = if !m.mapper_ov.is_empty() { &m.mapper_ov } else { &m.mapper };
-                            let diff = if !m.diff_ov.is_empty() { &m.diff_ov } else { &bm.difficulty_name };
+                            let diff = if !m.diff_ov.is_empty() { m.diff_ov.clone() } else { bm.difficulty_name.clone() };
 
                             config.title = title.clone();
                             config.artist = artist.clone();
@@ -2891,15 +2901,25 @@ if ($res -eq 'OK') { $d.SelectedPath }
                                 }
                             };
 
-                            let sub = format!("{} [{}]", pack_name, title);
-                            let safe_sub = henkan_lib::sanitize_filename(&sub, 60);
-                            let export_dir = export_base.join(&safe_sub);
+                            let song_name = format!("{} - {}", artist, title);
+                            let safe_sub = henkan_lib::sanitize_filename(&song_name, 60);
+                            let diff_safe = henkan_lib::sanitize_filename(&diff, 40);
+                            let export_dir = if diff_safe.is_empty() {
+                                export_base.join(&safe_sub)
+                            } else {
+                                export_base.join(&safe_sub).join(&diff_safe)
+                            };
                             if let Err(e) = std::fs::create_dir_all(&export_dir) {
                                 self.output_lines.push(format!("  \u{2717} Dir error: {}", e));
                                 continue;
                             }
+                            let fn_folder = if diff_safe.is_empty() {
+                                None
+                            } else {
+                                Some(format!("{} [{}]", title, diff_safe))
+                            };
 
-                            match henkan_lib::cli_export_beatmap(&bm, &config, &content, &export_dir.to_string_lossy()) {
+                            match henkan_lib::cli_export_beatmap_named(&bm, &config, &content, &export_dir.to_string_lossy(), fn_folder.as_deref(), true) {
                                 Ok(_) => {
                                     let to_label = if direction == "osu-to-etterna" { "StepMania" } else { "osu!" };
                                     self.results.push(ExportResult {
@@ -3028,17 +3048,39 @@ if ($res -eq 'OK') { $d.SelectedPath }
                             continue;
                         }
                     } else {
-                        // Folder mode: write directly to export_dir/song_name/
+                        // Folder mode: write to export_dir/song_name/diff_name/
                         let sub = format!("{} - {}", artist, title);
                         let safe_sub = henkan_lib::sanitize_filename(&sub, 60);
-                        let export_dir = export_base.join(&safe_sub);
-                        if let Err(e) = std::fs::create_dir_all(&export_dir) {
+                        let diff_dir = export_base.join(&safe_sub).join(&diff_safe);
+                        if let Err(e) = std::fs::create_dir_all(&diff_dir) {
                             self.output_lines.push(format!("  \u{2717} Dir error: {}", e));
                             continue;
                         }
-                        if let Err(e) = std::fs::write(export_dir.join(&entry_name), &converted) {
+                        if let Err(e) = std::fs::write(diff_dir.join(&entry_name), &converted) {
                             self.output_lines.push(format!("  \u{2717} Write error ({}): {}", m.name, e));
                             continue;
+                        }
+                        // Copy audio and background into per-diff folder
+                        if !audio_filename.is_empty() {
+                            let needs_rate = (rate - 1.0).abs() > f64::EPSILON;
+                            if needs_rate {
+                                let src = henkan_lib::resolve_audio_path(&source_dir, &audio_filename);
+                                let dest = diff_dir.join(&audio_filename);
+                                if let Some(ff) = henkan_lib::find_ffmpeg() {
+                                    if let Err(e) = henkan_lib::speed_up_audio_ffmpeg(&ff, &src, &dest, rate, pitch) {
+                                        self.output_lines.push(format!("  \u{2717} Audio error ({}): {}", m.name, e));
+                                    }
+                                } else if let Err(e) = henkan_lib::speed_up_audio_symphonia(&src.to_string_lossy(), &dest.to_string_lossy(), rate) {
+                                    self.output_lines.push(format!("  \u{2717} Audio error ({}): {}", m.name, e));
+                                }
+                            } else {
+                                let _ = henkan_lib::copy_media(&source_dir, &audio_filename, &diff_dir, &audio_filename);
+                            }
+                        }
+                        if let Some(ref bg) = bg_filename {
+                            if !bg.is_empty() {
+                                let _ = henkan_lib::copy_media(&source_dir, bg, &diff_dir, bg);
+                            }
                         }
                     }
                     any_ok = true;
@@ -3046,53 +3088,6 @@ if ($res -eq 'OK') { $d.SelectedPath }
 
                 if !any_ok {
                     continue;
-                }
-
-                // Copy audio (once per song)
-                if !audio_filename.is_empty() {
-                    let needs_rate = (rate - 1.0).abs() > f64::EPSILON;
-                    if needs_rate {
-                        let src = henkan_lib::resolve_audio_path(&source_dir, &audio_filename);
-                        let dest = if let Some(ref td) = tmp_dir {
-                            td.join(&audio_filename)
-                        } else {
-                            let sub = format!("{} - {}", artist, title);
-                            let safe_sub = henkan_lib::sanitize_filename(&sub, 60);
-                            export_base.join(&safe_sub).join(&audio_filename)
-                        };
-                        if let Some(ff) = henkan_lib::find_ffmpeg() {
-                            if let Err(e) = henkan_lib::speed_up_audio_ffmpeg(&ff, &src, &dest, rate, pitch) {
-                                self.output_lines.push(format!("  \u{2717} Audio error ({}): {}", m.name, e));
-                            }
-                        } else if let Err(e) = henkan_lib::speed_up_audio_symphonia(&src.to_string_lossy(), &dest.to_string_lossy(), rate) {
-                            self.output_lines.push(format!("  \u{2717} Audio error ({}): {}", m.name, e));
-                        }
-                    } else if let Some(ref td) = tmp_dir {
-                        if let Err(e) = henkan_lib::copy_media(&source_dir, &audio_filename, td, &audio_filename) {
-                            self.output_lines.push(format!("  \u{2717} Audio error ({}): {}", m.name, e));
-                        }
-                    } else {
-                        let sub = format!("{} - {}", artist, title);
-                        let safe_sub = henkan_lib::sanitize_filename(&sub, 60);
-                        let export_dir = export_base.join(&safe_sub);
-                        if let Err(e) = henkan_lib::copy_media(&source_dir, &audio_filename, &export_dir, &audio_filename) {
-                            self.output_lines.push(format!("  \u{2717} Audio error ({}): {}", m.name, e));
-                        }
-                    }
-                }
-
-                // Copy background (once per song)
-                if let Some(ref bg) = bg_filename {
-                    if !bg.is_empty() {
-                        if let Some(ref td) = tmp_dir {
-                            let _ = henkan_lib::copy_media(&source_dir, bg, td, bg);
-                        } else {
-                            let sub = format!("{} - {}", artist, title);
-                            let safe_sub = henkan_lib::sanitize_filename(&sub, 60);
-                            let export_dir = export_base.join(&safe_sub);
-                            let _ = henkan_lib::copy_media(&source_dir, bg, &export_dir, bg);
-                        }
-                    }
                 }
 
                 total_sections += beatmaps.len();
