@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/kaanreal/henkan/compare/v1.1.0...v1.1.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* Track WASM files for Vercel deployment ([297bc3b](https://github.com/kaanreal/henkan/commit/297bc3b804bdf410b13688442d71afd704fafcac))
+
 ## [1.1.0](https://github.com/kaanreal/henkan/compare/v1.0.0...v1.1.0) (2026-07-03)
 
 
