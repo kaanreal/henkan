@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.1](https://github.com/kaanreal/henkan/compare/v1.1.0...v1.1.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* Clear file cache before opening pack directory ([e33d298](https://github.com/kaanreal/henkan/commit/e33d298bd4da20538b143f50a93eddc758a52a3f))
+* Don't dedup pack files by name, use webkitRelativePath only ([e33d298](https://github.com/kaanreal/henkan/commit/e33d298bd4da20538b143f50a93eddc758a52a3f))
+* Don't use background images as pack banner on web ([95bd91d](https://github.com/kaanreal/henkan/commit/95bd91d413a4406f8a2fdde18db0d926e6932a84))
+* **web:** Align banner handling and cache cleanup ([d6b7ae5](https://github.com/kaanreal/henkan/commit/d6b7ae53b70dc3c3b58cd741de05792313befd55))
+* **web:** Correct source_file and resolveMediaFile for pack songs ([efa6c9d](https://github.com/kaanreal/henkan/commit/efa6c9dbfdfc1b8bb6873844b8c03b67a82f6a4e))
+* **web:** Fixed pack conversion issues [skip ci] ([e33d298](https://github.com/kaanreal/henkan/commit/e33d298bd4da20538b143f50a93eddc758a52a3f))
+
 ## [1.1.0](https://github.com/kaanreal/henkan/compare/v1.0.0...v1.1.0) (2026-07-03)
 
 
