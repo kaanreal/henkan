@@ -919,7 +919,11 @@ function App() {
           for (let bi = 0; bi < beatmaps.length; bi++) {
             const bm = beatmaps[bi]
             if (!bm) continue
-            const content = await convertBeatmap(bm, cfg)
+            let content = await convertBeatmap(bm, cfg)
+            // Fix hardcoded "bg.jpg" reference to the actual background filename (matching desktop pack mode)
+            if (bm.background_filename) {
+              content = content.replace('"bg.jpg"', `"${bm.background_filename}"`)
+            }
             const safeTitle = (cfg.title || bm.title).replace(/[/\\?%*:|"<>]/g, '_')
             const safeDiff = (cfg.difficulty_name || bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
             const ext = '.osu'

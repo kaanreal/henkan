@@ -83,11 +83,16 @@ export async function resolveMediaFile(
 
   if (!filename) return null
 
-  // Prefer full-path match first, then basename
   const baseName = filename.split(/[/\\]+/).pop() || filename
 
-  if (getCachedFile(filename)) return filename
+  // Try exact path match first (sourceDir + "/" + baseName)
+  if (sourceDir) {
+    const fullPath = `${sourceDir}/${baseName}`
+    const cached = getCachedFile(fullPath)
+    if (cached) return fullPath
+  }
 
+  if (getCachedFile(filename)) return filename
   if (getCachedFile(baseName)) return baseName
 
   const files = getCachedFiles()
@@ -95,12 +100,16 @@ export async function resolveMediaFile(
     const base = n.split(/[/\\]+/).pop() || n
     return base.replace(/\.[^.]+$/, '').toLowerCase()
   }
-  const match = files.find(f =>
-    f.name.toLowerCase() === filename.toLowerCase() ||
-    f.name.toLowerCase() === baseName.toLowerCase() ||
-    cacheKey(f.name) === cacheKey(filename) ||
-    cacheKey(f.name) === cacheKey(baseName),
-  )
+  // Prefer files from the same source directory
+  const match = files.find(f => {
+    const inRightDir = !sourceDir || !f.webkitRelativePath ||
+      f.webkitRelativePath.startsWith(sourceDir + '/')
+    if (!inRightDir) return false
+    return f.name.toLowerCase() === filename.toLowerCase() ||
+      f.name.toLowerCase() === baseName.toLowerCase() ||
+      cacheKey(f.name) === cacheKey(filename) ||
+      cacheKey(f.name) === cacheKey(baseName)
+  })
   return match ? match.name : null
 }
 

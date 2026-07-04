@@ -290,19 +290,11 @@ export async function convertBeatmap(
   if (beatmap.source_format === 'Etterna') {
     return await wasmConvertEtternaToOsu(beatmap, config)
   }
-  let result = await wasmConvertOsuToEtterna(
+  return await wasmConvertOsuToEtterna(
     beatmap,
     config.global_timing_ms,
     config.creator,
   )
-  // The WASM converter has a legacy fallback that writes #BANNER:bg.png when
-  // there's no explicit banner but a background exists. Remove it to match
-  // the desktop (native Rust converter) behavior.
-  const hasBanner = beatmap.banner_filename && beatmap.banner_filename.trim().length > 0
-  if (!hasBanner) {
-    result = result.replace(/^#BANNER:bg\.png;\n?/m, '')
-  }
-  return result
 }
 
 export async function scaleTimingForRate(
