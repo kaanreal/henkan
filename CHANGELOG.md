@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.1](https://github.com/kaanreal/henkan/compare/v1.1.0...v1.1.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* Auto-discover background image in pack conversion when .sm has no #BACKGROUND ([af75cfb](https://github.com/kaanreal/henkan/commit/af75cfb78b96dd6abb39452b955521e61caf09f7))
+* Clear file cache before opening pack directory ([e33d298](https://github.com/kaanreal/henkan/commit/e33d298bd4da20538b143f50a93eddc758a52a3f))
+* Don't dedup pack files by name, use webkitRelativePath only ([e33d298](https://github.com/kaanreal/henkan/commit/e33d298bd4da20538b143f50a93eddc758a52a3f))
+* Don't use background images as pack banner on web ([95bd91d](https://github.com/kaanreal/henkan/commit/95bd91d413a4406f8a2fdde18db0d926e6932a84))
+* Restore auto-discovery of background images when .sm has no #BACKGROUND ([41c7741](https://github.com/kaanreal/henkan/commit/41c77410e6139a285ee088de09ba912f117d7d88))
+* **web:** Align banner handling and cache cleanup ([d6b7ae5](https://github.com/kaanreal/henkan/commit/d6b7ae53b70dc3c3b58cd741de05792313befd55))
+* **web:** Correct source_file and resolveMediaFile for pack songs ([efa6c9d](https://github.com/kaanreal/henkan/commit/efa6c9dbfdfc1b8bb6873844b8c03b67a82f6a4e))
+* **web:** Fixed pack conversion issues [skip ci] ([e33d298](https://github.com/kaanreal/henkan/commit/e33d298bd4da20538b143f50a93eddc758a52a3f))
+* **web:** Handle non-UTF-8 .sm files; fix pack banner lookup by webkitRelativePath ([76c9d51](https://github.com/kaanreal/henkan/commit/76c9d51637e2f7cbae02ea8ebd5f2e4855e78907))
+
 ## [1.1.0](https://github.com/kaanreal/henkan/compare/v1.0.0...v1.1.0) (2026-07-03)
 
 
