@@ -70,17 +70,33 @@ export async function findPackBanner(folder: string): Promise<string | null> {
     const imageFiles = files.filter(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name))
     const rootImages = imageFiles.filter(isRootLevel)
 
-    // Match desktop: first root-level image by extension
-    if (rootImages.length > 0) return rootImages[0].name
+    if (rootImages.length > 0) {
+      const bannerNames = ['banner', 'bn']
+      const preferred = rootImages.find(f => {
+        const base = f.name.replace(/\.[^.]+$/, '').toLowerCase()
+        return bannerNames.includes(base)
+      })
+      return (preferred || rootImages[0]).name
+    }
+
+    if (imageFiles.length > 0) {
+      // Fall back to any image named "banner" or "bn" anywhere in the pack
+      const named = imageFiles.find(f => {
+        const base = f.name.replace(/\.[^.]+$/, '').toLowerCase()
+        return base === 'banner' || base === 'bn'
+      })
+      return named?.name || imageFiles[0].name
+    }
   } else {
     // Drag-dropped files without webkitRelativePath — can't determine hierarchy
+    // Just find any image named "banner" or "bn"
     const imageFiles = files.filter(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name))
-    const bannerNames = ['banner', 'bn']
     const named = imageFiles.find(f => {
       const base = f.name.replace(/\.[^.]+$/, '').toLowerCase()
-      return bannerNames.includes(base)
+      return base === 'banner' || base === 'bn'
     })
     if (named) return named.name
+    if (imageFiles.length > 0) return imageFiles[0].name
   }
 
   return null
