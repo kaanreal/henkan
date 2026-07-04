@@ -70,7 +70,8 @@ export async function openDirectory(options: { title?: string } = {}): Promise<s
       }
       await walk(handle)
       for (const f of files) {
-        const existing = fileInputCache.find(c => c.name === f.name)
+        const path = (f as any).webkitRelativePath || f.name
+        const existing = fileInputCache.find(c => (c as any).webkitRelativePath === path)
         if (!existing) fileInputCache.push(f)
       }
       return handle.name
