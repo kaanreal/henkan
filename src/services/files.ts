@@ -81,7 +81,16 @@ export async function resolveMediaFile(
     }
   }
 
-  if (!filename) return null
+  if (!filename) {
+    // Auto-discovery: find first image in sourceDir (matched desktop behavior)
+    if (sourceDir) {
+      const files = getCachedFiles()
+      const match = files.find(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name) &&
+        (!f.webkitRelativePath || f.webkitRelativePath.startsWith(sourceDir + '/')))
+      return match ? (match as any).webkitRelativePath || match.name : null
+    }
+    return null
+  }
 
   const baseName = filename.split(/[/\\]+/).pop() || filename
 
