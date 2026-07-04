@@ -34,7 +34,7 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
         ? file.webkitRelativePath.slice(folder.length + 1)
         : file.webkitRelativePath
       entries.push({
-        source_file: (file as any).path || file.name,
+        source_file: (file as any).path || file.webkitRelativePath || file.name,
         source_dir: relPath.split('/')[0] || folder,
         title: first.title,
         artist: first.artist,
@@ -78,25 +78,14 @@ export async function findPackBanner(folder: string): Promise<string | null> {
       })
       return (preferred || rootImages[0]).name
     }
-
-    if (imageFiles.length > 0) {
-      // Fall back to any image named "banner" or "bn" anywhere in the pack
-      const named = imageFiles.find(f => {
-        const base = f.name.replace(/\.[^.]+$/, '').toLowerCase()
-        return base === 'banner' || base === 'bn'
-      })
-      return named?.name || imageFiles[0].name
-    }
   } else {
     // Drag-dropped files without webkitRelativePath — can't determine hierarchy
-    // Just find any image named "banner" or "bn"
     const imageFiles = files.filter(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name))
     const named = imageFiles.find(f => {
       const base = f.name.replace(/\.[^.]+$/, '').toLowerCase()
       return base === 'banner' || base === 'bn'
     })
     if (named) return named.name
-    if (imageFiles.length > 0) return imageFiles[0].name
   }
 
   return null
