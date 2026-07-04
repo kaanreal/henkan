@@ -935,9 +935,9 @@ function App() {
           if (entry.available_difficulties[0]?.audio_filename) {
             mediaFields.push(entry.available_difficulties[0].audio_filename)
           }
-          if (entry.background_filename) {
-            mediaFields.push(entry.background_filename)
-          }
+          const bgField = entry.background_filename ||
+            await resolveMediaFile(entry.source_dir, '').then(r => r?.split('/').pop() || null)
+          if (bgField) mediaFields.push(bgField)
           for (const field of mediaFields) {
             const key = await resolveMediaFile(entry.source_dir, field)
             if (!key) continue

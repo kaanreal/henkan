@@ -82,12 +82,23 @@ export async function resolveMediaFile(
   }
 
   if (!filename) {
-    // Auto-discovery: find first image in sourceDir (matched desktop behavior)
+    // Auto-discovery: scan sourceDir for a background image (matches desktop scan_source_dir_for_bg)
     if (sourceDir) {
-      const files = getCachedFiles()
-      const match = files.find(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name) &&
+      const files = getCachedFiles().filter(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name) &&
         (!f.webkitRelativePath || f.webkitRelativePath.startsWith(sourceDir + '/')))
-      return match ? (match as any).webkitRelativePath || match.name : null
+      // Skip files that are clearly not backgrounds (banners, cd titles)
+      const candidates = files.filter(f => {
+        const stem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
+        return !['cdtitle', 'cd', 'bn', 'banner'].includes(stem) && !stem.includes('cdtitle')
+      })
+      if (candidates.length === 0) return null
+      // Prefer file with "bg" or "background" in the name
+      const preferred = candidates.find(f => {
+        const stem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
+        return stem.includes('bg') || stem.includes('background')
+      })
+      const match = preferred || candidates[0]
+      return (match as any).webkitRelativePath || match.name
     }
     return null
   }
