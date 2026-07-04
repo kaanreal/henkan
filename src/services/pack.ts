@@ -15,8 +15,7 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
   // Filter .sm files belonging to this pack folder
   const smFiles = files.filter(f => {
     if (f.webkitRelativePath) {
-      return f.webkitRelativePath.toLowerCase().endsWith('.sm') &&
-        (f.webkitRelativePath.startsWith(folder + '/') || f.webkitRelativePath.split('/')[0] === folder)
+      return f.webkitRelativePath.toLowerCase().endsWith('.sm')
     }
     // Drag-dropped files — all .sm files are from this pack
     return f.name.toLowerCase().endsWith('.sm')
@@ -31,9 +30,12 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
       const first = beatmaps[0]
       if (!first) continue
 
+      const relPath = file.webkitRelativePath.startsWith(folder + '/')
+        ? file.webkitRelativePath.slice(folder.length + 1)
+        : file.webkitRelativePath
       entries.push({
         source_file: (file as any).path || file.name,
-        source_dir: file.webkitRelativePath.split('/')[0] || folder,
+        source_dir: relPath.split('/')[0] || folder,
         title: first.title,
         artist: first.artist,
         background_filename: first.background_filename,

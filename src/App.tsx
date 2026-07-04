@@ -732,11 +732,11 @@ function App() {
 
   const handleOpenPack = useCallback(async (folder?: string) => {
     if (!folder) {
+      clearFileCache()
       const picked = await dialogOpenDirectory({ title: 'Select pack folder' })
       if (!picked) return
       folder = picked
     }
-    clearFileCache()
     setPackFolder(folder)
     setPackEditing(null)
     setPackSelected(new Set())
