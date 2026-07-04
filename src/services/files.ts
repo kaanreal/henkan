@@ -23,9 +23,18 @@ export async function readFileAsDataUrl(pathOrFile: string | File): Promise<stri
   return null
 }
 
+async function decodeFileText(file: File): Promise<string> {
+  const buf = await file.arrayBuffer()
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf)
+  } catch {
+    return new TextDecoder('iso-8859-1').decode(buf)
+  }
+}
+
 export async function readFileText(pathOrFile: string | File): Promise<string> {
   if (pathOrFile instanceof File) {
-    return await pathOrFile.text()
+    return await decodeFileText(pathOrFile)
   }
 
   if (isTauri()) {
@@ -37,7 +46,7 @@ export async function readFileText(pathOrFile: string | File): Promise<string> {
 
   const cached = getCachedFile(pathOrFile)
   if (cached) {
-    return await cached.text()
+    return await decodeFileText(cached)
   }
 
   throw new Error(`File not found: ${pathOrFile}`)

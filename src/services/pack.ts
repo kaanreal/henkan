@@ -25,7 +25,14 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
 
   for (const file of smFiles) {
     try {
-      const content = await file.text()
+      const buf = await file.arrayBuffer()
+      let content: string
+      try {
+        content = new TextDecoder('utf-8', { fatal: true }).decode(buf)
+      } catch {
+        // Fall back to ISO-8859-1 for non-UTF-8 .sm files (common in legacy stepmania packs)
+        content = new TextDecoder('iso-8859-1').decode(buf)
+      }
       const beatmaps = await wasmParseSmAll(content)
       const first = beatmaps[0]
       if (!first) continue
@@ -76,7 +83,8 @@ export async function findPackBanner(folder: string): Promise<string | null> {
         const base = f.name.replace(/\.[^.]+$/, '').toLowerCase()
         return bannerNames.includes(base)
       })
-      return (preferred || rootImages[0]).name
+      const file = preferred || rootImages[0]
+      return file.webkitRelativePath || file.name
     }
   } else {
     // Drag-dropped files without webkitRelativePath — can't determine hierarchy
@@ -106,7 +114,7 @@ export async function loadPackBannerUrl(folder: string): Promise<{ url: string; 
   if (!cachedFile) return null
   const url = await readFileAsDataUrl(cachedFile)
   if (!url) return null
-  return { url, filePath: bannerFile }
+  return { url, filePath: cachedFile.webkitRelativePath || cachedFile.name }
 }
 
 export async function createDummyDiff(
