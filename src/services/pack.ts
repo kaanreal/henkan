@@ -37,6 +37,11 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
       const first = beatmaps[0]
       if (!first) continue
 
+      // Extract raw #BACKGROUND: value from .sm content (parsed beatmap may have
+      // fallbacked to #BANNER when #BACKGROUND is empty — we want the real value)
+      const bgMatch = content.match(/#BACKGROUND\s*:\s*([^;\n\r]+)/i)
+      const rawBackground = bgMatch?.[1]?.trim() || null
+
       const relPath = file.webkitRelativePath.startsWith(folder + '/')
         ? file.webkitRelativePath.slice(folder.length + 1)
         : file.webkitRelativePath
@@ -45,7 +50,8 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
         source_dir: relPath.split('/')[0] || folder,
         title: first.title,
         artist: first.artist,
-        background_filename: first.background_filename,
+        background_filename: rawBackground,
+        banner_filename: first.banner_filename,
         available_difficulties: first.available_difficulties,
       })
     } catch {
@@ -56,7 +62,7 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
   return entries
 }
 
-export async function findPackBanner(folder: string): Promise<string | null> {
+export async function findPackBanner(folder: string): Promise<File | string | null> {
   if (isTauri()) {
     const { invoke } = await import('@tauri-apps/api/core')
     return await invoke<string | null>('find_pack_banner', { folder })
@@ -83,8 +89,7 @@ export async function findPackBanner(folder: string): Promise<string | null> {
         const base = f.name.replace(/\.[^.]+$/, '').toLowerCase()
         return bannerNames.includes(base)
       })
-      const file = preferred || rootImages[0]
-      return file.webkitRelativePath || file.name
+      return preferred || rootImages[0]
     }
   } else {
     // Drag-dropped files without webkitRelativePath — can't determine hierarchy
@@ -93,13 +98,13 @@ export async function findPackBanner(folder: string): Promise<string | null> {
       const base = f.name.replace(/\.[^.]+$/, '').toLowerCase()
       return base === 'banner' || base === 'bn'
     })
-    if (named) return named.name
+    if (named) return named
   }
 
   return null
 }
 
-export async function loadPackBannerUrl(folder: string): Promise<{ url: string; filePath: string } | null> {
+export async function loadPackBannerUrl(folder: string): Promise<{ url: string; filePath: string; file?: File } | null> {
   if (isTauri()) {
     const { invoke } = await import('@tauri-apps/api/core')
     const banner = await invoke<string | null>('find_pack_banner', { folder })
@@ -110,11 +115,18 @@ export async function loadPackBannerUrl(folder: string): Promise<{ url: string; 
 
   const bannerFile = await findPackBanner(folder)
   if (!bannerFile) return null
+
+  if (bannerFile instanceof File) {
+    const url = await readFileAsDataUrl(bannerFile)
+    if (!url) return null
+    return { url, filePath: bannerFile.webkitRelativePath || bannerFile.name, file: bannerFile }
+  }
+
   const cachedFile = getCachedFile(bannerFile)
   if (!cachedFile) return null
   const url = await readFileAsDataUrl(cachedFile)
   if (!url) return null
-  return { url, filePath: cachedFile.webkitRelativePath || cachedFile.name }
+  return { url, filePath: cachedFile.webkitRelativePath || cachedFile.name, file: cachedFile }
 }
 
 export async function createDummyDiff(
