@@ -280,86 +280,26 @@ publish_choco() {
   rm -rf "$CHOCO_DIR"
   mkdir -p "$CHOCO_DIR/tools"
 
-  cat > "$CHOCO_DIR/henkan.nuspec" <<NUSPEC
-<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
-  <metadata>
-    <id>henkan</id>
-    <version>$VER</version>
-    <title>Henkan</title>
-    <authors>kaanreal</authors>
-    <owners>kaanreal</owners>
-    <projectUrl>https://github.com/kaanreal/henkan</projectUrl>
-    <iconUrl>https://raw.githubusercontent.com/kaanreal/henkan/main/public/logo32.png</iconUrl>
-    <licenseUrl>https://github.com/kaanreal/henkan/blob/main/LICENSE</licenseUrl>
-    <projectSourceUrl>https://github.com/kaanreal/henkan</projectSourceUrl>
-    <bugTrackerUrl>https://github.com/kaanreal/henkan/issues</bugTrackerUrl>
-    <packageSourceUrl>https://github.com/kaanreal/henkan</packageSourceUrl>
-    <tags>osu osu-mania etterna stepmania beatmap converter vsrg rhythm-game</tags>
-    <summary>osu!mania ↔ Etterna / StepMania beatmap converter</summary>
-    <description>Henkan (\u5909\u63db) is a cross-platform desktop and CLI tool for converting beatmaps between osu!mania (.osu/.osz) and Etterna / StepMania (.sm) formats.</description>
-    <releaseNotes>https://github.com/kaanreal/henkan/releases/tag/v$VER</releaseNotes>
-    <dependencies>
-      <dependency id="chocolatey-core.extension" version="1.4.0" />
-    </dependencies>
-  </metadata>
-  <files>
-    <file src="tools\\\\**" target="tools" />
-  </files>
-</package>
-NUSPEC
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  TEMPLATES="$SCRIPT_DIR/templates"
 
-  cat > "$CHOCO_DIR/tools/chocolateyinstall.ps1" <<CHOCO
-\\\$ErrorActionPreference = 'Stop'
-\\\$toolsDir   = "\$(Split-Path -parent \\\$MyInvocation.MyCommand.Definition)"
-\\\$url        = '$msi_url'
-\\\$checksum   = '$msi_sha'
-\\\$checksumType = 'sha256'
-\\\$packageArgs = @{
-  packageName    = \\\$env:ChocolateyPackageName
-  fileType       = 'msi'
-  url            = \\\$url
-  checksum       = \\\$checksum
-  checksumType   = \\\$checksumType
-  softwareName   = 'Henkan*'
-  silentArgs     = '/quiet /norestart'
-  validExitCodes = @(0, 3010, 1641)
-}
-Install-ChocolateyPackage @packageArgs
-CHOCO
+  cp "$TEMPLATES/henkan.nuspec" "$CHOCO_DIR/henkan.nuspec"
+  cp "$TEMPLATES/chocolateyinstall.ps1" "$CHOCO_DIR/tools/"
+  cp "$TEMPLATES/chocolateyuninstall.ps1" "$CHOCO_DIR/tools/"
 
-  cat > "$CHOCO_DIR/tools/chocolateyuninstall.ps1" <<CHOCO
-\\\$ErrorActionPreference = 'Stop'
-\\\$packageName = \\\$env:ChocolateyPackageName
-\\\$softwareName = 'Henkan*'
-[array]\\\$key = Get-UninstallRegistryKey -SoftwareName \\\$softwareName
-if (\\\$key.Count -eq 1) {
-  \\\$key | ForEach-Object {
-    \\\$silentArgs = "\\\$(\\\$_.PSChildName) /quiet /norestart"
-    if (\\\$_.UninstallString) {
-      \\\$silentArgs = "\\\$(\\\$_.UninstallString) /quiet /norestart"
-    }
-    Uninstall-ChocolateyPackage -PackageName \\\$packageName `
-                                -FileType 'msi' `
-                                -SilentArgs \\\$silentArgs `
-                                -ValidExitCodes @(0, 3010, 1605, 1614, 1641)
-  }
-} elseif (\\\$key.Count -eq 0) {
-  Write-Warning "\\\$packageName has been already uninstalled by other means."
-} elseif (\\\$key.Count -gt 1) {
-  Write-Warning "\\\$key.Count matches found."
-}
-CHOCO
+  sed -i '' "s/{{VERSION}}/$V/g" "$CHOCO_DIR/henkan.nuspec"
+  sed -i '' "s|{{MSI_URL}}|$msi_url|g" "$CHOCO_DIR/tools/chocolateyinstall.ps1"
+  sed -i '' "s/{{MSI_SHA}}/$msi_sha/g" "$CHOCO_DIR/tools/chocolateyinstall.ps1"
 
   cd "$CHOCO_DIR"
   choco pack
-  echo "Chocolatey package built at $CHOCO_DIR/henkan.$VER.nupkg"
+  echo "Chocolatey package built at $CHOCO_DIR/henkan.$V.nupkg"
   echo "Push it with:"
-  echo "  choco push henkan.$VER.nupkg --source https://push.chocolatey.org/"
+  echo "  choco push henkan.$V.nupkg --source https://push.chocolatey.org/"
   echo "Or set CHOCOLATEY_API_KEY and it will auto-publish."
   if [ -n "${CHOCOLATEY_API_KEY:-}" ]; then
-    choco push "henkan.$VER.nupkg" --source https://push.chocolatey.org/ --api-key "$CHOCOLATEY_API_KEY"
-    echo "Chocolatey package published to v$VER"
+    choco push "henkan.$V.nupkg" --source https://push.chocolatey.org/ --api-key "$CHOCOLATEY_API_KEY"
+    echo "Chocolatey package published to v$V"
   fi
 }
 
