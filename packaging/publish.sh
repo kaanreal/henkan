@@ -18,6 +18,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Portable sed in-place: works on both Linux (GNU sed) and macOS (BSD sed)
+sed_i() {
+  case "$(uname -s)" in
+    Darwin) sed -i '' "$@" ;;
+    *)      sed -i "$@" ;;
+  esac
+}
+
 if [ -z "${VERSION:-}" ]; then
   echo "ERROR: VERSION environment variable required (e.g. VERSION=v1.2.3)"
   exit 1
@@ -287,9 +295,9 @@ publish_choco() {
   cp "$TEMPLATES/chocolateyinstall.ps1" "$CHOCO_DIR/tools/"
   cp "$TEMPLATES/chocolateyuninstall.ps1" "$CHOCO_DIR/tools/"
 
-  sed -i '' "s/{{VERSION}}/$V/g" "$CHOCO_DIR/henkan.nuspec"
-  sed -i '' "s|{{MSI_URL}}|$msi_url|g" "$CHOCO_DIR/tools/chocolateyinstall.ps1"
-  sed -i '' "s/{{MSI_SHA}}/$msi_sha/g" "$CHOCO_DIR/tools/chocolateyinstall.ps1"
+  sed_i "s/{{VERSION}}/$VER/g" "$CHOCO_DIR/henkan.nuspec"
+  sed_i "s|{{MSI_URL}}|$msi_url|g" "$CHOCO_DIR/tools/chocolateyinstall.ps1"
+  sed_i "s/{{MSI_SHA}}/$msi_sha/g" "$CHOCO_DIR/tools/chocolateyinstall.ps1"
 
   cd "$CHOCO_DIR"
   choco pack
