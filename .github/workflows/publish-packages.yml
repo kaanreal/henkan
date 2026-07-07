@@ -22,263 +22,52 @@ jobs:
         id: version
         run: |
           if [ "${{ github.event_name }}" == "release" ]; then
-            echo "VERSION=${{ github.event.release.tag_name }}" >> $GITHUB_ENV
+            VER="${{ github.event.release.tag_name }}"
           else
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+            VER="${{ github.event.inputs.version }}"
           fi
-
-      - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl
+          echo "VERSION=$VER" >> $GITHUB_ENV
+          echo "tag=$VER" >> "$GITHUB_OUTPUT"
 
       - name: Compute checksums
         id: checksums
-        env:
-          VERSION: ${{ env.VERSION }}
         run: |
-          VER="${VERSION#v}"
-          echo "version=$VER" >> $GITHUB_OUTPUT
+          VER="${{ steps.version.outputs.tag }}"
+          V="${VER#v}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "source_sha256=$(curl -sL "https://github.com/kaanreal/henkan/archive/refs/tags/$VER.tar.gz" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "dmg_sha256=$(curl -sL "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan_${V}_aarch64.dmg" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "msi_sha256=$(curl -sL "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan_${V}_x64_en-US.msi" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
-          # Source tarball
-          echo "source_sha256=$(curl -sL "https://github.com/kaanreal/henkan/archive/refs/tags/$VERSION.tar.gz" | sha256sum | cut -d' ' -f1)" >> $GITHUB_OUTPUT
-
-          # macOS .dmg
-          echo "dmg_sha256=$(curl -sL "https://github.com/kaanreal/henkan/releases/download/$VERSION/Henkan_${VER}_aarch64.dmg" | sha256sum | cut -d' ' -f1)" >> $GITHUB_OUTPUT
-
-          # Windows .msi
-          echo "msi_sha256=$(curl -sL "https://github.com/kaanreal/henkan/releases/download/$VERSION/Henkan_${VER}_x64_en-US.msi" | sha256sum | cut -d' ' -f1)" >> $GITHUB_OUTPUT
-
-      - name: Publish to AUR
-        env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          VERSION: ${{ env.VERSION }}
-          SOURCE_SHA256: ${{ steps.checksums.outputs.source_sha256 }}
-        if: env.AUR_SSH_PRIVATE_KEY != ''
-        run: |
-          mkdir -p ~/.ssh
-          echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
-          chmod 600 ~/.ssh/aur
-          cat >> ~/.ssh/config << 'CONFIG'
-          Host aur.archlinux.org
-            IdentityFile ~/.ssh/aur
-            User aur
-            StrictHostKeyChecking no
-          CONFIG
-
-          VER="${VERSION#v}"
-          git clone ssh://aur@aur.archlinux.org/henkan.git /tmp/aur-henkan
-
-          cp packaging/aur/PKGBUILD /tmp/aur-henkan/
-          cd /tmp/aur-henkan
-          sed -i "s/pkgver=.*/pkgver=$VER/" PKGBUILD
-          sed -i "s/sha256sums=('.*')/sha256sums=('$SOURCE_SHA256')/" PKGBUILD
-          updpkgsums
-          makepkg --printsrcinfo > .SRCINFO
-          git add -A
-          git commit -m "chore: update to $VERSION" || true
-          git push
-
-      - name: Publish to Homebrew tap
+      - name: Publish to Homebrew
+        if: env.HOMEBREW_TAP_TOKEN != ''
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          VERSION: ${{ env.VERSION }}
-          DMG_SHA256: ${{ steps.checksums.outputs.dmg_sha256 }}
-          SOURCE_SHA256: ${{ steps.checksums.outputs.source_sha256 }}
-        if: env.HOMEBREW_TAP_TOKEN != ''
         run: |
-          VER="${VERSION#v}"
-          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/kaanreal/homebrew-tap.git /tmp/homebrew-tap
-
-          mkdir -p /tmp/homebrew-tap/Formula /tmp/homebrew-tap/Casks
-
-          # CLI formula
-          cat > /tmp/homebrew-tap/Formula/henkan-cli.rb <<FORMULA
-          class HenkanCli < Formula
-            desc "CLI for osu!mania ↔ Etterna/StepMania beatmap converter"
-            homepage "https://github.com/kaanreal/henkan"
-            url "https://github.com/kaanreal/henkan/archive/refs/tags/$VERSION.tar.gz"
-            sha256 "$SOURCE_SHA256"
-            license "MIT"
-
-            depends_on "rust" => :build
-
-            def install
-              system "cargo", "install", *std_cargo_args(path: "src-tauri")
-              bin.install "henkan-cli"
-            end
-
-            test do
-              assert_match "henkan-cli", shell_output("#{bin}/henkan-cli --help")
-            end
-          end
-FORMULA
-
-          # Desktop cask
-          cat > /tmp/homebrew-tap/Casks/henkan.rb <<CASK
-          cask "henkan" do
-            version "$VER"
-            sha256 "$DMG_SHA256"
-
-            url "https://github.com/kaanreal/henkan/releases/download/$VERSION/Henkan_${VER}_aarch64.dmg"
-            name "Henkan"
-            desc "osu!mania ↔ Etterna/StepMania beatmap converter"
-            homepage "https://github.com/kaanreal/henkan"
-
-            livecheck do
-              url :url
-              strategy :github_latest
-            end
-
-            depends_on macos: ">= :monterey"
-
-            app "Henkan.app"
-
-            zap trash: [
-              "~/Library/Application Support/com.henkan.desktop",
-              "~/Library/Saved Application State/com.henkan.desktop.savedState",
-              "~/.config/henkan",
-            ]
-          end
-CASK
-
-          cd /tmp/homebrew-tap
-          git add -A
-          git commit -m "chore: update to $VERSION" || true
-          git push
+          packaging/ci-publish.sh homebrew \
+            "${{ steps.version.outputs.tag }}" \
+            "${{ steps.checksums.outputs.source_sha256 }}" \
+            "${{ steps.checksums.outputs.dmg_sha256 }}" \
+            "${{ steps.checksums.outputs.msi_sha256 }}"
 
       - name: Publish to Winget
+        if: env.WINGET_GITHUB_TOKEN != ''
         env:
           WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
-          VERSION: ${{ env.VERSION }}
-          MSI_SHA256: ${{ steps.checksums.outputs.msi_sha256 }}
-        if: env.WINGET_GITHUB_TOKEN != ''
         run: |
-          VER="${VERSION#v}"
-          git clone https://x-access-token:${WINGET_GITHUB_TOKEN}@github.com/kaanreal/winget-pkgs.git /tmp/winget-pkgs
-
-          MANIFEST_DIR="/tmp/winget-pkgs/manifests/k/ka/kaanreal/henkan/$VER"
-          mkdir -p "$MANIFEST_DIR"
-
-          MSI_URL="https://github.com/kaanreal/henkan/releases/download/$VERSION/Henkan_${VER}_x64_en-US.msi"
-
-          cat > "$MANIFEST_DIR/henkan.installer.yaml" <<YAML
-PackageIdentifier: kaanreal.henkan
-PackageVersion: $VER
-InstallerLocale: en-US
-InstallerType: wix
-InstallerSwitches:
-  Silent: /quiet /norestart
-  SilentWithProgress: /passive /norestart
-ProductCode: "{CHANGE_ME}"
-Installers:
-  - Architecture: x64
-    InstallerUrl: $MSI_URL
-    InstallerSha256: $MSI_SHA256
-ManifestType: installer
-ManifestVersion: 1.6.0
-YAML
-
-          cat > "$MANIFEST_DIR/henkan.locale.en-US.yaml" <<YAML
-PackageIdentifier: kaanreal.henkan
-PackageVersion: $VER
-PackageLocale: en-US
-Publisher: kaanreal
-PublisherUrl: https://github.com/kaanreal
-PublisherSupportUrl: https://github.com/kaanreal/henkan/issues
-Author: kaanreal
-PackageName: Henkan
-PackageUrl: https://github.com/kaanreal/henkan
-License: MIT
-LicenseUrl: https://github.com/kaanreal/henkan/blob/main/LICENSE
-ShortDescription: osu!mania ↔ Etterna / StepMania beatmap converter
-Description: A cross-platform desktop and CLI tool for converting beatmaps between osu!mania (.osu/.osz) and Etterna / StepMania (.sm) formats.
-Moniker: henkan
-Tags:
-  - osu
-  - osu-mania
-  - etterna
-  - stepmania
-YAML
-
-          cat > "$MANIFEST_DIR/henkan.yaml" <<YAML
-PackageIdentifier: kaanreal.henkan
-PackageVersion: $VER
-DefaultLocale: en-US
-ManifestType: version
-ManifestVersion: 1.6.0
-YAML
-
-          cd /tmp/winget-pkgs
-          git add -A
-          git commit -m "New version: kaanreal.henkan $VER"
-          git push
-
-          # Create PR to microsoft/winget-pkgs
-          gh pr create \
-            --repo microsoft/winget-pkgs \
-            --head kaanreal:main \
-            --base master \
-            --title "New version: kaanreal.henkan $VER" \
-            --body "Updates kaanreal.henkan to v$VER" \
-            --label "package-submission" || echo "PR creation failed (may already exist)"
+          packaging/ci-publish.sh winget \
+            "${{ steps.version.outputs.tag }}" \
+            "${{ steps.checksums.outputs.source_sha256 }}" \
+            "${{ steps.checksums.outputs.dmg_sha256 }}" \
+            "${{ steps.checksums.outputs.msi_sha256 }}"
 
       - name: Publish to Chocolatey
+        if: env.CHOCOLATEY_API_KEY != ''
         env:
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
-          VERSION: ${{ env.VERSION }}
-          MSI_SHA256: ${{ steps.checksums.outputs.msi_sha256 }}
-        if: env.CHOCOLATEY_API_KEY != ''
         run: |
-          VER="${VERSION#v}"
-          mkdir -p /tmp/choco-henkan/tools
-          MSI_URL="https://github.com/kaanreal/henkan/releases/download/$VERSION/Henkan_${VER}_x64_en-US.msi"
-
-          cat > /tmp/choco-henkan/henkan.nuspec <<NUSPEC
-<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
-  <metadata>
-    <id>henkan</id>
-    <version>$VER</version>
-    <title>Henkan</title>
-    <authors>kaanreal</authors>
-    <owners>kaanreal</owners>
-    <projectUrl>https://github.com/kaanreal/henkan</projectUrl>
-    <iconUrl>https://raw.githubusercontent.com/kaanreal/henkan/main/public/logo32.png</iconUrl>
-    <licenseUrl>https://github.com/kaanreal/henkan/blob/main/LICENSE</licenseUrl>
-    <projectSourceUrl>https://github.com/kaanreal/henkan</projectSourceUrl>
-    <bugTrackerUrl>https://github.com/kaanreal/henkan/issues</bugTrackerUrl>
-    <tags>osu osu-mania etterna stepmania beatmap converter</tags>
-    <summary>osu!mania ↔ Etterna / StepMania beatmap converter</summary>
-    <description>Henkan is a cross-platform desktop and CLI tool for converting beatmaps between osu!mania and Etterna/StepMania formats.</description>
-    <releaseNotes>https://github.com/kaanreal/henkan/releases/tag/$VERSION</releaseNotes>
-  </metadata>
-  <files>
-    <file src="tools\\**" target="tools" />
-  </files>
-</package>
-NUSPEC
-
-          cat > /tmp/choco-henkan/tools/chocolateyinstall.ps1 <<CHOCO
-\$ErrorActionPreference = 'Stop'
-\$url        = '$MSI_URL'
-\$checksum   = '$MSI_SHA256'
-\$checksumType = 'sha256'
-Install-ChocolateyPackage 'henkan' 'msi' '/quiet /norestart' \$url -checksum \$checksum -checksumType \$checksumType
-CHOCO
-
-          cat > /tmp/choco-henkan/tools/chocolateyuninstall.ps1 <<CHOCO
-\$ErrorActionPreference = 'Stop'
-Uninstall-ChocolateyPackage 'henkan' 'msi' '/quiet /norestart'
-CHOCO
-
-          cd /tmp/choco-henkan
-          choco pack
-          choco push henkan.$VER.nupkg --source https://push.chocolatey.org/ --api-key "$CHOCOLATEY_API_KEY"
-
-      - name: Summary
-        run: |
-          echo "=== Package publishing complete for $VERSION ==="
+          packaging/ci-publish.sh choco \
+            "${{ steps.version.outputs.tag }}" \
+            "${{ steps.checksums.outputs.source_sha256 }}" \
+            "${{ steps.checksums.outputs.dmg_sha256 }}" \
+            "${{ steps.checksums.outputs.msi_sha256 }}"
