@@ -1069,6 +1069,22 @@ fn scan_pack(folder: String) -> Result<Vec<PackEntry>, String> {
                 } else if path.extension().and_then(|e| e.to_str()) == Some("sm") {
                     if let Ok(content) = fs::read_to_string(&path) {
                         if let Ok(bm) = parsers::etterna::parse_sm(&content) {
+                        // Extract raw #BACKGROUND: from content (parsed beatmap may have
+                        // fallbacked to #BANNER when #BACKGROUND is empty)
+                        let raw_bg = {
+                            let upper = content.to_uppercase();
+                            let tag = "#BACKGROUND";
+                            upper.find(tag).and_then(|pos| {
+                                let after_tag = &content[pos + tag.len()..];
+                                let colon = after_tag.find(':');
+                                let start = colon.map(|c| c + 1).unwrap_or(0);
+                                let val = after_tag[start..].trim_start();
+                                let end = val.find(|c| c == ';' || c == '\n' || c == '\r')
+                                    .unwrap_or(val.len());
+                                let s = val[..end].trim();
+                                if s.is_empty() { None } else { Some(s.to_string()) }
+                            })
+                        };
                         let source_dir = path.parent()
                             .unwrap_or(Path::new(""))
                             .to_string_lossy()
@@ -1078,7 +1094,8 @@ fn scan_pack(folder: String) -> Result<Vec<PackEntry>, String> {
                             source_dir,
                             title: bm.title,
                             artist: bm.artist,
-                            background_filename: bm.background_filename,
+                            background_filename: raw_bg,
+                            banner_filename: bm.banner_filename,
                             available_difficulties: bm.available_difficulties,
                         });
                     }

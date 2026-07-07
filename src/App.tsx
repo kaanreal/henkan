@@ -143,6 +143,7 @@ function App() {
   const [packLoading, setPackLoading] = useState(false)
   const [packBannerUrl, setPackBannerUrl] = useState<string | null>(null)
   const [packBannerPath, setPackBannerPath] = useState<string | null>(null)
+  const packBannerFileRef = useRef<File | null>(null)
   const packConfigsRef = useRef<Map<number, ExportConfig>>(new Map())
 
   // Shared audio player — owned by App, used by AudioPlayer and PreviewOverlay
@@ -744,6 +745,7 @@ function App() {
     setError(null)
     setPackBannerUrl(null)
     setPackBannerPath(null)
+    packBannerFileRef.current = null
     try {
       const entries = await scanPack(folder)
       setPackEntries(entries)
@@ -759,6 +761,7 @@ function App() {
       if (result) {
         setPackBannerPath(result.filePath)
         setPackBannerUrl(result.url)
+        packBannerFileRef.current = result.file ?? null
       }
     } catch {
       // banner is optional
@@ -905,6 +908,7 @@ function App() {
 
           const savedCfg = packConfigsRef.current.get(idx)
           const baseCfg = savedCfg || configFromEntry(entry)
+          const safeTitle = (baseCfg.title || entry.title).replace(/[/\\?%*:|"<>]/g, '_') || `song_${idx}`
 
           const beatmaps = await parseSmAll(entry.source_file)
 
@@ -916,37 +920,51 @@ function App() {
             overall_difficulty: settings.overall_difficulty,
           }
 
+          // Build rename map: original filename → song-prefixed name (matching desktop pack mode)
+          const renameMap = new Map<string, string>()
+          const audioOrig = entry.available_difficulties[0]?.audio_filename
+          if (audioOrig) {
+            const ext = audioOrig.split('.').pop() || 'mp3'
+            renameMap.set(audioOrig, `${safeTitle}.${ext}`)
+          }
+          let bgOrig: string | null = null
+          if (entry.background_filename) {
+            const resolved = await resolveMediaFile(entry.source_dir, entry.background_filename)
+            if (resolved) bgOrig = resolved.split('/').pop() || entry.background_filename
+          }
+          if (!bgOrig) {
+            bgOrig = await resolveMediaFile(entry.source_dir, '').then(r => r?.split('/').pop() || null)
+          }
+          if (bgOrig) {
+            const ext = bgOrig.split('.').pop() || 'jpg'
+            renameMap.set(bgOrig, `${safeTitle}.${ext}`)
+          }
+
           for (let bi = 0; bi < beatmaps.length; bi++) {
             const bm = beatmaps[bi]
             if (!bm) continue
             let content = await convertBeatmap(bm, cfg)
-            // Fix hardcoded "bg.jpg" reference to the actual background filename (matching desktop pack mode)
-            if (bm.background_filename) {
-              content = content.replace('"bg.jpg"', `"${bm.background_filename}"`)
+            // Fix hardcoded "bg.jpg" reference to the actual background filename
+            for (const [orig, renamed] of renameMap) {
+              content = content.replaceAll(orig, renamed)
             }
-            const safeTitle = (cfg.title || bm.title).replace(/[/\\?%*:|"<>]/g, '_')
+            if (bgOrig && renameMap.get(bgOrig)) {
+              content = content.replaceAll('"bg.jpg"', `"${renameMap.get(bgOrig)}"`)
+            }
             const safeDiff = (cfg.difficulty_name || bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
             const ext = '.osu'
             const filename = safeDiff ? `${safeTitle} [${safeDiff}]${ext}` : `${safeTitle}${ext}`
             zip.file(filename, content)
           }
 
-          const mediaFields: string[] = []
-          if (entry.available_difficulties[0]?.audio_filename) {
-            mediaFields.push(entry.available_difficulties[0].audio_filename)
-          }
-          const bgField = entry.background_filename ||
-            await resolveMediaFile(entry.source_dir, '').then(r => r?.split('/').pop() || null)
-          if (bgField) mediaFields.push(bgField)
-          for (const field of mediaFields) {
-            const key = await resolveMediaFile(entry.source_dir, field)
+          for (const [orig, renamed] of renameMap) {
+            if (addedMedia.has(renamed)) continue
+            const key = await resolveMediaFile(entry.source_dir, orig)
             if (!key) continue
             const file = getCachedFile(key)
             if (!file) continue
-            const name = key.split('/').pop() || key
-            if (addedMedia.has(name)) continue
-            addedMedia.add(name)
-            zip.file(name, await file.arrayBuffer())
+            addedMedia.add(renamed)
+            zip.file(renamed, await file.arrayBuffer())
           }
         }
 
@@ -954,17 +972,15 @@ function App() {
           await addCdtitleToZip(zip, '', null, 'cdtitle.png')
 
           // Add dummy diff
-          const bannerName = packBannerPath?.split('/').pop()
+          const bannerFile = packBannerFileRef.current || (packBannerPath ? getCachedFile(packBannerPath) : null)
+          const bannerName = bannerFile?.name || packBannerPath?.split(/[/\\]+/).pop()
           const dummyContent = generateDummyDiffContent(packFolderName, settings.creator, bannerName)
           zip.file(`${packFolderName}.osu`, dummyContent)
 
           // Add pack banner at root
-        if (packBannerPath && bannerName) {
-          const bannerFile = getCachedFile(packBannerPath)
-          if (bannerFile) {
+          if (bannerFile && bannerName) {
             zip.file(bannerName, await bannerFile.arrayBuffer())
           }
-        }
 
         const blob = await zip.generateAsync({ type: 'blob' })
         await saveBlobToFile(blob, `${packFolderName}.osz`)

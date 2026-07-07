@@ -3,7 +3,22 @@ import { getCachedFile, getCachedFiles } from './fileCache'
 
 export async function readFileAsDataUrl(pathOrFile: string | File): Promise<string | null> {
   if (pathOrFile instanceof File) {
-    return URL.createObjectURL(pathOrFile)
+    // Force mime type if browser failed to detect it (e.g. for double extensions like .png.jpg)
+    let fileToUse = pathOrFile
+    if (!pathOrFile.type || pathOrFile.type === 'application/octet-stream') {
+      const ext = pathOrFile.name.split('.').pop()?.toLowerCase()
+      let mime = 'application/octet-stream'
+      if (ext === 'png') mime = 'image/png'
+      else if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg'
+      else if (ext === 'gif') mime = 'image/gif'
+      else if (ext === 'webp') mime = 'image/webp'
+      else if (ext === 'bmp') mime = 'image/bmp'
+      
+      if (mime !== 'application/octet-stream') {
+        fileToUse = new File([pathOrFile], pathOrFile.name, { type: mime })
+      }
+    }
+    return URL.createObjectURL(fileToUse)
   }
 
   if (isTauri()) {
@@ -90,56 +105,85 @@ export async function resolveMediaFile(
     }
   }
 
+  function isInSourceDir(w: string, dir: string): boolean {
+    return w.startsWith(dir + '/') || w.includes('/' + dir + '/')
+  }
+
+  function doAutoDiscovery() {
+    if (!sourceDir) return null
+    // Exclude video formats from auto-discovery since web uses CSS backgrounds, matching desktop IMAGE_EXTS
+    const files = getCachedFiles().filter(f => /\.(png|jpg|jpeg|gif|bmp|webp)$/i.test(f.name) &&
+      (!f.webkitRelativePath || isInSourceDir(f.webkitRelativePath, sourceDir)))
+    // Skip files that are clearly not backgrounds (banners, cd titles)
+    const candidates = files.filter(f => {
+      const stem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
+      return !['cdtitle', 'cd', 'bn', 'banner'].includes(stem) && !stem.includes('cdtitle')
+    })
+    if (candidates.length === 0) return null
+    // Prefer file with "bg" or "background" in the name
+    const preferred = candidates.find(f => {
+      const stem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
+      return stem.includes('bg') || stem.includes('background')
+    })
+    // Fall back to picking the largest file, similar to desktop
+    const match = preferred || candidates.sort((a, b) => b.size - a.size)[0]
+    return (match as any).webkitRelativePath || match.name
+  }
+
   if (!filename) {
-    // Auto-discovery: scan sourceDir for a background image (matches desktop scan_source_dir_for_bg)
-    if (sourceDir) {
-      const files = getCachedFiles().filter(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name) &&
-        (!f.webkitRelativePath || f.webkitRelativePath.startsWith(sourceDir + '/')))
-      // Skip files that are clearly not backgrounds (banners, cd titles)
-      const candidates = files.filter(f => {
-        const stem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
-        return !['cdtitle', 'cd', 'bn', 'banner'].includes(stem) && !stem.includes('cdtitle')
-      })
-      if (candidates.length === 0) return null
-      // Prefer file with "bg" or "background" in the name
-      const preferred = candidates.find(f => {
-        const stem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
-        return stem.includes('bg') || stem.includes('background')
-      })
-      const match = preferred || candidates[0]
-      return (match as any).webkitRelativePath || match.name
-    }
-    return null
+    return doAutoDiscovery()
   }
 
   const baseName = filename.split(/[/\\]+/).pop() || filename
+  const baseLower = baseName.toLowerCase()
 
-  // Try exact path match first (sourceDir + "/" + baseName)
+  // Case-insensitive search in sourceDir: match by name or stem
+  const files = getCachedFiles()
+  const inDir = files.filter(f =>
+    !sourceDir || !f.webkitRelativePath || isInSourceDir(f.webkitRelativePath, sourceDir)
+  )
+  // 1. Exact filename match (case-insensitive)
+  const exact = inDir.find(f => f.name.toLowerCase() === baseLower)
+  if (exact) return exact.webkitRelativePath || exact.name
+
+  // 2. Stem match (same base name, different extension)
+  const stem = baseLower.replace(/\.[^.]+$/, '')
+  const isImageOrVideoReq = /\.(png|jpg|jpeg|gif|bmp|webp|avi|mpg|mpeg|webm|mp4)$/i.test(filename) || stem.includes('bg') || stem.includes('background')
+  const isAudioReq = /\.(mp3|ogg|wav|flac)$/i.test(filename)
+
+  const byStem = inDir.find(f => {
+    const fStem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
+    // Match either the base stem or the full filename as stem (for .png.jpg double extensions)
+    const matchesStem = fStem === stem || fStem === baseLower || fStem.startsWith(baseLower)
+    if (!matchesStem) return false
+
+    // Ensure the matched file is of the same media category as the requested file
+    const fIsImageOrVideo = /\.(png|jpg|jpeg|gif|bmp|webp|avi|mpg|mpeg|webm|mp4)$/i.test(f.name)
+    const fIsAudio = /\.(mp3|ogg|wav|flac)$/i.test(f.name)
+    
+    if (isImageOrVideoReq && !fIsImageOrVideo) return false
+    if (isAudioReq && !fIsAudio) return false
+    return true
+  })
+  if (byStem) {
+    return byStem.webkitRelativePath || byStem.name
+  }
+
+  // 3. Try filename as provided (case-sensitive, for compatibility)
   if (sourceDir) {
     const fullPath = `${sourceDir}/${baseName}`
     const cached = getCachedFile(fullPath)
     if (cached) return fullPath
   }
 
-  if (getCachedFile(filename)) return filename
-  if (getCachedFile(baseName)) return baseName
-
-  const files = getCachedFiles()
-  const cacheKey = (n: string) => {
-    const base = n.split(/[/\\]+/).pop() || n
-    return base.replace(/\.[^.]+$/, '').toLowerCase()
+  // 4. Fallback for backgrounds: if the requested file was a media file
+  // but wasn't found, try scanning for a plausible background image.
+  const isImageOrVideo = /\.(png|jpg|jpeg|gif|bmp|webp|avi|mpg|mpeg|webm|mp4)$/i.test(filename) || stem.includes('bg') || stem.includes('background')
+  if (isImageOrVideo) {
+    return doAutoDiscovery()
   }
-  // Prefer files from the same source directory
-  const match = files.find(f => {
-    const inRightDir = !sourceDir || !f.webkitRelativePath ||
-      f.webkitRelativePath.startsWith(sourceDir + '/')
-    if (!inRightDir) return false
-    return f.name.toLowerCase() === filename.toLowerCase() ||
-      f.name.toLowerCase() === baseName.toLowerCase() ||
-      cacheKey(f.name) === cacheKey(filename) ||
-      cacheKey(f.name) === cacheKey(baseName)
-  })
-  return match ? match.name : null
+
+  return null
 }
 
 export async function saveContentToFile(path: string, content: string): Promise<void> {
