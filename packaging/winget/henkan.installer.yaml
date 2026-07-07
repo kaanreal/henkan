@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/microsoft/winget-cli/master/schemas/JSON/manifests/v1.6.0/manifest.installer.1.6.0.json
+PackageIdentifier: kaanreal.henkan
+PackageVersion: 1.1.0
+InstallerLocale: en-US
+InstallerType: wix
+InstallerSwitches:
+  Silent: /quiet /norestart
+  SilentWithProgress: /passive /norestart
+ProductCode: "{CHANGE_ME}" # WiX product code from the .msi
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/kaanreal/henkan/releases/download/v1.1.0/Henkan_1.1.0_x64_en-US.msi
+    InstallerSha256: CHANGE_ME
+ManifestType: installer
+ManifestVersion: 1.6.0

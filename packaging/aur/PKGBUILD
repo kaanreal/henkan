@@ -1,0 +1,61 @@
+# Maintainer: kaanreal <kaan@example.com>
+# Contributor: kaanreal <kaan@example.com>
+
+pkgname=henkan
+pkgver=1.1.0
+pkgrel=1
+pkgdesc="osu!mania ↔ Etterna / StepMania beatmap converter – TUI + Desktop GUI"
+arch=('x86_64')
+url="https://github.com/kaanreal/henkan"
+license=('MIT')
+depends=(
+  'gtk3'
+  'libwebkit2gtk-4.1'
+  'libxdo'
+  'libayatana-appindicator'
+  'librsvg'
+  'openssl'
+)
+makedepends=(
+  'rust'
+  'nodejs'
+  'npm'
+  'cargo'
+)
+source=("$url/archive/v$pkgver.tar.gz")
+sha256sums=('CHANGE_ME')
+
+prepare() {
+  cd "$srcdir/$pkgname-$pkgver"
+  npm ci
+}
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  export RUSTFLAGS="--remap-path-prefix=$srcdir=/usr/src/$pkgname"
+  npm run tauri build -- --bundles deb
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+
+  # Desktop binary
+  install -Dm755 "src-tauri/target/release/henkan" \
+    "$pkgdir/usr/bin/henkan"
+
+  # CLI binary
+  install -Dm755 "src-tauri/target/release/henkan-cli" \
+    "$pkgdir/usr/bin/henkan-cli"
+
+  # Desktop entry
+  install -Dm644 "src-tauri/target/release/bundle/deb/henkan_${pkgver}_amd64/usr/share/applications/"* \
+    "$pkgdir/usr/share/applications/" 2>/dev/null || true
+
+  # Icons
+  for size in 32 128 256; do
+    install -Dm644 "src-tauri/icons/${size}x${size}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/henkan.png" 2>/dev/null || true
+  done
+  install -Dm644 "src-tauri/icons/icon.svg" \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/henkan.svg" 2>/dev/null || true
+}

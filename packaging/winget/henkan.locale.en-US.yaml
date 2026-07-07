@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/microsoft/winget-cli/master/schemas/JSON/manifests/v1.6.0/manifest.locale.1.6.0.json
+PackageIdentifier: kaanreal.henkan
+PackageVersion: 1.1.0
+PackageLocale: en-US
+Publisher: kaanreal
+PublisherUrl: https://github.com/kaanreal
+PublisherSupportUrl: https://github.com/kaanreal/henkan/issues
+Author: kaanreal
+PackageName: Henkan
+PackageUrl: https://github.com/kaanreal/henkan
+License: MIT
+LicenseUrl: https://github.com/kaanreal/henkan/blob/main/LICENSE
+ShortDescription: osu!mania ↔ Etterna / StepMania beatmap converter
+Description: A cross-platform desktop and CLI tool for converting beatmaps between osu!mania (.osu/.osz) and Etterna / StepMania (.sm) formats. Preserves millisecond-accurate timing, handles BPM changes, hold/long notes, and metadata mapping.
+Moniker: henkan
+Tags:
+  - osu
+  - osu-mania
+  - etterna
+  - stepmania
+  - beatmap
+  - converter
+  - vsrg
+  - rhythm-game
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
