@@ -78,5 +78,6 @@ export interface PackEntry {
   title: string
   artist: string
   background_filename: string | null
+  banner_filename: string | null
   available_difficulties: DiffInfo[]
 }

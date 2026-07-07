@@ -132,6 +132,7 @@ pub struct PackEntry {
     pub title: String,
     pub artist: String,
     pub background_filename: Option<String>,
+    pub banner_filename: Option<String>,
     pub available_difficulties: Vec<DiffInfo>,
 }
 
