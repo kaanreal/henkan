@@ -47,11 +47,10 @@ class HenkanCli < Formula
   license "MIT"
   depends_on "rust" => :build
   def install
-    system "cargo", "install", *std_cargo_args(path: "src-tauri")
-    bin.install "henkan-cli"
+    system "cargo", "install", *std_cargo_args(path: "src-tauri"), "--bin", "henkan-cli"
   end
   test do
-    assert_match "henkan-cli", shell_output("#{bin}/henkan-cli --help")
+    assert_match "Usage", shell_output("#{bin}/henkan-cli --help")
   end
 end
 FORMULA
