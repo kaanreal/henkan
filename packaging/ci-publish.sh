@@ -80,7 +80,7 @@ CASK
   cd /tmp/brew-tap
   git_config
   git add -A
-  git commit -m "chore: update to $VER" || true
+  git commit --allow-empty -m "chore: update to $VER"
   git push
   ;;
 
