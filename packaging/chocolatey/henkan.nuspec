@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>henkan</id>
+    <version>1.1.0</version>
+    <title>Henkan</title>
+    <authors>kaanreal</authors>
+    <owners>kaanreal</owners>
+    <projectUrl>https://github.com/kaanreal/henkan</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/kaanreal/henkan/main/public/logo32.png</iconUrl>
+    <licenseUrl>https://github.com/kaanreal/henkan/blob/main/LICENSE</licenseUrl>
+    <projectSourceUrl>https://github.com/kaanreal/henkan</projectSourceUrl>
+    <bugTrackerUrl>https://github.com/kaanreal/henkan/issues</bugTrackerUrl>
+    <packageSourceUrl>https://github.com/kaanreal/henkan</packageSourceUrl>
+    <tags>osu osu-mania etterna stepmania beatmap converter vsrg rhythm-game</tags>
+    <summary>osu!mania ↔ Etterna / StepMania beatmap converter</summary>
+    <description>
+Henkan (変換) is a cross-platform desktop and CLI tool for converting beatmaps between osu!mania (.osu/.osz) and Etterna / StepMania (.sm) formats.
+
+Features:
+- Preserves millisecond-accurate timing
+- Handles BPM changes, hold/long notes, metadata mapping
+- Supports background references and audio files
+- Single file or pack/folder batch conversions
+- Built-in audio resampling engine
+    </description>
+    <releaseNotes>https://github.com/kaanreal/henkan/releases/tag/v1.1.0</releaseNotes>
+    <dependencies>
+      <dependency id="chocolatey-core.extension" version="1.4.0" />
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

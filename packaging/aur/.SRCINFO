@@ -1,0 +1,22 @@
+pkgbase = henkan
+	pkgdesc = osu!mania ↔ Etterna / StepMania beatmap converter – TUI + Desktop GUI
+	pkgver = 1.1.0
+	pkgrel = 1
+	url = https://github.com/kaanreal/henkan
+	install = 
+	arch = x86_64
+	license = MIT
+	makedepends = rust
+	makedepends = nodejs
+	makedepends = npm
+	makedepends = cargo
+	depends = gtk3
+	depends = libwebkit2gtk-4.1
+	depends = libxdo
+	depends = libayatana-appindicator
+	depends = librsvg
+	depends = openssl
+	source = https://github.com/kaanreal/henkan/archive/v1.1.0.tar.gz
+	sha256sums = CHANGE_ME
+
+pkgname = henkan
