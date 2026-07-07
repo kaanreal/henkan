@@ -43,10 +43,63 @@ Drag a .osu, .osz, or .sm file onto the window and it just works. Cross-platform
 
 ![Preview](public/screenshots/preview.png)
 
-## Download
+## Install
 
-- Available for Windows (.msi), macOS (Silicon) (.dmg), and Linux (.AppImage / .deb).
-- [Download here](https://github.com/kaanreal/henkan/releases)
+### macOS
+
+**Desktop app** (Apple Silicon):
+
+```bash
+brew tap kaanreal/tap
+brew install --cask kaanreal/tap/henkan
+```
+
+**CLI only** (builds from source, requires Rust):
+
+```bash
+brew tap kaanreal/tap
+brew install kaanreal/tap/henkan-cli
+```
+
+---
+
+### Windows
+
+**Winget:**
+
+```powershell
+winget install kaanreal.henkan
+```
+
+**Chocolatey:**
+
+```powershell
+choco install henkan
+```
+
+---
+
+### Linux
+
+**Arch (AUR):**
+
+```bash
+yay -S henkan
+```
+
+**AppImage / .deb:** download from [Releases](https://github.com/kaanreal/henkan/releases).
+
+---
+
+### Direct download
+
+Pre-built binaries for all platforms are on the [Releases](https://github.com/kaanreal/henkan/releases) page.
+
+| Platform | Format |
+|----------|--------|
+| Windows | `.msi` |
+| macOS (Apple Silicon) | `.dmg` |
+| Linux | `.AppImage`, `.deb` |
 
 ---
 

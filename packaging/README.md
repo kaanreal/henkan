@@ -7,10 +7,11 @@ the four major package managers.
 
 | Manager | Install Command | Setup Required |
 |---------|----------------|----------------|
-| **Arch (AUR)** | `yay -S henkan` | [AUR SSH key](#aur) |
-| **macOS (Homebrew)** | `brew install kaanreal/tap/henkan-cli`<br>`brew install --cask kaanreal/tap/henkan` | [Tap repo + token](#homebrew) |
-| **Windows (Winget)** | `winget install kaanreal.henkan` | [Fork + token](#winget) |
-| **Windows (Choco)** | `choco install henkan` | [API key](#chocolatey) |
+| **macOS – Homebrew (app)** | `brew tap kaanreal/tap`<br>`brew install --cask kaanreal/tap/henkan` | [Tap repo + token](#homebrew) |
+| **macOS – Homebrew (CLI)** | `brew tap kaanreal/tap`<br>`brew install kaanreal/tap/henkan-cli` | [Tap repo + token](#homebrew) |
+| **Windows – Winget** | `winget install kaanreal.henkan` | [Fork + token](#winget) |
+| **Windows – Chocolatey** | `choco install henkan` | [API key](#chocolatey) |
+| **Arch – AUR** | `yay -S henkan` | [AUR SSH key](#aur) |
 
 ---
 
@@ -34,18 +35,15 @@ the four major package managers.
 ### Homebrew
 
 1. Create a tap repo on GitHub: `https://github.com/kaanreal/homebrew-tap`
-2. Initialize it:
+2. Initialise it with `Formula/` and `Casks/` directories and push an empty commit.
+3. Add `HOMEBREW_TAP_TOKEN` (a GitHub PAT with `repo` scope) to GitHub secrets.
+4. The CI workflow writes and pushes the formula/cask on every release automatically.
+5. Users install with:
    ```bash
-   git clone https://github.com/kaanreal/homebrew-tap.git
-   mkdir -p homebrew-tap/Formula homebrew-tap/Casks
-   cp packaging/homebrew/Formula/henkan-cli.rb homebrew-tap/Formula/
-   cp packaging/homebrew/Casks/henkan.rb homebrew-tap/Casks/
-   cd homebrew-tap
-   git add -A && git commit -m "initial tap" && git push
+   brew tap kaanreal/tap
+   brew install --cask kaanreal/tap/henkan   # GUI app
+   brew install kaanreal/tap/henkan-cli      # CLI (builds from source)
    ```
-3. Users install with: `brew tap kaanreal/tap`
-4. Add `HOMEBREW_TAP_TOKEN` (a GitHub PAT with repo scope) to secrets.
-5. Optionally submit to homebrew-core: `brew extract --version 1.1.0 henkan homebrew/core`
 
 ### Winget
 
