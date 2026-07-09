@@ -1976,6 +1976,55 @@ pub fn headless_process(paths: &[String]) {
     }
 }
 
+#[tauri::command]
+fn download_mirror_osz(set_id: u64) -> Result<String, String> {
+    let url = format!("https://api.nerinyan.moe/d/{}", set_id);
+    let response = ureq::get(&url)
+        .call()
+        .map_err(|e| format!("Download failed: {}", e))?;
+
+    let bytes = response.into_body()
+        .read_to_vec()
+        .map_err(|e| format!("Read response failed: {}", e))?;
+
+    let temp_dir = std::env::temp_dir().join("henkan-mirror");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Create temp dir failed: {}", e))?;
+    let path = temp_dir.join(format!("{}.osz", set_id));
+    let _ = std::fs::remove_file(&path);
+    std::fs::write(&path, &bytes).map_err(|e| format!("Save file failed: {}", e))?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn search_mirror(query: String, status: String, page: u64) -> Result<String, String> {
+    let encoded: String = query.chars().map(|c| match c {
+        ' ' => "%20".to_string(),
+        '#' => "%23".to_string(),
+        '&' => "%26".to_string(),
+        '+' => "%2B".to_string(),
+        '/' => "%2F".to_string(),
+        '?' => "%3F".to_string(),
+        '%' => "%25".to_string(),
+        '=' => "%3D".to_string(),
+        c => c.to_string(),
+    }).collect();
+    let mut url = format!(
+        "https://api.nerinyan.moe/search?q={}&m=mania&p={}&ps=20&sort=plays_desc",
+        encoded, page
+    );
+    if !status.is_empty() {
+        url.push_str(&format!("&s={}", status));
+    }
+    let response = ureq::get(&url)
+        .call()
+        .map_err(|e| format!("Search failed: {}", e))?;
+    let body = response.into_body()
+        .read_to_vec()
+        .map_err(|e| format!("Read search response failed: {}", e))?;
+    String::from_utf8(body).map_err(|e| format!("UTF-8 decode failed: {}", e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Keep a tokio runtime alive so aptabase' reqwest::Client::builder().build()
@@ -2023,7 +2072,9 @@ pub fn run() {
             find_pack_banner,
             open_file,
             open_url,
-            get_github_stars
+            get_github_stars,
+            download_mirror_osz,
+            search_mirror
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
