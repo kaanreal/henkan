@@ -16,6 +16,7 @@ import { BulkConvertDialog } from './components/BulkConvertDialog'
 import { PackBrowser } from './components/PackBrowser'
 import { FallingArrows } from './components/FallingArrows'
 import { PackSettingsDialog } from './components/PackSettingsDialog'
+import { UpdateDialog } from './components/UpdateDialog'
 import { WebAudioPlayer } from './lib/WebAudioPlayer'
 import { isTauri } from './services/environment'
 import { openFiles as dialogOpenFiles, openDirectory as dialogOpenDirectory, saveFile as dialogSaveFile } from './services/dialogs'
@@ -125,6 +126,17 @@ function App() {
   const [packConvertAllMode, setPackConvertAllMode] = useState(false)
   const [queueLoading, setQueueLoading] = useState(false)
 
+  // Update checking state
+  const [pendingUpdate, setPendingUpdate] = useState<{ version: string; body: string | null; date: string | null } | null>(null)
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false)
+  const [installing, setInstalling] = useState(false)
+
+  // Version dialog state
+  const [appVersion, setAppVersion] = useState<string | null>(isTauri() ? null : '1.0.0')
+  const [showVersionDialog, setShowVersionDialog] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [checkResult, setCheckResult] = useState<'up-to-date' | 'update-found' | 'error' | null>(null)
+
   // Queue state
   const queueItems = useQueueStore(s => s.items)
   const queueActiveId = useQueueStore(s => s.activeId)
@@ -206,6 +218,94 @@ function App() {
     player.onPause = () => setAudioPlaying(false)
     player.onEnded = () => setAudioPlaying(false)
   }, [])
+
+  // Check for updates on mount (Tauri only)
+  useEffect(() => {
+    if (!isTauri()) return
+    let cancelled = false
+    const check = async () => {
+      try {
+        const { check } = await import('@tauri-apps/plugin-updater')
+        const update = await check()
+        if (!update || cancelled) return
+        const storageKey = `henkan-update-dismissed-${update.version}`
+        if (localStorage.getItem(storageKey)) return
+        setPendingUpdate({
+          version: update.version,
+          body: update.body ?? null,
+          date: update.date ?? null,
+        })
+        setShowUpdateDialog(true)
+      } catch { /* ignore */ }
+    }
+    check()
+    return () => { cancelled = true }
+  }, [])
+
+  // Get app version (Tauri only)
+  useEffect(() => {
+    if (!isTauri()) return
+    import('@tauri-apps/api/app').then(({ getVersion }) => {
+      getVersion().then(setAppVersion)
+    })
+  }, [])
+
+  const handleCheckForUpdates = async (): Promise<{ version: string; body: string | null; date: string | null } | null> => {
+    if (!isTauri()) return null
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater')
+      const update = await check()
+      if (!update) return null
+      setPendingUpdate({
+        version: update.version,
+        body: update.body ?? null,
+        date: update.date ?? null,
+      })
+      return {
+        version: update.version,
+        body: update.body ?? null,
+        date: update.date ?? null,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  const handleUpdate = async () => {
+    if (!pendingUpdate) return
+    setInstalling(true)
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater')
+      const update = await check()
+      if (update) {
+        await update.downloadAndInstall()
+        const { relaunch } = await import('@tauri-apps/plugin-process')
+        await relaunch()
+      }
+    } catch { /* ignore */ }
+    setInstalling(false)
+  }
+
+  const handleDismissUpdate = (dontAskAgain: boolean) => {
+    if (dontAskAgain && pendingUpdate) {
+      try {
+        localStorage.setItem(`henkan-update-dismissed-${pendingUpdate.version}`, 'true')
+      } catch { /* ignore */ }
+    }
+    setShowUpdateDialog(false)
+  }
+
+  const handleCheckVersion = async () => {
+    setChecking(true)
+    setCheckResult(null)
+    try {
+      const result = await handleCheckForUpdates()
+      setCheckResult(result ? 'update-found' : 'up-to-date')
+    } catch {
+      setCheckResult('error')
+    }
+    setChecking(false)
+  }
 
   // Decode audio whenever the data URL changes
   useEffect(() => {
@@ -1213,7 +1313,7 @@ function App() {
         )}
 
         <div className="relative z-10 flex flex-col h-full">
-          <Header direction={direction} onSetDirection={(dir) => { setDirection(dir); queueClearAll(); reset() }} />
+          <Header direction={direction} onSetDirection={(dir) => { setDirection(dir); queueClearAll(); reset() }} appVersion={appVersion} onShowVersionDialog={() => { setShowVersionDialog(true); setCheckResult(null) }} />
 
           <ConversionQueue
             items={queueItems}
@@ -1489,6 +1589,91 @@ function App() {
           }}
           onCancel={handlePackSettingsCancel}
         />
+
+        {/* Update dialog */}
+        <UpdateDialog
+          open={showUpdateDialog}
+          updateInfo={pendingUpdate}
+          installing={installing}
+          onUpdate={handleUpdate}
+          onDismiss={handleDismissUpdate}
+        />
+
+        {/* Version info dialog */}
+        {showVersionDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowVersionDialog(false)}>
+            <div className="bg-surface-900 border border-surface-700/50 rounded-2xl shadow-2xl max-w-sm w-full mx-4 animate-scale-in p-6" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-4">
+                <img src="/logo32.png" alt="Henkan" className="w-10 h-10 rounded-xl" />
+                <div>
+                  <h2 className="text-lg font-semibold text-surface-100">Henkan</h2>
+                  <p className="text-sm text-surface-400 font-mono">v{appVersion || '—'}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 mb-5">
+                {isTauri() && (
+                  <button
+                    onClick={handleCheckVersion}
+                    disabled={checking}
+                    className="w-full px-4 py-2.5 rounded-xl bg-accent text-white font-medium text-sm hover:bg-accent-hover active:scale-[0.97] transition-all duration-75 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {checking ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Checking...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Check for updates
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {checkResult === 'up-to-date' && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs font-medium">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    You're up to date
+                  </div>
+                )}
+
+                {checkResult === 'error' && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-medium">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Could not check for updates
+                  </div>
+                )}
+
+                {checkResult === 'update-found' && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-accent/10 text-accent text-xs font-medium">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    A new version is available!
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setShowVersionDialog(false)}
+                className="w-full px-4 py-2 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-400 font-medium text-sm hover:bg-surface-700 hover:text-surface-200 active:scale-[0.97] transition-all duration-75"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Post-export overlay */}
         {lastExportPath && (
