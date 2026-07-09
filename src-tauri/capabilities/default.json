@@ -16,6 +16,8 @@
       "allow": [{ "name": "ffmpeg", "sidecar": true }]
     },
     "aptabase:allow-track-event",
+    "process:default",
+    "process:allow-restart",
     "updater:default",
     "updater:allow-check",
     "updater:allow-download-and-install"

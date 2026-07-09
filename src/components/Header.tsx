@@ -9,6 +9,8 @@ const SUPPORTER_URL = 'https://osu.ppy.sh/store/products/supporter-tag?target=Kx
 interface HeaderProps {
   direction: ConvertDirection
   onSetDirection: (dir: ConvertDirection) => void
+  appVersion: string | null
+  onShowVersionDialog: () => void
 }
 
 function GithubIcon() {
@@ -23,7 +25,7 @@ function HeartIcon() {
   return <span className="text-[#FF57A0]">&#x2764;</span>
 }
 
-export function Header({ direction, onSetDirection }: HeaderProps) {
+export function Header({ direction, onSetDirection, appVersion, onShowVersionDialog }: HeaderProps) {
   const [stars, setStars] = useState<string | null>(null)
 
   useEffect(() => {
@@ -35,10 +37,18 @@ export function Header({ direction, onSetDirection }: HeaderProps) {
   }, [])
 
   return (
-    <header className="px-6 py-3 border-b border-white/5 bg-black/20 backdrop-blur-md flex items-center justify-between shrink-0 animate-fade-in gap-3">
+    <header className="px-6 py-3 border-b border-white/5 bg-black/20 backdrop-blur-md grid grid-cols-3 items-center shrink-0 animate-fade-in gap-3">
       <div className="flex items-center gap-2.5 min-w-0">
         <img src="/logo32.png" alt="Henkan" className="w-8 h-8 rounded-lg shrink-0" />
         <span className="text-base font-semibold tracking-tight text-surface-100">Henkan</span>
+
+        <button
+          onClick={onShowVersionDialog}
+          className="flex items-center gap-1 px-2 py-0.5 rounded-md border border-white/5 bg-white/[0.03] hover:bg-white/[0.08] text-surface-500 hover:text-surface-300 text-[11px] font-mono font-medium transition-all duration-75 active:scale-[0.97]"
+          title="Click for version info"
+        >
+          v{appVersion || '—'}
+        </button>
 
         <button
           onClick={() => openUrl(GITHUB_URL)}
@@ -49,37 +59,41 @@ export function Header({ direction, onSetDirection }: HeaderProps) {
         </button>
       </div>
 
-      <div className="flex bg-white/[0.04] rounded-lg border border-white/5 p-0.5 gap-0.5">
-        <button
-          onClick={() => onSetDirection('osu-to-etterna')}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-75 active:scale-[0.97]
-            ${direction === 'osu-to-etterna'
-              ? 'bg-accent text-white shadow-sm'
-              : 'text-surface-400 hover:text-surface-200'
-            }`}
-        >
-          .osu / .osz
-        </button>
-        <span className="text-surface-600 self-center text-xs">→</span>
-        <button
-          onClick={() => onSetDirection('etterna-to-osu')}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-75 active:scale-[0.97]
-            ${direction === 'etterna-to-osu'
-              ? 'bg-accent text-white shadow-sm'
-              : 'text-surface-400 hover:text-surface-200'
-            }`}
-        >
-          .sm
-        </button>
+      <div className="flex justify-center">
+        <div className="flex bg-white/[0.04] rounded-lg border border-white/5 p-0.5 gap-0.5">
+          <button
+            onClick={() => onSetDirection('osu-to-etterna')}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-75 active:scale-[0.97]
+              ${direction === 'osu-to-etterna'
+                ? 'bg-accent text-white shadow-sm'
+                : 'text-surface-400 hover:text-surface-200'
+              }`}
+          >
+            .osu / .osz
+          </button>
+          <span className="text-surface-600 self-center text-xs">→</span>
+          <button
+            onClick={() => onSetDirection('etterna-to-osu')}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-75 active:scale-[0.97]
+              ${direction === 'etterna-to-osu'
+                ? 'bg-accent text-white shadow-sm'
+                : 'text-surface-400 hover:text-surface-200'
+              }`}
+          >
+            .sm
+          </button>
+        </div>
       </div>
 
-      <button
-        onClick={() => openUrl(SUPPORTER_URL)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#FF57A0]/40 hover:border-[#FF57A0] bg-[#FF57A0]/[0.06] hover:bg-[#FF57A0]/[0.12] text-surface-300 hover:text-white text-xs font-medium transition-all duration-75 active:scale-[0.97] shrink-0"
-      >
-        <HeartIcon />
-        buy me osu! supporter
-      </button>
+      <div className="flex justify-end">
+        <button
+          onClick={() => openUrl(SUPPORTER_URL)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#FF57A0]/40 hover:border-[#FF57A0] bg-[#FF57A0]/[0.06] hover:bg-[#FF57A0]/[0.12] text-surface-300 hover:text-white text-xs font-medium transition-all duration-75 active:scale-[0.97] shrink-0"
+        >
+          <HeartIcon />
+          buy me osu! supporter
+        </button>
+      </div>
     </header>
   )
 }
