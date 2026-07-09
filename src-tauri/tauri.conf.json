@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com"
+      "csp": "default-src 'self'; img-src 'self' data: blob: https://assets.ppy.sh https://b.ppy.sh; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com https://api.nerinyan.moe"
     }
   },
   "bundle": {

@@ -17,6 +17,7 @@ import { PackBrowser } from './components/PackBrowser'
 import { FallingArrows } from './components/FallingArrows'
 import { PackSettingsDialog } from './components/PackSettingsDialog'
 import { UpdateDialog } from './components/UpdateDialog'
+import { BeatmapMirrorDialog } from './components/BeatmapMirrorDialog'
 import { WebAudioPlayer } from './lib/WebAudioPlayer'
 import { isTauri } from './services/environment'
 import { openFiles as dialogOpenFiles, openDirectory as dialogOpenDirectory, saveFile as dialogSaveFile } from './services/dialogs'
@@ -136,6 +137,9 @@ function App() {
   const [showVersionDialog, setShowVersionDialog] = useState(false)
   const [checking, setChecking] = useState(false)
   const [checkResult, setCheckResult] = useState<'up-to-date' | 'update-found' | 'error' | null>(null)
+
+  // Beatmap mirror state
+  const [showMirror, setShowMirror] = useState(false)
 
   // Queue state
   const queueItems = useQueueStore(s => s.items)
@@ -293,6 +297,13 @@ function App() {
       } catch { /* ignore */ }
     }
     setShowUpdateDialog(false)
+  }
+
+  const handleMirrorDownload = async (setId: number) => {
+    const { downloadBeatmapPath } = await import('./services/beatmapMirror')
+    const { path, error } = await downloadBeatmapPath(setId)
+    if (error || !path) throw new Error(error ?? 'Download failed')
+    handleFilesSelected([path])
   }
 
   const handleCheckVersion = async () => {
@@ -1394,6 +1405,18 @@ function App() {
                   <div className="flex-1 h-px bg-white/5" />
                 </div>
                 <button
+                  onClick={() => setShowMirror(true)}
+                  className="h-11 px-6 rounded-xl text-sm font-medium
+                    bg-white/[0.04] border border-white/8 text-surface-400
+                    hover:bg-white/[0.07] hover:text-surface-200
+                    active:scale-[0.97] transition-all duration-75 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  Search beatmaps
+                </button>
+                <button
                   onClick={() => handleOpenPack()}
                   className="h-11 px-6 rounded-xl text-sm font-medium
                     bg-white/[0.04] border border-white/8 text-surface-400
@@ -1674,6 +1697,13 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* Beatmap mirror dialog */}
+        <BeatmapMirrorDialog
+          open={showMirror}
+          onClose={() => setShowMirror(false)}
+          onDownloadAndQueue={handleMirrorDownload}
+        />
 
         {/* Post-export overlay */}
         {lastExportPath && (
