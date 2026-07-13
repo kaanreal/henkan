@@ -355,12 +355,18 @@ function App() {
   // ── Multi-file queue ─────────────────────────────────────────
 
   const loadQueueMedia = useCallback(async (bm: Beatmap) => {
+    console.log('[media] loadQueueMedia start', { source_file: bm.source_file, source_dir: bm.source_dir, audio: bm.audio_filename, bg: bm.background_filename })
     if (bm.source_file) {
       await ensureOszMediaCached(bm.source_file)
     }
     const audioFile = bm.audio_filename
-      ? await resolveMediaFile(bm.source_dir, bm.audio_filename).then(r => r ? getCachedFile(r) ?? null : null)
+      ? await resolveMediaFile(bm.source_dir, bm.audio_filename).then(r => {
+          console.log('[media] resolveMediaFile audio', { requested: bm.audio_filename, resolved: r })
+          return r ? getCachedFile(r) ?? null : null
+        })
       : null
+    if (audioFile) console.log('[media] audioFile found', { name: audioFile.name, size: audioFile.size })
+    else console.log('[media] audioFile is null')
     audioFileRef.current = audioFile
     const [audio, bg, banner, cdtitle] = await Promise.all([
       audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
@@ -368,6 +374,7 @@ function App() {
       loadMediaAsDataUrl(bm.source_dir, bm.banner_filename),
       loadCdtitleAsDataUrl(bm.source_dir, bm.cdtitle_filename, bm.creator),
     ])
+    console.log('[media] loadQueueMedia done', { audio: audio?.slice(0, 40), bg: bg?.slice(0, 40), banner: banner?.slice(0, 40), cdtitle: cdtitle?.slice(0, 40) })
     setMediaUrls({ audio, background: bg, banner, cdtitle })
   }, [setMediaUrls])
 
@@ -401,7 +408,11 @@ function App() {
           setDirection(dir)
           setBeatmap(result, dir)
           useConverterStore.getState().updateConfig(cfg)
-          await loadQueueMedia(result)
+          try {
+            await loadQueueMedia(result)
+          } catch (e) {
+            console.error('[media] loadQueueMedia failed:', e)
+          }
         }
       } catch (e: unknown) {
         const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to parse file'
