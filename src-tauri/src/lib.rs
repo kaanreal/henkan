@@ -204,10 +204,14 @@ pub fn extract_osz_all(path: &str) -> Result<OszResult, String> {
         } else if lower.ends_with(".mp3")
             || lower.ends_with(".ogg")
             || lower.ends_with(".wav")
+            || lower.ends_with(".m4a")
+            || lower.ends_with(".flac")
             || lower.ends_with(".jpg")
             || lower.ends_with(".jpeg")
             || lower.ends_with(".png")
             || lower.ends_with(".gif")
+            || lower.ends_with(".webp")
+            || lower.ends_with(".bmp")
         {
             let target = tmp.join(&name);
             if let Some(parent) = target.parent() {
@@ -403,7 +407,10 @@ fn parse_file(path: String, direction: String) -> Result<Beatmap, String> {
 
 #[tauri::command]
 fn resolve_file(source_dir: String, filename: String) -> Result<String, String> {
-    let found = resolve_media_file(&source_dir, &filename, &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
+    let found = resolve_media_file(&source_dir, &filename, &[
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
+        ".mp3", ".ogg", ".wav", ".m4a", ".flac",
+    ]);
     match found {
         Some(p) => p.canonicalize()
             .map(|p| p.to_string_lossy().to_string())
@@ -1977,19 +1984,26 @@ pub fn headless_process(paths: &[String]) {
 }
 
 #[tauri::command]
-fn download_mirror_osz(set_id: u64) -> Result<String, String> {
-    let url = format!("https://api.nerinyan.moe/d/{}", set_id);
-    let response = ureq::get(&url)
+fn download_mirror_osz(set_id: u64, filename: String) -> Result<String, String> {
+    let url = format!("https://catboy.best/d/{}", set_id);
+    let mut response = ureq::get(&url)
+        .header("User-Agent", "henkan/1.0")
         .call()
         .map_err(|e| format!("Download failed: {}", e))?;
 
-    let bytes = response.into_body()
+    let bytes = response.body_mut()
+        .with_config()
+        .limit(500 * 1024 * 1024)
         .read_to_vec()
         .map_err(|e| format!("Read response failed: {}", e))?;
 
+    if bytes.len() < 100 {
+        return Err("Download returned empty or invalid data".to_string());
+    }
+
     let temp_dir = std::env::temp_dir().join("henkan-mirror");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Create temp dir failed: {}", e))?;
-    let path = temp_dir.join(format!("{}.osz", set_id));
+    let path = temp_dir.join(&filename);
     let _ = std::fs::remove_file(&path);
     std::fs::write(&path, &bytes).map_err(|e| format!("Save file failed: {}", e))?;
 
@@ -1997,7 +2011,7 @@ fn download_mirror_osz(set_id: u64) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn search_mirror(query: String, status: String, page: u64) -> Result<String, String> {
+fn search_mirror(query: String, status: String, offset: u64) -> Result<String, String> {
     let encoded: String = query.chars().map(|c| match c {
         ' ' => "%20".to_string(),
         '#' => "%23".to_string(),
@@ -2010,13 +2024,28 @@ fn search_mirror(query: String, status: String, page: u64) -> Result<String, Str
         c => c.to_string(),
     }).collect();
     let mut url = format!(
-        "https://api.nerinyan.moe/search?q={}&m=mania&p={}&ps=20&sort=plays_desc",
-        encoded, page
+        "https://catboy.best/api/search?q={}",
+        encoded
     );
     if !status.is_empty() {
-        url.push_str(&format!("&s={}", status));
+        let status_num = match status.as_str() {
+            "ranked" => "1",
+            "qualified" => "3",
+            "loved" => "4",
+            "pending" => "0",
+            "wip" => "-1",
+            "graveyard" => "-2",
+            _ => "",
+        };
+        if !status_num.is_empty() {
+            url.push_str(&format!("&status={}", status_num));
+        }
+    }
+    if offset > 0 {
+        url.push_str(&format!("&offset={}", offset));
     }
     let response = ureq::get(&url)
+        .header("User-Agent", "henkan/1.0")
         .call()
         .map_err(|e| format!("Search failed: {}", e))?;
     let body = response.into_body()
