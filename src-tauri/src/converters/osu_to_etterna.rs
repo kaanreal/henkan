@@ -203,9 +203,34 @@ pub(crate) fn compute_meter(_beatmap: &Beatmap) -> u32 {
     1
 }
 
-// SM note grid: 192 slots per beat = 768 rows per measure (768th-note resolution).
-const SLOTS_PER_BEAT: i64 = 192;
+// SM note grid: 48 slots per beat = 192 rows per measure (48th-note resolution).
+// 192nd-note precision is too fine for most SM editors; 48th-note is the
+// finest widely-supported quantization.
+const SLOTS_PER_BEAT: i64 = 48;
 const SLOTS_PER_MEASURE: i64 = SLOTS_PER_BEAT * 4;
+
+/// Standard SM beat divisors — each represents N subdivisions of a beat.
+/// Ordered coarsest-first so we can pick the finest one that aligns.
+const SM_DIVISORS: [i64; 10] = [4, 8, 12, 16, 24, 32, 48, 64, 96, 192];
+
+/// Snap a beat position to the nearest SM-standard beat fraction.
+/// Finds the divisor (1/4, 1/8, … 1/192) whose snapped position is closest
+/// to the original beat.  This guarantees every note lands on a grid line
+/// that all SM editors can interpret.
+fn snap_beat(beat: f64) -> f64 {
+    let mut best = beat;
+    let mut best_diff = f64::MAX;
+    for &div in &SM_DIVISORS {
+        let frac = 1.0 / div as f64;
+        let snapped = (beat / frac).round() * frac;
+        let diff = (beat - snapped).abs();
+        if diff < best_diff {
+            best_diff = diff;
+            best = snapped;
+        }
+    }
+    best
+}
 
 fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
     if beatmap.notes.is_empty() {
@@ -216,9 +241,10 @@ fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
     let tps = &beatmap.timing_points;
 
     // Every note time is converted to one global beat position (across all
-    // BPM changes), then snapped to the nearest 768th-of-a-measure slot.
+    // BPM changes), then snapped to the nearest standard SM beat subdivision,
+    // and finally rounded to the nearest slot.
     let slot_of = |time_ms: f64| -> i64 {
-        let beat = ms_to_beat(time_ms, tps) + beat_shift;
+        let beat = snap_beat(ms_to_beat(time_ms, tps) + beat_shift);
         (beat * SLOTS_PER_BEAT as f64).round() as i64
     };
 
@@ -248,7 +274,7 @@ fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
             Some(end_ms) => {
                 let e = slot_of(end_ms);
                 if e <= s {
-                    // hold shorter than half a 192nd — degrade to a tap
+                    // hold shorter than a slot — degrade to a tap
                     place(s, col, '1');
                 } else if place(s, col, '2') {
                     place(e, col, '3');
@@ -258,7 +284,7 @@ fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
         }
     }
 
-    // Per measure, compress the 192-slot grid down to the coarsest row count
+    // Per measure, compress the slot grid down to the coarsest row count
     // that still holds every occupied slot.
     let mut out = String::new();
     for (i, measure) in grid.iter().enumerate() {
@@ -267,13 +293,13 @@ fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
             .map(|(si, _)| si)
             .collect();
 
-        let rows = [4usize, 8, 12, 16, 24, 32, 48, 64, 96, 192, 384, 768].iter()
+        let rows = [4usize, 8, 12, 16, 24, 32, 48, 64, 96, 192].iter()
             .copied()
             .find(|r| {
                 let step = SLOTS_PER_MEASURE as usize / r;
                 occupied.iter().all(|si| si % step == 0)
             })
-            .unwrap_or(768);
+            .unwrap_or(192);
 
         let step = SLOTS_PER_MEASURE as usize / rows;
         for ri in 0..rows {
