@@ -142,6 +142,7 @@ export async function resolveMediaFile(
   const inDir = files.filter(f =>
     !sourceDir || !f.webkitRelativePath || isInSourceDir(f.webkitRelativePath, sourceDir)
   )
+  console.log('[media] resolveMediaFile web', { sourceDir, filename, baseLower, cacheSize: files.length, inDirSize: inDir.length, cacheNames: files.map(f => f.name) })
   // 1. Exact filename match (case-insensitive)
   const exact = inDir.find(f => f.name.toLowerCase() === baseLower)
   if (exact) return exact.webkitRelativePath || exact.name

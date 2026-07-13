@@ -101,7 +101,7 @@ async function extractOsz(path: string): Promise<OszData> {
   const osuEntries: { name: string; text: string }[] = []
   const mediaFiles: { name: string }[] = []
 
-  const mediaExts = new Set(['mp3', 'ogg', 'wav', 'jpg', 'jpeg', 'png', 'gif'])
+  const mediaExts = new Set(['mp3', 'ogg', 'wav', 'flac', 'm4a', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'])
 
   zip.forEach((name: string) => {
     if (name.startsWith('__MACOSX/')) return
