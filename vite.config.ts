@@ -100,11 +100,16 @@ async function handleMirror(req: IncomingMessage, res: ServerResponse) {
     }
 
     const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
-    const buffer = Buffer.from(await upstream.arrayBuffer())
     res.setHeader('Content-Type', contentType)
     res.setHeader('Cache-Control', 'public, max-age=60')
     res.setHeader('Access-Control-Allow-Origin', '*')
-    res.end(buffer)
+    if (upstream.body) {
+      const { Readable } = await import('stream')
+      Readable.fromWeb(upstream.body as any).pipe(res)
+    } else {
+      const buffer = Buffer.from(await upstream.arrayBuffer())
+      res.end(buffer)
+    }
   } catch (e) {
     res.statusCode = 502
     res.setHeader('Content-Type', 'application/json')

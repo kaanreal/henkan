@@ -278,6 +278,8 @@ export async function parseSmAll(pathOrContent: string): Promise<Beatmap[]> {
   return beatmaps
 }
 
+const HENKAN_ATTRIBUTION = '// Converted using "https://github.com/kaanreal/henkan"\n\n'
+
 export async function convertBeatmap(
   beatmap: Beatmap,
   config: ExportConfig,
@@ -288,9 +290,10 @@ export async function convertBeatmap(
   }
 
   if (beatmap.source_format === 'Etterna') {
-    return await wasmConvertEtternaToOsu(beatmap, config)
+    const result = await wasmConvertEtternaToOsu(beatmap, config)
+    return result.replace('osu file format v14\n\n', `osu file format v14\n\n${HENKAN_ATTRIBUTION}`)
   }
-  return await wasmConvertOsuToEtterna(
+  return HENKAN_ATTRIBUTION + await wasmConvertOsuToEtterna(
     beatmap,
     config.global_timing_ms,
     config.creator,
