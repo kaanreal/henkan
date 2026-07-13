@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { Readable } from 'stream'
 
 const MIRROR_BASE = 'https://catboy.best'
 
@@ -33,12 +34,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
-    const buffer = Buffer.from(await upstream.arrayBuffer())
-
     res.setHeader('Content-Type', contentType)
     res.setHeader('Cache-Control', 'public, s-maxage=300, max-age=60')
     res.setHeader('Access-Control-Allow-Origin', '*')
-    res.status(200).send(buffer)
+
+    if (upstream.body) {
+      Readable.fromWeb(upstream.body as any).pipe(res)
+    } else {
+      const buffer = Buffer.from(await upstream.arrayBuffer())
+      res.status(200).send(buffer)
+    }
   } catch (e) {
     res.status(502).json({ error: String(e) })
   }

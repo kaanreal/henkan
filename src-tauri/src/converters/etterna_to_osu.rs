@@ -8,6 +8,8 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
 
     output.push_str("osu file format v14\n\n");
 
+    output.push_str("// Converted using \"https://github.com/kaanreal/henkan\"\n\n");
+
     output.push_str("[General]\n");
     output.push_str(&format!("AudioFilename: {}\n", beatmap.audio_filename));
     output.push_str(&format!("AudioLeadIn: {}\n", beatmap.lead_in_ms as u64));

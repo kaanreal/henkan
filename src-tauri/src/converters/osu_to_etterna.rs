@@ -17,6 +17,9 @@ pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str
 
     let mut out = String::new();
 
+    // ── attribution ──────────────────────────────────────────
+    writeln!(out, "// Converted using \"https://github.com/kaanreal/henkan\"")?;
+
     // ── headers ──────────────────────────────────────────────
     writeln!(out, "#TITLE:{};", escape(&beatmap.title))?;
     writeln!(out, "#SUBTITLE:{};", escape(&beatmap.difficulty_name))?;
