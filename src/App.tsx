@@ -299,9 +299,9 @@ function App() {
     setShowUpdateDialog(false)
   }
 
-  const handleMirrorDownload = async (setId: number) => {
+  const handleMirrorDownload = async (setId: number, filename: string) => {
     const { downloadBeatmapPath } = await import('./services/beatmapMirror')
-    const { path, error } = await downloadBeatmapPath(setId)
+    const { path, error } = await downloadBeatmapPath(setId, filename)
     if (error || !path) throw new Error(error ?? 'Download failed')
     handleFilesSelected([path])
   }

@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import type { IncomingMessage, ServerResponse } from 'http'
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+const MIRROR_BASE = 'https://catboy.best'
+
+// ── Avatar proxy ──────────────────────────────────────────────────────────────
 
 async function handleAvatar(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || '', 'http://localhost')
@@ -55,23 +58,87 @@ async function handleAvatar(req: IncomingMessage, res: ServerResponse) {
   }
 }
 
-function avatarApiPlugin() {
+// ── Mirror proxy ──────────────────────────────────────────────────────────────
+// Proxies /api/mirror?path=/api/search&... and /api/mirror?path=/d/<id>
+// to https://catboy.best — avoids browser CORS restrictions in dev.
+
+async function handleMirror(req: IncomingMessage, res: ServerResponse) {
+  const url = new URL(req.url || '', 'http://localhost')
+  const mirrorPath = url.searchParams.get('path') || ''
+
+  if (!mirrorPath) {
+    res.statusCode = 400
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ error: 'Missing path param' }))
+    return
+  }
+
+  // Safety: only allow known endpoints
+  if (mirrorPath !== '/api/search' && !/^\/d\/\d+$/.test(mirrorPath)) {
+    res.statusCode = 403
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ error: 'Forbidden' }))
+    return
+  }
+
+  const qs = new URLSearchParams(url.search)
+  qs.delete('path')
+  const qsStr = qs.toString()
+  const upstreamUrl = `${MIRROR_BASE}${mirrorPath}${qsStr ? `?${qsStr}` : ''}`
+
+  try {
+    const upstream = await fetch(upstreamUrl, {
+      headers: { 'User-Agent': 'henkan-mirror/1.0' },
+      signal: AbortSignal.timeout(60_000),
+    })
+
+    if (!upstream.ok) {
+      res.statusCode = upstream.status
+      res.setHeader('Content-Type', 'application/json')
+      res.end(JSON.stringify({ error: `Upstream error ${upstream.status}` }))
+      return
+    }
+
+    const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
+    const buffer = Buffer.from(await upstream.arrayBuffer())
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Cache-Control', 'public, max-age=60')
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.end(buffer)
+  } catch (e) {
+    res.statusCode = 502
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ error: String(e) }))
+  }
+}
+
+// ── Vite plugin wiring ────────────────────────────────────────────────────────
+
+type ViteDevServer = {
+  middlewares: {
+    use: (path: string, handler: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void
+  }
+}
+
+function apiPlugin() {
   return {
-    name: 'avatar-api',
-    configureServer(server: { middlewares: { use: (path: string, handler: (req: IncomingMessage, res: ServerResponse, next: () => void) => void) => void } }) {
-      server.middlewares.use('/api/avatar', (req, res) => {
-        handleAvatar(req, res)
-      })
+    name: 'api-proxy',
+    configureServer(server: ViteDevServer) {
+      server.middlewares.use('/api/avatar', (req, res) => { handleAvatar(req, res) })
+      server.middlewares.use('/api/mirror', (req, res) => { handleMirror(req, res) })
     },
   }
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), avatarApiPlugin()],
+  plugins: [react(), tailwindcss(), apiPlugin()],
   clearScreen: false,
   server: {
     port: 5173,
     strictPort: true,
+    watch: {
+      ignored: ['**/src-tauri/**'],
+    },
   },
   envPrefix: ['VITE_', 'TAURI_'],
   build: {
