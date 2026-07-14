@@ -1,5 +1,5 @@
 use crate::models::beatmap::{Beatmap, ExportConfig};
-use crate::models::timing::snap_time_ms;
+use crate::models::timing::{snap_to_osu_grid, TimingPoint};
 use anyhow::Result;
 
 pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
@@ -83,7 +83,7 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
             if tp.uninherited { 0 } else { 1 },
             format!(
                 "{},{},{},{},{},{},{},{}",
-                t as i64,
+                t.round() as i64,
                 beat_length,
                 tp.meter,
                 0,
@@ -104,7 +104,7 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
         lines.push((
             t,
             1,
-            format!("{},{},{},{},{},{},{},{}", t as i64, sv_beat_length, 4, 0, 0, 100, 0, 0),
+            format!("{},{},{},{},{},{},{},{}", t.round() as i64, sv_beat_length, 4, 0, 0, 100, 0, 0),
         ));
     }
 
@@ -121,14 +121,26 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     output.push('\n');
 
     output.push_str("[HitObjects]\n");
+
+    let osu_tps: Vec<TimingPoint> = beatmap
+        .timing_points
+        .iter()
+        .map(|tp| TimingPoint {
+            time_ms: shift_tp(tp.time_ms),
+            beat_length: tp.beat_length,
+            meter: tp.meter,
+            uninherited: tp.uninherited,
+        })
+        .collect();
+
     for note in &beatmap.notes {
         let x = ((note.column as f64 + 0.5) / beatmap.keys as f64 * 512.0) as u32;
-        let snapped = snap_time_ms(note.time_ms, &beatmap.timing_points);
-        let time = shift_note(snapped) as u64;
+        let shifted = shift_note(note.time_ms);
+        let time = snap_to_osu_grid(shifted, &osu_tps).round().max(0.0) as u64;
 
         if note.hold {
-            let end_snapped = snap_time_ms(note.hold_end_ms.unwrap_or(note.time_ms + 1000.0), &beatmap.timing_points);
-            let end_time = shift_note(end_snapped) as u64;
+            let end_shifted = shift_note(note.hold_end_ms.unwrap_or(note.time_ms + 1000.0));
+            let end_time = snap_to_osu_grid(end_shifted, &osu_tps).round().max(0.0) as u64;
             output.push_str(&format!(
                 "{},{},{},128,0,{}:0:0:0:0:\n",
                 x, 192, time, end_time
