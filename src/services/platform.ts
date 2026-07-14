@@ -1,5 +1,13 @@
 import { isTauri } from './environment'
 
+export async function isDir(path: string): Promise<boolean> {
+  if (isTauri()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    return await invoke<boolean>('is_directory', { path })
+  }
+  return false
+}
+
 export async function openUrl(url: string): Promise<void> {
   if (isTauri()) {
     const { invoke } = await import('@tauri-apps/api/core')

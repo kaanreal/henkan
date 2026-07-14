@@ -17,6 +17,7 @@ import { PackBrowser } from './components/PackBrowser'
 import { FallingArrows } from './components/FallingArrows'
 import { PackSettingsDialog } from './components/PackSettingsDialog'
 import { UpdateDialog } from './components/UpdateDialog'
+import { BeatmapMirrorDialog } from './components/BeatmapMirrorDialog'
 import { WebAudioPlayer } from './lib/WebAudioPlayer'
 import { isTauri } from './services/environment'
 import { openFiles as dialogOpenFiles, openDirectory as dialogOpenDirectory, saveFile as dialogSaveFile } from './services/dialogs'
@@ -24,7 +25,7 @@ import { fileInputCache, getCachedFile, clearFileCache } from './services/fileCa
 import { readFileAsDataUrl, resolveMediaFile, saveBlobToFile } from './services/files'
 import { parseFile, selectDifficulty, convertBeatmap, ensureOszMediaCached } from './services/convert'
 import { exportBeatmap, exportAllBeatmaps, zipFolder, addCdtitleToZip } from './services/export'
-import { scanPack, loadPackBannerUrl, createDummyDiff, cleanDir, generateDummyDiffContent } from './services/pack'
+import { scanPack, scanSongsFolder, loadPackBannerUrl, createDummyDiff, cleanDir, generateDummyDiffContent } from './services/pack'
 import { openFile } from './services/platform'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
@@ -137,6 +138,9 @@ function App() {
   const [checking, setChecking] = useState(false)
   const [checkResult, setCheckResult] = useState<'up-to-date' | 'update-found' | 'error' | null>(null)
 
+  // Beatmap mirror state
+  const [showMirror, setShowMirror] = useState(false)
+
   // Queue state
   const queueItems = useQueueStore(s => s.items)
   const queueActiveId = useQueueStore(s => s.activeId)
@@ -153,6 +157,7 @@ function App() {
   const [packSelected, setPackSelected] = useState<Set<number>>(new Set())
   const [packEditing, setPackEditing] = useState<number | null>(null)
   const [packLoading, setPackLoading] = useState(false)
+  const [packType, setPackType] = useState<'sm' | 'osu'>('sm')
   const [packBannerUrl, setPackBannerUrl] = useState<string | null>(null)
   const [packBannerPath, setPackBannerPath] = useState<string | null>(null)
   const packBannerFileRef = useRef<File | null>(null)
@@ -295,6 +300,13 @@ function App() {
     setShowUpdateDialog(false)
   }
 
+  const handleMirrorDownload = async (setId: number, filename: string) => {
+    const { downloadBeatmapPath } = await import('./services/beatmapMirror')
+    const { path, error } = await downloadBeatmapPath(setId, filename)
+    if (error || !path) throw new Error(error ?? 'Download failed')
+    handleFilesSelected([path])
+  }
+
   const handleCheckVersion = async () => {
     setChecking(true)
     setCheckResult(null)
@@ -344,12 +356,18 @@ function App() {
   // ── Multi-file queue ─────────────────────────────────────────
 
   const loadQueueMedia = useCallback(async (bm: Beatmap) => {
+    console.log('[media] loadQueueMedia start', { source_file: bm.source_file, source_dir: bm.source_dir, audio: bm.audio_filename, bg: bm.background_filename })
     if (bm.source_file) {
       await ensureOszMediaCached(bm.source_file)
     }
     const audioFile = bm.audio_filename
-      ? await resolveMediaFile(bm.source_dir, bm.audio_filename).then(r => r ? getCachedFile(r) ?? null : null)
+      ? await resolveMediaFile(bm.source_dir, bm.audio_filename).then(r => {
+          console.log('[media] resolveMediaFile audio', { requested: bm.audio_filename, resolved: r })
+          return r ? getCachedFile(r) ?? null : null
+        })
       : null
+    if (audioFile) console.log('[media] audioFile found', { name: audioFile.name, size: audioFile.size })
+    else console.log('[media] audioFile is null')
     audioFileRef.current = audioFile
     const [audio, bg, banner, cdtitle] = await Promise.all([
       audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
@@ -357,6 +375,7 @@ function App() {
       loadMediaAsDataUrl(bm.source_dir, bm.banner_filename),
       loadCdtitleAsDataUrl(bm.source_dir, bm.cdtitle_filename, bm.creator),
     ])
+    console.log('[media] loadQueueMedia done', { audio: audio?.slice(0, 40), bg: bg?.slice(0, 40), banner: banner?.slice(0, 40), cdtitle: cdtitle?.slice(0, 40) })
     setMediaUrls({ audio, background: bg, banner, cdtitle })
   }, [setMediaUrls])
 
@@ -390,7 +409,11 @@ function App() {
           setDirection(dir)
           setBeatmap(result, dir)
           useConverterStore.getState().updateConfig(cfg)
-          await loadQueueMedia(result)
+          try {
+            await loadQueueMedia(result)
+          } catch (e) {
+            console.error('[media] loadQueueMedia failed:', e)
+          }
         }
       } catch (e: unknown) {
         const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to parse file'
@@ -846,15 +869,50 @@ function App() {
     setPackBannerUrl(null)
     setPackBannerPath(null)
     packBannerFileRef.current = null
+
+    // Try scanning for .sm files first (existing etterna pack behavior)
+    let entries: PackEntry[] = []
+    let detectedType: 'sm' | 'osu' = 'sm'
     try {
-      const entries = await scanPack(folder)
-      setPackEntries(entries)
-    } catch (e: unknown) {
-      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to scan pack')
+      entries = await scanPack(folder)
+      console.log('[handleOpenPack] scanPack returned', entries.length, 'entries')
+    } catch (e) {
+      console.log('[handleOpenPack] scanPack error:', e)
+      entries = []
+    }
+
+    // If no sm files found, try scanning for .osu files
+    if (entries.length === 0) {
+      try {
+        console.log('[handleOpenPack] calling scanSongsFolder for:', folder)
+        entries = await scanSongsFolder(folder)
+        console.log('[handleOpenPack] scanSongsFolder returned', entries.length, 'entries')
+        detectedType = 'osu'
+      } catch (e: unknown) {
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to scan folder'
+        console.error('[handleOpenPack] scanSongsFolder error:', msg)
+        setError(msg)
+        setPackFolder(null)
+        setPackLoading(false)
+        return
+      }
+    }
+
+    if (entries.length === 0) {
+      const msg = 'No .sm or .osu files found in the selected folder (scanned: ' + folder + ')'
+      console.error('[handleOpenPack]', msg)
+      setError(msg)
       setPackFolder(null)
       setPackLoading(false)
       return
     }
+
+    setPackType(detectedType)
+    setPackEntries(entries)
+    if (detectedType === 'osu' && direction !== 'osu-to-etterna') {
+      setDirection('osu-to-etterna')
+    }
+
     // Load pack banner separately so a failure doesn't undo the pack
     try {
       const result = await loadPackBannerUrl(folder)
@@ -868,7 +926,7 @@ function App() {
     } finally {
       setPackLoading(false)
     }
-  }, [setError])
+  }, [setDirection, setError])
 
   const handlePackEditSong = useCallback(async (index: number) => {
     const entry = packEntries[index]
@@ -894,7 +952,9 @@ function App() {
     setAudioPlaying(false)
 
     try {
-      const bm = await parseFile(entry.source_file, 'etterna-to-osu')
+      const direction = packType === 'osu' ? 'osu-to-etterna' : 'etterna-to-osu'
+      console.log('[handlePackEditSong] parsing', entry.source_file, 'dir:', direction)
+      const bm = await parseFile(entry.source_file, direction)
 
       // Load media
       const audioFile = bm.audio_filename
@@ -908,7 +968,7 @@ function App() {
         resolveMediaName(bm.source_dir, bm.background_filename),
       ])
       useConverterStore.getState().setMediaUrls({ audio: newAudio, background: bg, banner: null, cdtitle })
-      useConverterStore.getState().setBeatmap(bm, 'etterna-to-osu')
+      useConverterStore.getState().setBeatmap(bm, direction)
 
       // Restore any saved config for this song (after setBeatmap resets it)
       const saved = packConfigsRef.current.get(index)
@@ -956,6 +1016,7 @@ function App() {
     setPackEditing(null)
     setPackSelected(new Set())
     setPackBannerUrl(null)
+    setPackType('sm')
     packConfigsRef.current.clear()
     queueClearAll()
     reset()
@@ -999,7 +1060,7 @@ function App() {
         // Web path: single .osz matching desktop pack output
         const JSZip = (await import('jszip')).default
         const zip = new JSZip()
-        const { parseSmAll } = await import('./services/convert')
+        const { parseSmAll, parseFile } = await import('./services/convert')
         const addedMedia = new Set<string>()
 
         for (const idx of indices) {
@@ -1010,8 +1071,6 @@ function App() {
           const baseCfg = savedCfg || configFromEntry(entry)
           const safeTitle = (baseCfg.title || entry.title).replace(/[/\\?%*:|"<>]/g, '_') || `song_${idx}`
 
-          const beatmaps = await parseSmAll(entry.source_file)
-
           const cfg = {
             ...baseCfg,
             output_format: 'folder' as const,
@@ -1020,58 +1079,103 @@ function App() {
             overall_difficulty: settings.overall_difficulty,
           }
 
-          // Build rename map: original filename → song-prefixed name (matching desktop pack mode)
-          const renameMap = new Map<string, string>()
-          const audioOrig = entry.available_difficulties[0]?.audio_filename
-          if (audioOrig) {
-            const ext = audioOrig.split('.').pop() || 'mp3'
-            renameMap.set(audioOrig, `${safeTitle}.${ext}`)
-          }
-          let bgOrig: string | null = null
-          if (entry.background_filename) {
-            const resolved = await resolveMediaFile(entry.source_dir, entry.background_filename)
-            if (resolved) bgOrig = resolved.split('/').pop() || entry.background_filename
-          }
-          if (!bgOrig) {
-            bgOrig = await resolveMediaFile(entry.source_dir, '').then(r => r?.split('/').pop() || null)
-          }
-          if (bgOrig) {
-            const ext = bgOrig.split('.').pop() || 'jpg'
-            renameMap.set(bgOrig, `${safeTitle}.${ext}`)
-          }
+          if (packType === 'osu') {
+            // Osu pack: each entry is a single .osu file, convert directly to .sm
+            const bm = await parseFile(entry.source_file, 'osu-to-etterna')
+            const smContent = await convertBeatmap(bm, cfg)
 
-          for (let bi = 0; bi < beatmaps.length; bi++) {
-            const bm = beatmaps[bi]
-            if (!bm) continue
-            let content = await convertBeatmap(bm, cfg)
-            // Fix hardcoded "bg.jpg" reference to the actual background filename
+            // Audio
+            const audioOrig = entry.available_difficulties[0]?.audio_filename
+            if (audioOrig) {
+              const ext = audioOrig.split('.').pop() || 'mp3'
+              const renamed = `${safeTitle}.${ext}`
+              const key = await resolveMediaFile(entry.source_dir, audioOrig)
+              if (key && !addedMedia.has(renamed)) {
+                const file = getCachedFile(key)
+                if (file) {
+                  addedMedia.add(renamed)
+                  zip.file(renamed, await file.arrayBuffer())
+                }
+              }
+              // Replace audio filename reference in sm content
+              const fixed = smContent.replace(audioOrig, renamed)
+              zip.file(`${safeTitle}.sm`, fixed)
+            } else {
+              zip.file(`${safeTitle}.sm`, smContent)
+            }
+
+            // Background
+            if (entry.background_filename) {
+              const bgOrig = entry.background_filename.split('/').pop() || entry.background_filename
+              const ext = bgOrig.split('.').pop() || 'png'
+              const renamed = `${safeTitle}.${ext}`
+              const key = await resolveMediaFile(entry.source_dir, entry.background_filename)
+              if (key && !addedMedia.has(renamed)) {
+                const file = getCachedFile(key)
+                if (file) {
+                  addedMedia.add(renamed)
+                  zip.file(renamed, await file.arrayBuffer())
+                }
+              }
+            }
+          } else {
+            // SM pack (existing behavior)
+            const beatmaps = await parseSmAll(entry.source_file)
+
+            // Build rename map: original filename → song-prefixed name (matching desktop pack mode)
+            const renameMap = new Map<string, string>()
+            const audioOrig = entry.available_difficulties[0]?.audio_filename
+            if (audioOrig) {
+              const ext = audioOrig.split('.').pop() || 'mp3'
+              renameMap.set(audioOrig, `${safeTitle}.${ext}`)
+            }
+            let bgOrig: string | null = null
+            if (entry.background_filename) {
+              const resolved = await resolveMediaFile(entry.source_dir, entry.background_filename)
+              if (resolved) bgOrig = resolved.split('/').pop() || entry.background_filename
+            }
+            if (!bgOrig) {
+              bgOrig = await resolveMediaFile(entry.source_dir, '').then(r => r?.split('/').pop() || null)
+            }
+            if (bgOrig) {
+              const ext = bgOrig.split('.').pop() || 'jpg'
+              renameMap.set(bgOrig, `${safeTitle}.${ext}`)
+            }
+
+            for (let bi = 0; bi < beatmaps.length; bi++) {
+              const bm = beatmaps[bi]
+              if (!bm) continue
+              let content = await convertBeatmap(bm, cfg)
+              // Fix hardcoded "bg.jpg" reference to the actual background filename
+              for (const [orig, renamed] of renameMap) {
+                content = content.replaceAll(orig, renamed)
+              }
+              if (bgOrig && renameMap.get(bgOrig)) {
+                content = content.replaceAll('"bg.jpg"', `"${renameMap.get(bgOrig)}"`)
+              }
+              const safeDiff = (cfg.difficulty_name || bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
+              const ext = '.osu'
+              const filename = safeDiff ? `${safeTitle} [${safeDiff}]${ext}` : `${safeTitle}${ext}`
+              zip.file(filename, content)
+            }
+
             for (const [orig, renamed] of renameMap) {
-              content = content.replaceAll(orig, renamed)
+              if (addedMedia.has(renamed)) continue
+              const key = await resolveMediaFile(entry.source_dir, orig)
+              if (!key) continue
+              const file = getCachedFile(key)
+              if (!file) continue
+              addedMedia.add(renamed)
+              zip.file(renamed, await file.arrayBuffer())
             }
-            if (bgOrig && renameMap.get(bgOrig)) {
-              content = content.replaceAll('"bg.jpg"', `"${renameMap.get(bgOrig)}"`)
-            }
-            const safeDiff = (cfg.difficulty_name || bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
-            const ext = '.osu'
-            const filename = safeDiff ? `${safeTitle} [${safeDiff}]${ext}` : `${safeTitle}${ext}`
-            zip.file(filename, content)
-          }
-
-          for (const [orig, renamed] of renameMap) {
-            if (addedMedia.has(renamed)) continue
-            const key = await resolveMediaFile(entry.source_dir, orig)
-            if (!key) continue
-            const file = getCachedFile(key)
-            if (!file) continue
-            addedMedia.add(renamed)
-            zip.file(renamed, await file.arrayBuffer())
           }
         }
 
-          // Add cdtitle.png (default fallback)
-          await addCdtitleToZip(zip, '', null, 'cdtitle.png')
+        // Add cdtitle.png (default fallback)
+        await addCdtitleToZip(zip, '', null, 'cdtitle.png')
 
-          // Add dummy diff
+        // Only add dummy diff for SM packs (osu→etterna direction doesn't need it)
+        if (packType !== 'osu') {
           const bannerFile = packBannerFileRef.current || (packBannerPath ? getCachedFile(packBannerPath) : null)
           const bannerName = bannerFile?.name || packBannerPath?.split(/[/\\]+/).pop()
           const dummyContent = generateDummyDiffContent(packFolderName, settings.creator, bannerName)
@@ -1081,11 +1185,16 @@ function App() {
           if (bannerFile && bannerName) {
             zip.file(bannerName, await bannerFile.arrayBuffer())
           }
+        }
 
         const blob = await zip.generateAsync({ type: 'blob' })
         await saveBlobToFile(blob, `${packFolderName}.osz`)
         setLastExportPath(`${packFolderName}.osz`)
-        trackEvent('pack_conversion_completed', { count: String(indices.length), mode: 'osz' })
+        if (packType === 'osu') {
+          trackEvent('songs_folder_conversion_completed', { count: String(indices.length), mode: 'osz' })
+        } else {
+          trackEvent('pack_conversion_completed', { count: String(indices.length), mode: 'osz' })
+        }
       } else {
         // Tauri path
         const exportDir = await dialogOpenDirectory({
@@ -1112,13 +1221,23 @@ function App() {
             hp_drain: settings.hp_drain,
             overall_difficulty: settings.overall_difficulty,
           }
-          const paths = await exportAllBeatmaps(entry.source_file, cfg, workDir, undefined, packFolderName)
-          allPaths.push(...paths)
+          if (packType === 'osu') {
+            // Osu pack: each entry is a single .osu file, convert directly to .sm
+            const bm = await parseFile(entry.source_file, 'osu-to-etterna')
+            const smContent = await convertBeatmap(bm, cfg)
+            const result = await exportBeatmap(bm, cfg, smContent, workDir, bm.difficulty_name, false)
+            allPaths.push(result)
+          } else {
+            const paths = await exportAllBeatmaps(entry.source_file, cfg, workDir, undefined, packFolderName)
+            allPaths.push(...paths)
+          }
         }
 
-        const firstEntry = packEntries[indices[0]]
-        const firstCfg = packConfigsRef.current.get(indices[0]) || configFromEntry(firstEntry)
-        await createDummyDiff(packFolderName, settings.creator || firstCfg.creator, packBannerPath, workDir)
+        if (packType !== 'osu') {
+          const firstEntry = packEntries[indices[0]]
+          const firstCfg = packConfigsRef.current.get(indices[0]) || configFromEntry(firstEntry)
+          await createDummyDiff(packFolderName, settings.creator || firstCfg.creator, packBannerPath, workDir)
+        }
 
         if (useOsz) {
           const oszPath = `${exportDir}/${packFolderName}.osz`
@@ -1138,7 +1257,7 @@ function App() {
     } finally {
       setConverting(false)
     }
-  }, [packEntries, packSelected, packConvertAllMode, packFolder, packBannerPath, setConverting, setError, setExportPath])
+  }, [packEntries, packSelected, packConvertAllMode, packFolder, packBannerPath, packType, setConverting, setError, setExportPath])
 
   const handlePackSettingsCancel = useCallback(() => {
     setShowPackSettings(false)
@@ -1227,7 +1346,7 @@ function App() {
     if (isTauri()) {
       import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
         if (cancelled) return
-        getCurrentWindow().onDragDropEvent((evt) => {
+        getCurrentWindow().onDragDropEvent(async (evt) => {
           if (cancelled) return
           if (evt.payload.type === 'enter') {
             setDragging(true)
@@ -1240,15 +1359,27 @@ function App() {
             lastDropRef.current = now
             const seen = new Set<string>()
             const files: string[] = []
-            const dirs: string[] = []
+            let folderPath: string | null = null
             for (const p of evt.payload.paths) {
               if (seen.has(p)) continue
               seen.add(p)
               const ext = p.match(/\.[^.]+$/)?.[0]?.toLowerCase()
-              if (!ext || !ACCEPTED_EXTS.includes(ext)) dirs.push(p)
-              else files.push(p)
+              if (!ext || !ACCEPTED_EXTS.includes(ext)) {
+                if (folderPath === null) folderPath = p
+              } else {
+                files.push(p)
+              }
             }
-            if (dirs.length > 0) handleOpenPack(dirs[0])
+            if (folderPath) {
+              const { isDir } = await import('./services/platform')
+              const isDirectory = await isDir(folderPath)
+              if (isDirectory) {
+                handleOpenPack(folderPath)
+              } else {
+                // Non-directory, non-accepted file — just ignore or try to add it anyway
+                console.log('[drop] skipping non-directory, non-accepted path:', folderPath)
+              }
+            }
             if (files.length > 0) handleFilesSelected(files)
           }
         }).then(fn => { unlisten = fn })
@@ -1271,7 +1402,7 @@ function App() {
         onContextMenu={(e) => e.preventDefault()}
         onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={(e) => { e.preventDefault(); setDragging(false) }}
-        onDrop={(e) => {
+        onDrop={async (e) => {
           e.preventDefault()
           setDragging(false)
           if (isTauri()) return
@@ -1281,18 +1412,76 @@ function App() {
           if (now - lastDropRef.current < 500) return
           lastDropRef.current = now
           fileInputCache.push(...files)
+
+          // Detect folder drop
+          const hasWebkitPath = files.some(f => (f as any).webkitRelativePath)
+          if (hasWebkitPath) {
+            const rootFolder = (files[0] as any).webkitRelativePath.split('/')[0]
+            handleOpenPack(rootFolder)
+            return
+          }
+
+          // Detect folder drop via webkitGetAsEntry (works in Firefox/Edge)
+          // Firefox returns stub File objects in e.dataTransfer.files for folder drops;
+          // real file contents are only accessible through FileSystemDirectoryReader.
+          const items = Array.from(e.dataTransfer?.items || [])
+          const dirEntry = items.find(item => {
+            const entry = item.webkitGetAsEntry?.()
+            return entry?.isDirectory
+          })?.webkitGetAsEntry?.()
+          if (dirEntry && dirEntry.isDirectory) {
+            const readDir = (entry: FileSystemDirectoryEntry): Promise<File[]> =>
+              new Promise((resolve) => {
+                const reader = entry.createReader()
+                const all: File[] = []
+                const readBatch = () => {
+                  reader.readEntries(async (entries) => {
+                    if (entries.length === 0) { resolve(all); return }
+                    for (const e of entries) {
+                      if (e.isFile) {
+                        const f = await new Promise<File | null>(r => (e as FileSystemFileEntry).file(r, () => r(null)))
+                        if (f) all.push(f)
+                      } else if (e.isDirectory) {
+                        const sub = await readDir(e as FileSystemDirectoryEntry)
+                        all.push(...sub)
+                      }
+                    }
+                    readBatch()
+                  }, () => resolve(all))
+                }
+                readBatch()
+              })
+            const realFiles = await readDir(dirEntry as FileSystemDirectoryEntry)
+            if (realFiles.length > 0) {
+              fileInputCache.length = 0
+              fileInputCache.push(...realFiles)
+            }
+            handleOpenPack(dirEntry.name)
+            return
+          }
+
+          // Fallback heuristic: multiple .osu or .sm files = folder drop
+          const osuFiles = files.filter(f => f.name.toLowerCase().endsWith('.osu'))
+          const smFiles = files.filter(f => f.name.toLowerCase().endsWith('.sm'))
+          const isFolderDrop = files.length > 1 && (osuFiles.length > 0 || smFiles.length > 0)
+
+          if (isFolderDrop) {
+            handleOpenPack('Dropped')
+            return
+          }
+
+          // Single/multiple file drops — skip extensionless entries
+          const knownExts = ['.sm', '.osu', '.osz']
           const seen = new Set<string>()
           const filePaths: string[] = []
-          const dirs: string[] = []
           for (const f of files) {
+            const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase()
+            if (!knownExts.includes(ext)) continue
             const p = (f as any).path || f.name
             if (seen.has(p)) continue
             seen.add(p)
-            const ext = p.match(/\.[^.]+$/)?.[0]?.toLowerCase()
-            if (!ext || !ACCEPTED_EXTS.includes(ext)) dirs.push(p)
-            else filePaths.push(p)
+            filePaths.push(p)
           }
-          if (dirs.length > 0) handleOpenPack(dirs[0])
           if (filePaths.length > 0) handleFilesSelected(filePaths)
         }}
       >
@@ -1393,6 +1582,18 @@ function App() {
                   <span className="text-[11px] text-surface-500 tracking-widest uppercase">or</span>
                   <div className="flex-1 h-px bg-white/5" />
                 </div>
+                <button
+                  onClick={() => setShowMirror(true)}
+                  className="h-11 px-6 rounded-xl text-sm font-medium
+                    bg-white/[0.04] border border-white/8 text-surface-400
+                    hover:bg-white/[0.07] hover:text-surface-200
+                    active:scale-[0.97] transition-all duration-75 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  Search beatmaps
+                </button>
                 <button
                   onClick={() => handleOpenPack()}
                   className="h-11 px-6 rounded-xl text-sm font-medium
@@ -1674,6 +1875,13 @@ function App() {
             </div>
           </div>
         )}
+
+        {/* Beatmap mirror dialog */}
+        <BeatmapMirrorDialog
+          open={showMirror}
+          onClose={() => setShowMirror(false)}
+          onDownloadAndQueue={handleMirrorDownload}
+        />
 
         {/* Post-export overlay */}
         {lastExportPath && (
