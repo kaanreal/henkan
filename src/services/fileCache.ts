@@ -1,4 +1,5 @@
 export const fileInputCache: File[] = []
+export const fileContentCache = new Map<string, string>()
 
 export function getCachedFile(name: string): File | undefined {
   return fileInputCache.find(f => {
@@ -26,8 +27,17 @@ export function getCachedFiles(): File[] {
   return [...fileInputCache]
 }
 
+export function getCachedFileContent(name: string): string | undefined {
+  return fileContentCache.get(name)
+}
+
+export function cacheFileContent(name: string, content: string): void {
+  fileContentCache.set(name, content)
+}
+
 export function clearFileCache() {
   fileInputCache.length = 0
+  fileContentCache.clear()
 }
 
 

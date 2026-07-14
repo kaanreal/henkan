@@ -1122,6 +1122,67 @@ fn scan_pack(folder: String) -> Result<Vec<PackEntry>, String> {
     Ok(results)
 }
 
+/// Recursively scan a folder for .osu files and return basic metadata for each.
+/// Each .osu file gets its own PackEntry (since osu files are single-difficulty).
+#[tauri::command]
+fn scan_songs_folder(folder: String) -> Result<Vec<PackEntry>, String> {
+    eprintln!("[henkan::scan_songs_folder] scanning: {}", folder);
+    fn walk(dir: &Path, results: &mut Vec<PackEntry>, depth: usize) {
+        if depth > 5 { return; }
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    eprintln!("[henkan::scan_songs_folder] entering dir: {:?}", path);
+                    walk(&path, results, depth + 1);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("osu") {
+                    eprintln!("[henkan::scan_songs_folder] found osu: {:?}", path);
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        match parsers::osu::parse_osu(&content) {
+                            Ok(bm) => {
+                                let source_dir = path.parent()
+                                    .unwrap_or(Path::new(""))
+                                    .to_string_lossy()
+                                    .to_string();
+                                results.push(PackEntry {
+                                    source_file: path.to_string_lossy().to_string(),
+                                    source_dir,
+                                    title: bm.title,
+                                    artist: bm.artist,
+                                    background_filename: bm.background_filename,
+                                    banner_filename: None,
+                                    available_difficulties: vec![DiffInfo {
+                                        name: bm.difficulty_name,
+                                        keys: bm.keys,
+                                        note_count: bm.notes.len(),
+                                        audio_filename: Some(bm.audio_filename),
+                                    }],
+                                });
+                            }
+                            Err(e) => {
+                                let name = path.to_string_lossy();
+                                eprintln!("[henkan::scan_songs_folder] parse FAILED for {}: {}", name, e);
+                            }
+                        }
+                    } else {
+                        let name = path.to_string_lossy();
+                        eprintln!("[henkan::scan_songs_folder] read FAILED for {}", name);
+                    }
+                }
+            }
+        }
+    }
+
+    let dir = Path::new(&folder);
+    if !dir.is_dir() {
+        return Err("Not a directory".to_string());
+    }
+
+    let mut results = Vec::new();
+    walk(dir, &mut results, 0);
+    Ok(results)
+}
+
 #[tauri::command]
 fn find_pack_banner(folder: String) -> Result<Option<String>, String> {
     let dir = std::path::Path::new(&folder);
@@ -1185,6 +1246,11 @@ fn get_github_stars(repo: String) -> Result<Option<String>, String> {
     Ok(json.get("stargazers_count")
         .and_then(|v| v.as_i64())
         .map(|n| n.to_string()))
+}
+
+#[tauri::command]
+fn is_directory(path: String) -> bool {
+    Path::new(&path).is_dir()
 }
 
 #[tauri::command]
@@ -2098,7 +2164,9 @@ pub fn run() {
             write_file_bytes,
             clean_dir,
             scan_pack,
+            scan_songs_folder,
             find_pack_banner,
+            is_directory,
             open_file,
             open_url,
             get_github_stars,
@@ -2113,6 +2181,74 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_scan_songs_folder_on_actual_osu_songs_dir() {
+        let dir = r"C:\STUFF\osu!\Songs\2347537 Mitose Noriko - Class__EXSPHERE_NOSURGE;";
+        let result = scan_songs_folder(dir.to_string());
+        match &result {
+            Ok(entries) => {
+                eprintln!("[test] scan_songs_folder returned {} entries", entries.len());
+                for e in entries {
+                    eprintln!("[test]   entry: title={:?}, artist={:?}, file={:?}", e.title, e.artist, e.source_file);
+                }
+                assert!(!entries.is_empty(), "Expected at least 1 osu entry from {}", dir);
+            }
+            Err(err) => {
+                eprintln!("[test] scan_songs_folder error: {}", err);
+                panic!("scan_songs_folder failed: {}", err);
+            }
+        }
+    }
+
+    #[test]
+    fn test_scan_songs_folder_finds_osu_files() {
+        let dir = std::env::temp_dir().join("henkan_unit_test_scan");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir.join("subfolder")).unwrap();
+
+        let content = r#"
+osu file format v14
+
+[General]
+AudioFilename: audio.mp3
+Mode: 3
+
+[Metadata]
+Title:Test Song
+TitleUnicode:Test Song
+Artist:Test Artist
+Creator:Test Mapper
+Version:EZ
+
+[Difficulty]
+HPDrainRate:5
+CircleSize:4
+OverallDifficulty:5
+ApproachRate:5
+SliderMultiplier:1.4
+SliderTickRate:1
+
+[TimingPoints]
+0,500,4,0,0,100,1,0
+
+[HitObjects]
+256,192,0,1,0,0:0:0:0:
+"#;
+        std::fs::write(dir.join("subfolder").join("test.osu"), content).unwrap();
+        std::fs::write(dir.join("other.txt"), "not a beatmap").unwrap();
+
+        let result = scan_songs_folder(dir.to_string_lossy().to_string());
+        assert!(result.is_ok(), "scan failed: {:?}", result.err());
+        let entries = result.unwrap();
+        assert!(!entries.is_empty(), "expected at least 1 osu entry, got 0");
+        assert_eq!(entries[0].title, "Test Song");
+        assert_eq!(entries[0].artist, "Test Artist");
+        assert_eq!(entries[0].available_difficulties.len(), 1);
+        assert_eq!(entries[0].available_difficulties[0].name, "EZ");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn test_cli_parse_osu() {
