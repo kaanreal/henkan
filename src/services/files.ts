@@ -1,5 +1,5 @@
 import { isTauri } from './environment'
-import { getCachedFile, getCachedFiles } from './fileCache'
+import { getCachedFile, getCachedFileContent, getCachedFiles, fileContentCache } from './fileCache'
 
 export async function readFileAsDataUrl(pathOrFile: string | File): Promise<string | null> {
   if (pathOrFile instanceof File) {
@@ -59,6 +59,14 @@ export async function readFileText(pathOrFile: string | File): Promise<string> {
     return atob(base64)
   }
 
+  // Check content cache first (populated by scanSongsFolder / scanPack)
+  const cachedContent = getCachedFileContent(pathOrFile)
+  if (cachedContent !== undefined) {
+    console.log('[readFileText] using cached content for', JSON.stringify(pathOrFile))
+    return cachedContent
+  }
+
+  console.warn('[readFileText] miss for', JSON.stringify(pathOrFile), 'cache keys:', JSON.stringify(Array.from(fileContentCache.keys())))
   const cached = getCachedFile(pathOrFile)
   if (cached) {
     return await decodeFileText(cached)

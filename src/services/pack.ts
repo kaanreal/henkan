@@ -2,7 +2,17 @@ import type { PackEntry } from '../types/beatmap'
 import { isTauri } from './environment'
 import { readFileAsDataUrl } from './files'
 import { wasmParseSmAll } from './wasm'
-import { getCachedFiles, getCachedFile } from './fileCache'
+import { getCachedFiles, getCachedFile, cacheFileContent } from './fileCache'
+
+function decodeFileContent(file: File): Promise<string> {
+  return file.arrayBuffer().then(buf => {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(buf)
+    } catch {
+      return new TextDecoder('iso-8859-1').decode(buf)
+    }
+  })
+}
 
 export async function scanPack(folder: string): Promise<PackEntry[]> {
   if (isTauri()) {
@@ -25,14 +35,10 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
 
   for (const file of smFiles) {
     try {
-      const buf = await file.arrayBuffer()
-      let content: string
-      try {
-        content = new TextDecoder('utf-8', { fatal: true }).decode(buf)
-      } catch {
-        // Fall back to ISO-8859-1 for non-UTF-8 .sm files (common in legacy stepmania packs)
-        content = new TextDecoder('iso-8859-1').decode(buf)
-      }
+      const content = await decodeFileContent(file)
+      const sourceFile = (file as any).path || file.webkitRelativePath || file.name
+      cacheFileContent(sourceFile, content) // cache for later re-read by parseFile
+
       const beatmaps = await wasmParseSmAll(content)
       const first = beatmaps[0]
       if (!first) continue
@@ -46,7 +52,7 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
         ? file.webkitRelativePath.slice(folder.length + 1)
         : file.webkitRelativePath
       entries.push({
-        source_file: (file as any).path || file.webkitRelativePath || file.name,
+        source_file: sourceFile,
         source_dir: relPath.split('/')[0] || folder,
         title: first.title,
         artist: first.artist,
@@ -183,6 +189,55 @@ export function generateDummyDiffContent(
   osu += '0,500,4,0,0,100,1,0\n\n'
   osu += '[HitObjects]\n'
   return osu
+}
+
+export async function scanSongsFolder(folder: string): Promise<PackEntry[]> {
+  if (isTauri()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    return await invoke<PackEntry[]>('scan_songs_folder', { folder })
+  }
+
+  const files = getCachedFiles()
+  const osuFiles = files.filter(f => {
+    if (f.webkitRelativePath) {
+      return f.webkitRelativePath.toLowerCase().endsWith('.osu')
+    }
+    return f.name.toLowerCase().endsWith('.osu')
+  })
+
+  const entries: PackEntry[] = []
+
+  for (const file of osuFiles) {
+    try {
+      const content = await decodeFileContent(file)
+      const sourceFile = (file as any).path || file.webkitRelativePath || file.name
+      console.log('[scanSongsFolder] caching key=', JSON.stringify(sourceFile), 'webkit=', JSON.stringify(file.webkitRelativePath), 'name=', JSON.stringify(file.name))
+      cacheFileContent(sourceFile, content)
+
+      const { wasmParseOsu } = await import('./wasm')
+      const bm = await wasmParseOsu(content)
+      if (!bm) continue
+
+      entries.push({
+        source_file: sourceFile,
+        source_dir: bm.source_dir || folder,
+        title: bm.title,
+        artist: bm.artist,
+        background_filename: bm.background_filename,
+        banner_filename: null,
+        available_difficulties: [{
+          name: bm.difficulty_name,
+          keys: bm.keys,
+          note_count: bm.notes.length,
+          audio_filename: bm.audio_filename || null,
+        }],
+      })
+    } catch {
+      // skip unparseable files
+    }
+  }
+
+  return entries
 }
 
 export async function cleanDir(path: string): Promise<void> {
