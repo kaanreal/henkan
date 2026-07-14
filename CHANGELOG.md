@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.2.0](https://github.com/kaanreal/henkan/compare/v1.1.0...v1.2.0) (2026-07-14)
+
+
+### Features
+
+* Add auto-update ([058f5ef](https://github.com/kaanreal/henkan/commit/058f5ef41abdc5038809141aca76ac42f779ef8c))
+* Add support for folders ([43b70c1](https://github.com/kaanreal/henkan/commit/43b70c1a94171f8f33c9c6766c87764522f6ea8d))
+* Migrate mirror to catboy.best with UI overhaul ([56f32f0](https://github.com/kaanreal/henkan/commit/56f32f039c04b24c7d23c64d8bb226ba50e44d37))
+
+
+### Bug Fixes
+
+* Auto-discover background image in pack conversion when .sm has no #BACKGROUND ([af75cfb](https://github.com/kaanreal/henkan/commit/af75cfb78b96dd6abb39452b955521e61caf09f7))
+* **brew:** always push tap update; use --allow-empty to override stale content [skip ci] ([af05b90](https://github.com/kaanreal/henkan/commit/af05b9060b89529ee6cf39d88589ab467b297045))
+* **brew:** correct formula install args and test; formula was truncated in tap [skip ci] ([69352a8](https://github.com/kaanreal/henkan/commit/69352a8edef1886d4b308b07ca041a4a25747d71))
+* Clear file cache before opening pack directory ([e33d298](https://github.com/kaanreal/henkan/commit/e33d298bd4da20538b143f50a93eddc758a52a3f))
+* correct Chocolatey nupkg OPC format, winget sparse-clone, portable sed [skip ci] ([c443bda](https://github.com/kaanreal/henkan/commit/c443bda29fc1405550d1a25685e2b059ce6b9914))
+* Don't dedup pack files by name, use webkitRelativePath only ([e33d298](https://github.com/kaanreal/henkan/commit/e33d298bd4da20538b143f50a93eddc758a52a3f))
+* Don't use background images as pack banner on web ([95bd91d](https://github.com/kaanreal/henkan/commit/95bd91d413a4406f8a2fdde18db0d926e6932a84))
+* Fixed AV import issues ([01a94e3](https://github.com/kaanreal/henkan/commit/01a94e3c6f14413d1269831a1948d4dd5f142a67))
+* Restore auto-discovery of background images when .sm has no #BACKGROUND ([41c7741](https://github.com/kaanreal/henkan/commit/41c77410e6139a285ee088de09ba912f117d7d88))
+* **web:** Align banner handling and cache cleanup ([d6b7ae5](https://github.com/kaanreal/henkan/commit/d6b7ae53b70dc3c3b58cd741de05792313befd55))
+* **web:** Correct source_file and resolveMediaFile for pack songs ([efa6c9d](https://github.com/kaanreal/henkan/commit/efa6c9dbfdfc1b8bb6873844b8c03b67a82f6a4e))
+* **web:** Fixed detection issues on the web ([9264279](https://github.com/kaanreal/henkan/commit/9264279d42892d65c0fac767dd26333d36f4f24b))
+* **web:** Fixed pack conversion issues [skip ci] ([e33d298](https://github.com/kaanreal/henkan/commit/e33d298bd4da20538b143f50a93eddc758a52a3f))
+* **web:** Fixed some pack conversion issues on the web ver. [skip ci] ([8d497a2](https://github.com/kaanreal/henkan/commit/8d497a27d2b377d5e5ab6032b2943182f064429d))
+* **web:** Handle non-UTF-8 .sm files; fix pack banner lookup by webkitRelativePath ([76c9d51](https://github.com/kaanreal/henkan/commit/76c9d51637e2f7cbae02ea8ebd5f2e4855e78907))
+
 ## [1.1.0](https://github.com/kaanreal/henkan/compare/v1.0.0...v1.1.0) (2026-07-03)
 
 
