@@ -111,3 +111,24 @@ pub fn snap_time(time_ms: f64, tps: &[TimingPoint], snap_division: f64) -> f64 {
 pub fn snap_time_ms(time_ms: f64, tps: &[TimingPoint]) -> f64 {
     snap_time(time_ms, tps, 1.0 / 192.0)
 }
+
+/// Snap a time to the nearest osu! beat grid position.
+/// Tries all 11 editor-supported divisors (1/1 through 1/16) and picks the closest.
+pub fn snap_to_osu_grid(time_ms: f64, tps: &[TimingPoint]) -> f64 {
+    let beat = ms_to_beat(time_ms, tps);
+    let divisors = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 12.0, 16.0];
+
+    let mut best_snapped = beat;
+    let mut best_error = f64::INFINITY;
+
+    for &d in &divisors {
+        let snapped = (beat * d).round() / d;
+        let error = (beat - snapped).abs();
+        if error < best_error {
+            best_error = error;
+            best_snapped = snapped;
+        }
+    }
+
+    beat_to_ms(best_snapped, tps)
+}

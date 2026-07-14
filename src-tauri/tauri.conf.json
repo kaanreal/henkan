@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com"
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: https://*.ppy.sh https://assets.ppy.sh; media-src 'self' data: blob: https://b.ppy.sh; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost https://api.github.com https://catboy.best"
     }
   },
   "bundle": {
