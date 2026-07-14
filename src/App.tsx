@@ -1451,7 +1451,7 @@ function App() {
                 }
                 readBatch()
               })
-            const realFiles = await readDir(dirEntry)
+            const realFiles = await readDir(dirEntry as FileSystemDirectoryEntry)
             if (realFiles.length > 0) {
               fileInputCache.length = 0
               fileInputCache.push(...realFiles)
