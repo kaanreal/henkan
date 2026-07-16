@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 
 interface Props {
   onSeparateSongs: () => void
@@ -35,11 +35,11 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center ${leaving ? 'pointer-events-none' : ''}`}>
       <div
-        className={`absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-200 ${!leaving ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`absolute inset-0 bg-black/70 transition-all duration-200 ${!leaving ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={handleCancel}
       />
       <div className={`relative w-full max-w-sm mx-4 transition-all duration-200 ease-out ${!leaving ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 translate-y-4'}`}>
-        <div className="bg-surface-900/95 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
+        <div className="bg-surface-900/95 border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
 
           <div className="px-5 pt-5 pb-3">
             <div className="flex items-center gap-3">
@@ -81,7 +81,7 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
                   <div className="font-medium">Convert as separate songs</div>
                   <div className="text-[11px] text-surface-500 mt-px leading-relaxed">
                     Each difficulty becomes its own song folder with its own audio, background, 
-                    and the difficulty name appended to the title — so they appear as 
+                    and the difficulty name appended to the title - so they appear as 
                     separate entries in Etterna song select
                   </div>
                   <div className="mt-1">
@@ -109,7 +109,7 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
                 <div>
                   <div className="font-medium">Combine into one .sm</div>
                   <div className="text-[11px] text-surface-500 mt-px leading-relaxed">
-                    All difficulties go into a single .sm file sharing one audio — 
+                    All difficulties go into a single .sm file sharing one audio - 
                     not recommended when diffs have different audio files since 
                     only one audio can be referenced
                   </div>

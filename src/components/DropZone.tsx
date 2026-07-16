@@ -39,26 +39,13 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
       onClick={handleClick}
         className={`
         relative w-full max-w-lg cursor-pointer rounded-3xl border-2 border-dashed
-        backdrop-blur-sm transition-all duration-150 ease-out overflow-hidden
+        transition-all duration-150 ease-out overflow-hidden
         ${dragging
           ? 'border-accent bg-accent/5 scale-[1.02]'
           : 'border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.04]'
         }
       `}
     >
-      {/* Decorative blurred orbs */}
-      <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-accent/8 blur-2xl animate-pulse-soft" style={{animationDuration: '4s'}} />
-      <div className="absolute -bottom-6 -left-6 w-20 h-20 rounded-full bg-purple-500/8 blur-2xl animate-pulse-soft" style={{animationDuration: '5s'}} />
-      <div className="absolute top-1/3 -left-3 w-8 h-8 rounded-full bg-accent/5 blur-xl" />
-
-      {/* Subtle grid pattern */}
-      <div className="absolute inset-0 opacity-[0.015]"
-        style={{
-          backgroundImage: 'radial-gradient(circle, rgba(255,255,255,1) 1px, transparent 1px)',
-          backgroundSize: '24px 24px',
-        }}
-      />
-
       <input
         ref={inputRef}
         type="file"
@@ -89,17 +76,11 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
 
         <div className="text-center space-y-1 sm:space-y-1.5">
           <p className="text-lg sm:text-xl font-semibold text-surface-200">
-            {dragging ? 'let go!' : 'drop a beatmap'}
+            {dragging ? 'Release to drop' : 'Drop a beatmap'}
           </p>
           <p className="text-sm text-surface-500">
             or click to browse &mdash; .osu, .osz, .sm
           </p>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs">
-          <span className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/5 text-surface-500 font-medium">osu!mania</span>
-          <span className="text-surface-600 text-lg">&harr;</span>
-          <span className="px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/5 text-surface-500 font-medium">StepMania</span>
         </div>
       </div>
     </div>

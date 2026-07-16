@@ -20,7 +20,7 @@ export function UpdateDialog({ open, updateInfo, installing, onUpdate, onDismiss
   if (!open || !updateInfo) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-fade-in">
       <div className="bg-surface-900 border border-surface-700/50 rounded-2xl shadow-2xl max-w-lg w-full mx-4 animate-scale-in overflow-hidden">
         <div className="px-6 pt-6 pb-4">
           <div className="flex items-center gap-3 mb-1">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import type { Beatmap, ConvertDirection, ExportConfig } from '../types/beatmap'
 import { FilePicker } from './FilePicker'
 
@@ -29,7 +29,7 @@ function BpmDisplay(timing_points: Beatmap['timing_points']) {
     .filter(tp => tp.uninherited && tp.beat_length > 0)
     .map(tp => (60_000 / tp.beat_length).toFixed(1))
     .join(', ')
-  return bpm || '—'
+  return bpm || '-'
 }
 
 export function MetadataPanel({
@@ -47,7 +47,7 @@ export function MetadataPanel({
       {/* Beatmap identity */}
       <div className="space-y-0.5 animate-fade-in">
         <h1 className="text-lg font-semibold text-surface-100 tracking-tight leading-tight">
-          {config.artist} — {config.title}
+          {config.artist} - {config.title}
         </h1>
         <p className="text-sm text-surface-500">
           mapped by {config.creator} · {config.difficulty_name}
@@ -55,7 +55,7 @@ export function MetadataPanel({
       </div>
 
       {/* Stats row */}
-      <div className="flex items-center gap-2 flex-wrap animate-fade-in delay-100">
+      <div className="flex items-center gap-2 flex-wrap">
         {[
           { label: 'Keys', value: `${beatmap.keys}K` },
           { label: 'Notes', value: totalNotes.toLocaleString() },
@@ -73,7 +73,7 @@ export function MetadataPanel({
 
       {/* Difficulty selector */}
       {beatmap.available_difficulties.length > 1 && (
-        <div className="animate-fade-in delay-150">
+        <div className="animate-fade-in">
           <div className="flex items-center gap-2 mb-2.5">
             <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Difficulties</h2>
             <div className="h-px flex-1 bg-white/5" />
@@ -109,7 +109,7 @@ export function MetadataPanel({
       )}
 
       {/* Metadata editor */}
-      <div className="animate-fade-in delay-200">
+      <div className=" animate-fade-in">
         <div className="flex items-center gap-2 mb-2.5">
           <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Metadata</h2>
           <div className="h-px flex-1 bg-white/5" />
@@ -124,7 +124,7 @@ export function MetadataPanel({
 
       {/* Difficulty settings */}
       {direction === 'etterna-to-osu' && (
-        <div className="animate-fade-in delay-200">
+        <div className=" animate-fade-in">
           <div className="flex items-center gap-2 mb-2.5">
             <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Difficulty Settings</h2>
             <div className="h-px flex-1 bg-white/5" />
@@ -136,9 +136,9 @@ export function MetadataPanel({
         </div>
       )}
 
-      {/* Conversion rate — only for SM→osu */}
+      {/* Conversion rate - only for SM→osu */}
       {direction === 'etterna-to-osu' && (
-        <div className="animate-fade-in delay-200">
+        <div className=" animate-fade-in">
           <div className="flex items-center gap-2 mb-2">
             <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Rate</h2>
             <div className="h-px flex-1 bg-white/5" />
@@ -153,7 +153,7 @@ export function MetadataPanel({
               value={config.conversion_rate}
               onChange={e => onUpdateConfig({ conversion_rate: parseFloat(e.target.value) })}
               className="flex-1 h-2 rounded-full bg-white/15 cursor-pointer"
-              style={{ accentColor: '#6c5ce7' }}
+              style={{ accentColor: '#6366f1' }}
             />
             <button
               onClick={() => onUpdateConfig({ conversion_rate: 1 })}
@@ -167,7 +167,7 @@ export function MetadataPanel({
               type="checkbox"
               checked={config.preserve_pitch}
               onChange={e => onUpdateConfig({ preserve_pitch: e.target.checked })}
-              className="w-3.5 h-3.5 rounded border-white/20 accent-[#6c5ce7]"
+              className="w-3.5 h-3.5 rounded border-white/20 accent-[#6366f1]"
             />
             <span className="text-xs text-surface-400">Preserve pitch</span>
           </label>
@@ -175,7 +175,7 @@ export function MetadataPanel({
       )}
 
       {/* File pickers */}
-      <div className="animate-fade-in delay-250">
+      <div className=" animate-fade-in">
         <div className="flex items-center gap-2 mb-2.5">
           <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Files</h2>
           <div className="h-px flex-1 bg-white/5" />
@@ -202,7 +202,7 @@ export function MetadataPanel({
               onClear={() => onUpdateConfig({ banner_filename: null })}
             />
           )}
-          {/* CD Title — only for SM target */}
+          {/* CD Title - only for SM target */}
           {direction === 'osu-to-etterna' && (
             <FilePicker
               label="CD Title"
@@ -216,7 +216,7 @@ export function MetadataPanel({
       </div>
 
       {/* Output format */}
-      <div className="flex items-center gap-2 animate-fade-in delay-300">
+      <div className="flex items-center gap-2 animate-fade-in">
         <span className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase mr-1">Format</span>
         <FormatToggle
           options={isOsu
@@ -232,7 +232,7 @@ export function MetadataPanel({
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2 pt-1 animate-fade-in delay-300">
+      <div className="flex items-center gap-2 pt-1 animate-fade-in">
         <button
           onClick={onConvert}
           disabled={isConverting}
@@ -314,7 +314,7 @@ function FormatToggle({ options, value, onChange }: {
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
-          className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all duration-75 active:scale-[0.97]
+          className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all duration-75
             ${o.value === value
               ? 'bg-accent text-white shadow-sm'
               : 'text-surface-400 hover:text-surface-200'

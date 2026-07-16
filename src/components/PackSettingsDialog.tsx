@@ -57,7 +57,7 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
         value={settings[key]}
         onChange={e => update(key, parseFloat(e.target.value))}
         className="flex-1 h-2 rounded-full bg-white/15 cursor-pointer"
-        style={{ accentColor: '#6c5ce7' }}
+        style={{ accentColor: '#6366f1' }}
       />
       <span className="text-xs text-surface-300 w-8 text-right font-mono">{settings[key].toFixed(1)}</span>
     </div>
@@ -66,11 +66,11 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center ${leaving ? 'pointer-events-none' : ''}`}>
       <div
-        className={`absolute inset-0 bg-black/70 backdrop-blur-sm ${leaving ? 'animate-fade-out' : 'animate-fade-in'}`}
+        className={`absolute inset-0 bg-black/70 ${leaving ? 'animate-fade-out' : 'animate-fade-in'}`}
         onClick={handleCancel}
       />
       <div className={`relative w-full max-w-sm mx-4 ${leaving ? 'animate-fade-out' : 'animate-scale-in'}`}>
-        <div className="bg-surface-900/95 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
+        <div className="bg-surface-900/95 border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
           <div className="h-0.5 bg-gradient-to-r from-accent via-accent-muted to-accent/40" />
           <div className="px-5 pt-5 pb-4 space-y-4">
             <div>
@@ -119,7 +119,7 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
               className="flex-1 h-10 rounded-xl text-sm font-medium
                 bg-white/[0.04] border border-white/8 text-surface-400
                 hover:bg-white/[0.07] hover:text-surface-200
-                active:scale-[0.97] transition-all duration-75
+                transition-all duration-75
                 disabled:opacity-40"
             >
               Cancel

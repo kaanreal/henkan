@@ -116,11 +116,11 @@ export function AudioPlayer({
 
 
   return (
-    <div className="shrink-0 px-6 py-2.5 border-t border-white/5 bg-black/30 backdrop-blur-md flex items-center gap-2.5 animate-slide-up">
+    <div className="shrink-0 px-6 py-2.5 border-t border-white/5 bg-black/30 flex items-center gap-2.5 animate-slide-up">
       {/* Play/Pause */}
       <button
         onClick={toggle}
-        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 active:scale-[0.95]"
+        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 transition-all duration-75"
         title={audioPlaying ? 'Pause' : 'Play'}
       >
         {audioPlaying ? (
@@ -137,7 +137,7 @@ export function AudioPlayer({
       {/* Stop */}
       <button
         onClick={stop}
-        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 active:scale-[0.95]"
+        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 transition-all duration-75"
         title="Stop"
       >
         <svg className="w-3.5 h-3.5 text-surface-400" fill="currentColor" viewBox="0 0 24 24">
@@ -148,7 +148,7 @@ export function AudioPlayer({
       {/* Preview */}
       <button
         onClick={onOpenPreview}
-        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 active:scale-[0.95]"
+        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 transition-all duration-75"
         title="Preview beatmap"
       >
         <svg className="w-4 h-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -190,7 +190,7 @@ export function AudioPlayer({
       <div className="flex items-center gap-1.5 group/vol shrink-0">
         <button
           onClick={toggleMute}
-          className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 active:scale-[0.95]"
+        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0"
           title={isMuted ? 'Unmute' : 'Mute'}
         >
           {isMuted ? (

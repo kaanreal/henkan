@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 
 interface Difficulty {
   name: string
@@ -18,7 +18,7 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
   const [selected, setSelected] = useState<Set<number>>(new Set([currentIndex]))
   const [leaving, setLeaving] = useState(false)
 
-  // Reset state when dialog opens — called synchronously during first render
+  // Reset state when dialog opens - called synchronously during first render
   if (open && leaving) {
     setLeaving(false)
   }
@@ -61,13 +61,13 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
     <div className={`fixed inset-0 z-50 flex items-center justify-center ${leaving ? 'pointer-events-none' : ''}`}>
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-200 ${!leaving ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`absolute inset-0 bg-black/70 transition-all duration-200 ${!leaving ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={handleCancel}
       />
 
       {/* Panel */}
       <div className={`relative w-full max-w-sm mx-4 transition-all duration-200 ease-out ${!leaving ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 translate-y-4'}`}>
-        <div className="bg-surface-900/95 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
+        <div className="bg-surface-900/95 border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
 
           {/* Accent glow bar */}
           <div className="h-0.5 bg-gradient-to-r from-accent via-accent-muted to-accent/40" />
@@ -152,7 +152,7 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
               className="flex-1 h-10 rounded-xl text-sm font-medium
                 bg-white/[0.04] border border-white/8 text-surface-400
                 hover:bg-white/[0.07] hover:text-surface-200
-                active:scale-[0.97] transition-all duration-75"
+                transition-all duration-75"
             >
               Cancel
             </button>
