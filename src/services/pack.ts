@@ -1,4 +1,4 @@
-import type { PackEntry } from '../types/beatmap'
+﻿import type { PackEntry } from '../types/beatmap'
 import { isTauri } from './environment'
 import { readFileAsDataUrl } from './files'
 import { wasmParseSmAll } from './wasm'
@@ -27,7 +27,7 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
     if (f.webkitRelativePath) {
       return f.webkitRelativePath.toLowerCase().endsWith('.sm')
     }
-    // Drag-dropped files — all .sm files are from this pack
+    // Drag-dropped files - all .sm files are from this pack
     return f.name.toLowerCase().endsWith('.sm')
   })
 
@@ -44,7 +44,7 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
       if (!first) continue
 
       // Extract raw #BACKGROUND: value from .sm content (parsed beatmap may have
-      // fallbacked to #BANNER when #BACKGROUND is empty — we want the real value)
+      // fallbacked to #BANNER when #BACKGROUND is empty - we want the real value)
       const bgMatch = content.match(/#BACKGROUND\s*:\s*([^;\n\r]+)/i)
       const rawBackground = bgMatch?.[1]?.trim() || null
 
@@ -98,7 +98,7 @@ export async function findPackBanner(folder: string): Promise<File | string | nu
       return preferred || rootImages[0]
     }
   } else {
-    // Drag-dropped files without webkitRelativePath — can't determine hierarchy
+    // Drag-dropped files without webkitRelativePath - can't determine hierarchy
     const imageFiles = files.filter(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name))
     const named = imageFiles.find(f => {
       const base = f.name.replace(/\.[^.]+$/, '').toLowerCase()

@@ -1,4 +1,4 @@
-import type { Beatmap, ExportConfig } from '../types/beatmap'
+﻿import type { Beatmap, ExportConfig } from '../types/beatmap'
 import { isTauri } from './environment'
 import { saveContentToFile, saveBlobToFile, resolveMediaFile } from './files'
 import { convertBeatmap, oszContentCache } from './convert'
@@ -210,7 +210,7 @@ export async function exportAllBeatmaps(
       return [zipName]
     }
 
-    // No media available — download individually
+    // No media available - download individually
     for (const bm of beatmaps) {
       if (!bm) continue
       const content = await convertBeatmap(bm, config)

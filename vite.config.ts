@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+﻿import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import type { IncomingMessage, ServerResponse } from 'http'
@@ -64,7 +64,7 @@ async function handleAvatar(req: IncomingMessage, res: ServerResponse) {
 
 // ── Mirror proxy ──────────────────────────────────────────────────────────────
 // Proxies /api/mirror?path=/api/search&... and /api/mirror?path=/d/<id>
-// to https://catboy.best — avoids browser CORS restrictions in dev.
+// to https://catboy.best - avoids browser CORS restrictions in dev.
 
 async function handleMirror(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url || '', 'http://localhost')

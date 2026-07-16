@@ -1,4 +1,4 @@
-use crate::models::beatmap::{Beatmap, ExportConfig};
+﻿use crate::models::beatmap::{Beatmap, ExportConfig};
 use crate::models::timing::{snap_to_osu_grid, TimingPoint};
 use anyhow::Result;
 
@@ -67,7 +67,7 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     output.push_str("[TimingPoints]\n");
 
     // collect BPM points and SV (inherited) points, then emit them in one
-    // time-sorted list — osu expects [TimingPoints] in chronological order,
+    // time-sorted list - osu expects [TimingPoints] in chronological order,
     // with the uninherited point first when both share a timestamp
     let mut lines: Vec<(f64, u8, String)> = Vec::new();
 
