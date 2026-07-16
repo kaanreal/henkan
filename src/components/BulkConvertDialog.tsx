@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+﻿import { useState, useCallback } from 'react'
 import type { PackEntry } from '../types/beatmap'
 import { openDirectory } from '../services/dialogs'
 import { scanPack } from '../services/pack'
@@ -112,7 +112,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
         const entry = entries[fi]
         if (!entry) continue
 
-        setProgress(`${entry.artist} — ${entry.title} [${entry.available_difficulties[di]?.name ?? ''}]`)
+        setProgress(`${entry.artist} - ${entry.title} [${entry.available_difficulties[di]?.name ?? ''}]`)
         await new Promise(r => setTimeout(r, 10))
 
         const bm = await selectDifficulty(entry.source_file, di)
@@ -143,7 +143,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
         converted++
       }
 
-      setProgress(`Done — ${converted} file${converted > 1 ? 's' : ''} converted`)
+      setProgress(`Done - ${converted} file${converted > 1 ? 's' : ''} converted`)
     } catch (e) {
       console.error('Bulk convert failed', e)
       setProgress('Conversion failed')
@@ -157,12 +157,12 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
-        className={`absolute inset-0 bg-black/70 backdrop-blur-sm transition-all duration-200 ${!leaving ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`absolute inset-0 bg-black/70 transition-all duration-200 ${!leaving ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={handleCancel}
       />
 
       <div className={`relative w-full max-w-lg mx-4 transition-all duration-200 ease-out ${!leaving ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 pointer-events-none translate-y-4'}`}>
-        <div className="bg-surface-900/95 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
+        <div className="bg-surface-900/95 border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
           {/* Accent bar */}
           <div className="h-0.5 bg-gradient-to-r from-accent via-accent-muted to-accent/40" />
 
@@ -190,7 +190,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
                 className="h-9 px-4 rounded-lg text-xs font-medium
                   bg-white/[0.04] border border-white/8 text-surface-400
                   hover:bg-white/[0.07] hover:text-surface-200
-                  active:scale-[0.97] transition-all duration-75 shrink-0
+                  transition-all duration-75 shrink-0
                   disabled:opacity-40 disabled:cursor-wait"
               >
                 {scanning ? 'Scanning…' : 'Pick folder'}
@@ -231,7 +231,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
                           )}
                         </button>
                         <span className="text-xs font-medium text-surface-300 truncate flex-1">
-                          {entry.artist} — {entry.title}
+                          {entry.artist} - {entry.title}
                         </span>
                         <span className="text-[10px] text-surface-500">{entry.available_difficulties.length}</span>
                       </div>
@@ -289,7 +289,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
             <div className="px-5 py-8 text-center text-xs text-surface-500">
               <div className="animate-pulse-soft mb-2">Scanning folder…</div>
               <div className="h-0.5 w-full bg-white/[0.04] rounded-full overflow-hidden">
-                <div className="h-full w-1/3 bg-accent/40 rounded-full animate-shimmer" />
+                <div className="h-full w-1/3 bg-accent/40 rounded-full animate-pulse" />
               </div>
             </div>
           )}
@@ -318,7 +318,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
               className="flex-1 h-10 rounded-xl text-sm font-medium
                 bg-white/[0.04] border border-white/8 text-surface-400
                 hover:bg-white/[0.07] hover:text-surface-200
-                active:scale-[0.97] transition-all duration-75
+                transition-all duration-75
                 disabled:opacity-40"
             >
               Cancel

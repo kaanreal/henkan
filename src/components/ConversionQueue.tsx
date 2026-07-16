@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+﻿import { useRef } from 'react'
 import type { QueueItem } from '../stores/useQueueStore'
 
 interface Props {
@@ -69,7 +69,7 @@ export function ConversionQueue({
   const hasRetryable = retryableCount > 0
 
   return (
-    <div className="w-full bg-surface-900/80 backdrop-blur-md border-b border-surface-800/50 px-3 py-2 shrink-0 z-20">
+    <div className="w-full bg-surface-900/80 border-b border-surface-800/50 px-3 py-2 shrink-0 z-20">
       <div className="flex items-center gap-2 max-w-5xl mx-auto">
         <span className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase shrink-0 mr-1">
           Queue
@@ -96,7 +96,7 @@ export function ConversionQueue({
                 onClick={() => onSelect(item)}
                 className={`
                   group relative flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-xs font-medium
-                  transition-all duration-75 active:scale-[0.97] shrink-0
+                  transition-all duration-75 shrink-0
                   ${active
                     ? 'bg-accent/15 border border-accent/30 text-accent-muted shadow-sm'
                     : item.status === 'completed'
@@ -106,7 +106,7 @@ export function ConversionQueue({
                         : 'bg-white/[0.03] border border-white/5 text-surface-400 hover:bg-white/[0.06] hover:text-surface-200'
                   }
                 `}
-                title={isRetryable ? `Click to retry — ${item.error || item.status}` : item.fileName}
+                title={isRetryable ? `Click to retry - ${item.error || item.status}` : item.fileName}
               >
                 {statusIcon(item.status)}
                 <span className="truncate max-w-[120px] sm:max-w-[160px]">
@@ -143,8 +143,8 @@ export function ConversionQueue({
               disabled={isConverting}
               className="flex items-center gap-1 px-2 h-7 rounded-lg text-[11px] font-medium
                 bg-amber-500/10 border border-amber-500/25 text-amber-400
-                hover:bg-amber-500/15 hover:text-amber-300 active:scale-[0.97] transition-all duration-75
-                disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+                hover:bg-amber-500/15 hover:text-amber-300 transition-all duration-75
+                disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none">
                 <path d="M2 8a6 6 0 0111.33-3M14 2v4h-4M14 8a6 6 0 01-11.33 3M2 14v-4h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -157,7 +157,7 @@ export function ConversionQueue({
               onClick={onClearCompleted}
               className="px-2 h-7 rounded-lg text-[11px] font-medium
                 bg-white/[0.04] border border-white/8 text-surface-500
-                hover:bg-white/[0.07] hover:text-surface-300 active:scale-[0.97] transition-all duration-75"
+                hover:bg-white/[0.07] hover:text-surface-300 transition-all duration-75"
             >
               Clear done
             </button>
@@ -166,15 +166,15 @@ export function ConversionQueue({
             onClick={onClearAll}
             className="px-2 h-7 rounded-lg text-[11px] font-medium
               bg-white/[0.04] border border-white/8 text-surface-500
-              hover:bg-white/[0.07] hover:text-surface-300 active:scale-[0.97] transition-all duration-75"
-          >
+              hover:bg-white/[0.07] hover:text-surface-300 transition-all duration-75"
+            >
             Clear all
           </button>
           <button
             onClick={onAddFiles}
             className="flex items-center gap-1 px-2 h-7 rounded-lg text-[11px] font-medium
               bg-white/[0.04] border border-white/8 text-surface-400
-              hover:bg-white/[0.07] hover:text-surface-200 active:scale-[0.97] transition-all duration-75"
+              hover:bg-white/[0.07] hover:text-surface-200 transition-all duration-75"
           >
             <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none">
               <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -186,8 +186,8 @@ export function ConversionQueue({
             disabled={readyCount === 0 || isConverting}
             className="flex items-center gap-1 px-3 h-7 rounded-lg text-[11px] font-medium
               bg-accent/15 border border-accent/30 text-accent-muted
-              hover:bg-accent/20 hover:text-accent active:scale-[0.97] transition-all duration-75
-              disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+              hover:bg-accent/20 hover:text-accent transition-all duration-75
+              disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none">
               <path d="M2 8l4-4v8L2 8zM9 8l4-4v8l-4-4z" fill="currentColor" />

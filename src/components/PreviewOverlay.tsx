@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
+﻿import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import type { Note, SourceFormat } from '../types/beatmap'
 import type { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { useConverterStore } from '../stores/useConverterStore'
@@ -349,7 +349,7 @@ export function PreviewOverlay({
           groups.current.clear()
         }
 
-        // Receptor — dark by default, bright flash on hit
+        // Receptor - dark by default, bright flash on hit
         const glowH = colW * 0.5
         const linePad = 4 * dpr
         for (let i = 0; i < cols; i++) {
@@ -518,7 +518,7 @@ export function PreviewOverlay({
               el.play().catch(() => {})
             }}
           >
-            <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center backdrop-blur-sm">
+            <div className="w-14 h-14 rounded-full bg-white/10 flex items-center justify-center">
               <svg className="w-7 h-7 text-white/70 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z" />
               </svg>
@@ -529,16 +529,6 @@ export function PreviewOverlay({
       </div>
 
       {/* Timeline */}
-      <style>{`
-        @keyframes toastIn {
-          from { opacity: 0; transform: translateY(-16px) scale(0.92); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes toastOut {
-          from { opacity: 1; transform: translateY(0) scale(1); }
-          to { opacity: 0; transform: translateY(-8px) scale(0.95); }
-        }
-      `}</style>
       <div className="shrink-0 bg-black/50">
         <div className="px-6 pb-[3px] pt-2">
 

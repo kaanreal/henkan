@@ -1,4 +1,4 @@
-import type { Beatmap, ExportConfig, PackEntry } from './types/beatmap'
+﻿import type { Beatmap, ExportConfig, PackEntry } from './types/beatmap'
 import { useCallback, useState, useEffect, useRef, startTransition } from 'react'
 import { useConverterStore } from './stores/useConverterStore'
 import { useQueueStore, type QueueItem, buildConfig, emptyConfig, generateId, detectDirection } from './stores/useQueueStore'
@@ -163,7 +163,7 @@ function App() {
   const packBannerFileRef = useRef<File | null>(null)
   const packConfigsRef = useRef<Map<number, ExportConfig>>(new Map())
 
-  // Shared audio player — owned by App, used by AudioPlayer and PreviewOverlay
+  // Shared audio player - owned by App, used by AudioPlayer and PreviewOverlay
   const audioPlayerRef = useRef<WebAudioPlayer | null>(null)
   const audioFileRef = useRef<File | string | null>(null)
   const [audioLoading, setAudioLoading] = useState(false)
@@ -334,7 +334,7 @@ function App() {
         } else {
           player.currentTime = 0
         }
-        // Stay paused at preview point — no autoplay
+        // Stay paused at preview point - no autoplay
       })
     } else {
       player.stop()
@@ -566,7 +566,7 @@ function App() {
 
         if (isTauri()) {
           if (diffCount <= 1) {
-            // Single diff — export flat
+            // Single diff - export flat
             if (item.filePath.endsWith('.sm') || item.filePath.endsWith('.osz')) {
               const paths = await exportAllBeatmaps(item.filePath, cfg, baseDir)
               allPaths.push(...paths)
@@ -577,7 +577,7 @@ function App() {
               allPaths.push(result)
             }
           } else {
-            // Multi-diff — export to baseDir/songName/diffName/file.sm
+            // Multi-diff - export to baseDir/songName/diffName/file.sm
             const itemTitle = cfg.title || item.beatmap?.title || item.fileName.replace(/\.[^.]+$/, '')
             const safeName = itemTitle.replace(/[/\\?%*:|"<>]/g, '_')
             const { invoke } = await import('@tauri-apps/api/core')
@@ -1276,7 +1276,7 @@ function App() {
         queueUpdateItem(queueActiveId, { beatmap: bm })
       }
 
-      // Load media using config values — now correctly reflects user customizations
+      // Load media using config values - now correctly reflects user customizations
       // while falling back to the new difficulty's defaults for non-customized fields
       const cfg = useConverterStore.getState().config
       const audioFilename = cfg.audio_filename || bm.audio_filename
@@ -1376,7 +1376,7 @@ function App() {
               if (isDirectory) {
                 handleOpenPack(folderPath)
               } else {
-                // Non-directory, non-accepted file — just ignore or try to add it anyway
+                // Non-directory, non-accepted file - just ignore or try to add it anyway
                 console.log('[drop] skipping non-directory, non-accepted path:', folderPath)
               }
             }
@@ -1470,7 +1470,7 @@ function App() {
             return
           }
 
-          // Single/multiple file drops — skip extensionless entries
+          // Single/multiple file drops - skip extensionless entries
           const knownExts = ['.sm', '.osu', '.osz']
           const seen = new Set<string>()
           const filePaths: string[] = []
@@ -1488,7 +1488,7 @@ function App() {
         {mediaUrls.background && (
           <div className="absolute inset-0 -z-10 overflow-hidden animate-bg-fade-in">
             <div
-              className="w-full h-full bg-cover bg-center animate-zoom"
+              className="w-full h-full bg-cover bg-center"
               style={{
                 backgroundImage: `url(${mediaUrls.background})`,
                 filter: 'blur(20px) brightness(0.5) saturate(0.5)',
@@ -1498,7 +1498,7 @@ function App() {
           </div>
         )}
         {!mediaUrls.background && (
-          <div className="absolute inset-0 -z-10 bg-gradient-to-br from-surface-950 via-[#0c1123] to-surface-950 animate-gradient-shift" />
+          <div className="absolute inset-0 -z-10 bg-surface-950" />
         )}
 
         <div className="relative z-10 flex flex-col h-full">
@@ -1547,7 +1547,7 @@ function App() {
                   className="flex items-center gap-2 h-10 px-5 rounded-xl text-sm font-medium
                     bg-white/10 border border-white/15 text-surface-300
                     hover:bg-white/[0.14] hover:text-white
-                    active:scale-[0.97] transition-all duration-75 mb-4 w-full justify-center"
+                    transition-all duration-75 mb-4 w-full justify-center"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -1587,7 +1587,7 @@ function App() {
                   className="h-11 px-6 rounded-xl text-sm font-medium
                     bg-white/[0.04] border border-white/8 text-surface-400
                     hover:bg-white/[0.07] hover:text-surface-200
-                    active:scale-[0.97] transition-all duration-75 flex items-center gap-2"
+                    transition-all duration-75 flex items-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -1599,7 +1599,7 @@ function App() {
                   className="h-11 px-6 rounded-xl text-sm font-medium
                     bg-white/[0.04] border border-white/8 text-surface-400
                     hover:bg-white/[0.07] hover:text-surface-200
-                    active:scale-[0.97] transition-all duration-75"
+                    transition-all duration-75"
                 >
                   Open pack folder
                 </button>
@@ -1706,7 +1706,6 @@ function App() {
               {audioLoading && (
                 <div className="absolute top-0 left-0 right-0 h-0.5 z-50 overflow-hidden pointer-events-none">
                   <div className="h-full bg-accent/60 animate-pulse" style={{ animation: 'loading-bar 1.2s ease-in-out infinite', width: '40%' }} />
-                  <style>{`@keyframes loading-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }`}</style>
                 </div>
               )}
               <AudioPlayer
@@ -1721,7 +1720,7 @@ function App() {
 
           {!beatmap && !packFolder && (
             <footer className="px-4 sm:px-6 py-2 sm:py-3 border-t border-surface-800/50 text-center text-[10px] sm:text-xs text-surface-500">
-              © {new Date().getFullYear()} made by Kaan &#x2764; &middot; Henkan — osu!mania ↔ Etterna converter
+              © {new Date().getFullYear()} made by <a href="https://github.com/kaanreal" target="_blank" rel="noopener noreferrer" className="text-accent-muted hover:text-accent transition-colors">Kaan</a> &#x2764;
             </footer>
           )}
         </div>
@@ -1808,7 +1807,7 @@ function App() {
                 <img src="/logo32.png" alt="Henkan" className="w-10 h-10 rounded-xl" />
                 <div>
                   <h2 className="text-lg font-semibold text-surface-100">Henkan</h2>
-                  <p className="text-sm text-surface-400 font-mono">v{appVersion || '—'}</p>
+                  <p className="text-sm text-surface-400 font-mono">v{appVersion || '-'}</p>
                 </div>
               </div>
 
@@ -1868,7 +1867,7 @@ function App() {
 
               <button
                 onClick={() => setShowVersionDialog(false)}
-                className="w-full px-4 py-2 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-400 font-medium text-sm hover:bg-surface-700 hover:text-surface-200 active:scale-[0.97] transition-all duration-75"
+                className="w-full px-4 py-2 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-400 font-medium text-sm hover:bg-surface-700 hover:text-surface-200 transition-all duration-75"
               >
                 Close
               </button>
@@ -1885,21 +1884,21 @@ function App() {
 
         {/* Post-export overlay */}
         {lastExportPath && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-fade-in">
             <div className="bg-surface-900 border border-surface-700/50 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 animate-scale-in">
               <div className="text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/20 flex items-center justify-center animate-scale-in">
-                  <svg className="w-8 h-8 text-emerald-400 animate-scale-in" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-semibold text-surface-100 mb-1 animate-fade-in">Export complete!</h2>
-                <div className="text-xs text-surface-400 mb-6 space-y-1 max-h-24 overflow-y-auto animate-fade-in">
+                <h2 className="text-xl font-semibold text-surface-100 mb-1">Export complete</h2>
+                <div className="text-xs text-surface-400 mb-6 space-y-1 max-h-24 overflow-y-auto">
                   {lastExportPath.split('\n').map((p, i) => (
                     <p key={i} className="break-all">{p}</p>
                   ))}
                 </div>
-                <div className="flex gap-3 justify-center animate-fade-in">
+                <div className="flex gap-3 justify-center">
                   {isTauri() && (
                     <button
                       onClick={handleOpenInOsu}
@@ -1912,7 +1911,7 @@ function App() {
                   <button
                     onClick={handleDismissExport}
                     className="px-6 py-2.5 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-400 font-medium text-sm
-                               hover:bg-surface-700 hover:text-surface-200 active:scale-[0.97] transition-all duration-75"
+                               hover:bg-surface-700 hover:text-surface-200 transition-all duration-75"
                   >
                     Done
                   </button>
@@ -1932,17 +1931,6 @@ function App() {
           </div>
         </div>
       )}
-
-      <style>{`
-        @keyframes toastIn {
-          from { opacity: 0; transform: translateY(-16px) scale(0.92); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes toastOut {
-          from { opacity: 1; transform: translateY(0) scale(1); }
-          to { opacity: 0; transform: translateY(-8px) scale(0.95); }
-        }
-      `}</style>
     </ErrorBoundary>
   )
 }

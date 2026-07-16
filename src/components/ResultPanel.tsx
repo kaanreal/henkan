@@ -1,4 +1,4 @@
-import { saveContentToFile } from '../services/files'
+﻿import { saveContentToFile } from '../services/files'
 import { saveFile } from '../services/dialogs'
 
 interface ResultPanelProps {
@@ -61,7 +61,7 @@ export function ResultPanel({ content, filename }: ResultPanelProps) {
 
       {truncated && (
         <p className="px-5 pb-3 text-xs text-surface-500">
-          {content.split('\n').length} total lines — save to view full file
+          {content.split('\n').length} total lines - save to view full file
         </p>
       )}
     </div>

@@ -54,9 +54,9 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
       onClick={onToggle}
       className={`
         group relative w-full text-left rounded-xl overflow-hidden border-2
-        transition-all duration-150 active:scale-[0.98] cursor-pointer
+        transition-all duration-150 cursor-pointer
         ${checked
-          ? 'border-emerald-400/70 border-dashed animate-pulse-border shadow-[0_0_12px_rgba(52,211,153,0.15)]'
+          ? 'border-emerald-400/70 border-dashed animate-pulse-border'
           : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/10'
         }
       `}
@@ -77,7 +77,7 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
         {/* Edit button */}
         <div
           onClick={(e) => { e.stopPropagation(); onEdit() }}
-          className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg bg-black/50 backdrop-blur-sm
+          className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg bg-black/50
             border border-white/10 flex items-center justify-center
             opacity-0 group-hover:opacity-100 transition-opacity duration-100
             hover:bg-white/15 cursor-pointer"

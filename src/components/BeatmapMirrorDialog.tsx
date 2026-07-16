@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+﻿import { useState, useRef, useEffect, useCallback } from 'react'
 import { searchBeatmaps, coverUrl, previewUrl, type MirrorBeatmapSet, type RankStatus } from '../services/beatmapMirror'
 
 interface BeatmapMirrorDialogProps {
@@ -215,15 +215,13 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#02040a]/80 backdrop-blur-md animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#02040a]/80 animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="relative bg-[#0f111a]/80 backdrop-blur-2xl border border-white/[0.08] rounded-3xl shadow-[0_0_80px_-15px_rgba(99,102,241,0.15)] max-w-3xl w-full mx-4 max-h-[85vh] flex flex-col overflow-hidden animate-scale-in"
+        className="relative bg-[#0f111a]/95 border border-white/[0.08] rounded-3xl max-w-3xl w-full mx-4 max-h-[85vh] flex flex-col overflow-hidden animate-scale-in"
         onClick={e => e.stopPropagation()}
       >
-        {/* Decorative background glow inside dialog */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[200px] bg-accent/20 blur-[100px] rounded-full pointer-events-none" />
         {/* ── Header ── */}
         <div className="px-8 pt-7 pb-5 border-b border-white/[0.06] shrink-0 relative z-10">
           <div className="flex items-center justify-between mb-5">
@@ -236,7 +234,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
             </div>
             <button
               onClick={onClose}
-              className="text-surface-500 hover:text-white transition-all duration-200 p-2 rounded-xl hover:bg-white/[0.08] active:scale-95"
+              className="text-surface-500 hover:text-white transition-all duration-200 p-2 rounded-xl hover:bg-white/[0.08]"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -266,10 +264,9 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
             <button
               onClick={handleSearch}
               disabled={loading || !query.trim()}
-              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold text-sm
-                shadow-[0_0_20px_-5px_rgba(99,102,241,0.4)] hover:shadow-[0_0_25px_-5px_rgba(99,102,241,0.6)]
-                hover:scale-[1.02] active:scale-[0.97] transition-all duration-200
-                disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed flex items-center gap-2 shrink-0"
+              className="px-6 py-3.5 rounded-2xl bg-accent text-white font-semibold text-sm
+                hover:bg-accent-hover active:scale-[0.97] transition-all duration-200
+                disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shrink-0"
             >
               {loading ? <Spinner className="w-4 h-4" /> : <SearchIcon />}
               Search
@@ -327,7 +324,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
             </div>
           )}
 
-          {/* Empty state — not yet searched */}
+          {/* Empty state - not yet searched */}
           {!searched && !loading && (
             <div className="flex flex-col items-center justify-center py-20 text-surface-500 select-none animate-fade-in">
               <div className="w-16 h-16 rounded-2xl bg-white/[0.03] flex items-center justify-center mb-5 border border-white/[0.05] shadow-inner">
@@ -425,7 +422,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                     {set.beatmaps.slice(0, 7).map(bm => (
                       <span
                         key={bm.id}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/40 backdrop-blur-md border border-white/[0.08] text-[11px] font-bold text-surface-100 shadow-sm"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/40 border border-white/[0.08] text-[11px] font-bold text-surface-100 shadow-sm"
                         title={`${bm.version} · ${bm.total_length ? formatDuration(bm.total_length) : ''}`}
                       >
                         <StarIcon />
@@ -434,7 +431,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                       </span>
                     ))}
                     {set.beatmaps.length > 7 && (
-                      <span className="text-[11px] font-bold text-surface-300 px-1 py-0.5 bg-black/20 rounded-md backdrop-blur-sm">
+                      <span className="text-[11px] font-bold text-surface-300 px-1 py-0.5 bg-black/20 rounded-md">
                         +{set.beatmaps.length - 7}
                       </span>
                     )}
@@ -445,9 +442,9 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                 <div className="relative z-10 shrink-0 flex flex-col items-center justify-center gap-2 pr-4 pl-2">
                   <button
                     onClick={() => handlePreview(set.id)}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 backdrop-blur-md
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200
                       ${previewingId === set.id
-                        ? 'bg-accent/25 text-accent border border-accent/40 shadow-[0_0_15px_-3px_rgba(99,102,241,0.5)]'
+                        ? 'bg-accent/25 text-accent border border-accent/40'
                         : 'bg-white/10 text-surface-300 border border-white/10 hover:bg-white/20 hover:text-white hover:border-white/30'
                       }`}
                     title={previewingId === set.id ? 'Stop preview' : 'Preview'}
@@ -457,11 +454,11 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                   <button
                     onClick={() => state === 'idle' && handleDownload(set)}
                     disabled={isDownloading}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 backdrop-blur-md
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200
                       ${isDone
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_15px_-3px_rgba(16,185,129,0.4)] cursor-default'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 cursor-default'
                         : isDownloading
-                          ? 'bg-accent/20 text-accent border border-accent/40 shadow-[0_0_15px_-3px_rgba(99,102,241,0.4)] cursor-wait'
+                          ? 'bg-accent/20 text-accent border border-accent/40 cursor-wait'
                           : 'bg-white/10 text-surface-300 border border-white/10 hover:bg-white/20 hover:text-white hover:border-white/30'
                       }`}
                     title={isDone ? 'Downloaded' : isDownloading ? 'Downloading…' : 'Download'}
