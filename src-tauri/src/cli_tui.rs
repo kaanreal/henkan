@@ -1,4 +1,4 @@
-use std::cell::Cell;
+﻿use std::cell::Cell;
 use std::env;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -253,7 +253,7 @@ const COMMANDS: &[&str] = &[
 ];
 
 const COMMAND_DESCS: &[(&str, &str)] = &[
-    ("quick", "Open temp folder — drop files & press Enter to convert"),
+    ("quick", "Open temp folder - drop files & press Enter to convert"),
     ("results", "Switch to results screen"),
     ("open", "Open export folder in file manager"),
     ("clear", "Clear output history and results list"),
@@ -907,7 +907,7 @@ if ($res -eq 'OK') { $d.SelectedPath }
         self.output_lines.push("".into());
         self.output_lines.push("  \u{2502} commands".into());
         self.output_lines.push("".into());
-        self.output_lines.push("  \u{2192} quick           Open temp folder — drop files & press Enter to convert".into());
+        self.output_lines.push("  \u{2192} quick           Open temp folder - drop files & press Enter to convert".into());
         self.output_lines.push("  \u{2192} convert <path>   Convert a beatmap file".into());
         self.output_lines.push("  \u{2192} results         Switch to results screen".into());
         self.output_lines.push("  \u{2192} open            Open last export folder in file manager".into());
@@ -1132,7 +1132,7 @@ if ($res -eq 'OK') { $d.SelectedPath }
     }
 
     fn handle_select_edit_key(&mut self, diff_idx: usize, key: crossterm::event::KeyEvent) {
-        // Label, type, min, max — None for text
+        // Label, type, min, max - None for text
         const FIELDS: &[(&str, Option<[f64; 2]>)] = &[
             ("Title", None),
             ("Artist", None),
@@ -1141,7 +1141,7 @@ if ($res -eq 'OK') { $d.SelectedPath }
             ("HP", Some([0.0, 10.0])),
             ("OD", Some([0.0, 10.0])),
             ("Rate", Some([0.5, 3.0])),
-            ("Pitch", None), // boolean toggle — stored as Option<bool>
+            ("Pitch", None), // boolean toggle - stored as Option<bool>
         ];
         let field_count = FIELDS.len();
 
@@ -1330,7 +1330,7 @@ if ($res -eq 'OK') { $d.SelectedPath }
                         self.pending_labels = (from_label.to_owned(), to_label.to_owned());
                         self.pending_path = path;
                         self.output_lines.pop();
-                        self.output_lines.push("  > Multiple difficulties detected — select which to export.".into());
+                        self.output_lines.push("  > Multiple difficulties detected - select which to export.".into());
                         self.enter_select_screen(&entries);
                         self.diff_entries = entries;
                         return;
@@ -2054,7 +2054,7 @@ if ($res -eq 'OK') { $d.SelectedPath }
             Rect::new(0, 0, area.width.min(title_text.len() as u16 + 2), 1),
         );
 
-        // Compact result list — left-aligned, full width
+        // Compact result list - left-aligned, full width
         let pad = 2u16;
         let list_w = area.width.saturating_sub(pad * 2);
         let max_visible = ((area.height - 4) / 2) as usize;

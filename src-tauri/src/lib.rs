@@ -1,4 +1,4 @@
-pub mod converters;
+﻿pub mod converters;
 pub mod models;
 pub mod parsers;
 pub mod cli_tui;
@@ -853,7 +853,7 @@ pub fn speed_up_audio_symphonia(input_path: &str, output_path: &str, rate: f64) 
                     .map_err(|e| format!("Write error: {}", e))?;
             }
         } else {
-            // Last partial frame — no next frame to interpolate with
+            // Last partial frame - no next frame to interpolate with
             for c in 0..ch {
                 let v = if base + c < src.len() { src[base + c] } else { 0.0 };
                 writer.write_sample((v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
@@ -1783,7 +1783,7 @@ fn create_dummy_diff(
     osu.push_str("[TimingPoints]\n");
     osu.push_str("0,500,4,0,0,100,1,0\n\n");
     osu.push_str("[HitObjects]\n");
-    // No hit objects — this is purely a visual pack identifier
+    // No hit objects - this is purely a visual pack identifier
 
     let osu_name = format!("{}.osu", title);
     let osu_path = out_dir.join(&osu_name);

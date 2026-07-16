@@ -1,4 +1,4 @@
-import { isTauri } from './environment'
+﻿import { isTauri } from './environment'
 import { fileInputCache } from './fileCache'
 
 const MIRROR_PROXY = '/api/mirror'
@@ -147,7 +147,7 @@ export async function searchBeatmaps(
     return { results, error: null }
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
-      return { results: [], error: 'Search timed out — mirror may be down' }
+      return { results: [], error: 'Search timed out - mirror may be down' }
     }
     return { results: [], error: 'Could not reach the beatmap mirror' }
   }
