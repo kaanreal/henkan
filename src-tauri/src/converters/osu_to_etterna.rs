@@ -1,4 +1,4 @@
-use crate::models::beatmap::Beatmap;
+﻿use crate::models::beatmap::Beatmap;
 use crate::models::timing::ms_to_beat;
 use anyhow::Result;
 use std::fmt::Write;
@@ -209,7 +209,7 @@ pub(crate) fn compute_meter(_beatmap: &Beatmap) -> u32 {
 const SLOTS_PER_BEAT: i64 = 48;
 const SLOTS_PER_MEASURE: i64 = SLOTS_PER_BEAT * 4;
 
-/// Standard SM beat divisors — each represents N subdivisions of a beat.
+/// Standard SM beat divisors - each represents N subdivisions of a beat.
 /// Ordered coarsest-first so we can pick the finest one that aligns.
 const SM_DIVISORS: [i64; 10] = [4, 8, 12, 16, 24, 32, 48, 64, 96, 192];
 
@@ -274,7 +274,7 @@ fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
             Some(end_ms) => {
                 let e = slot_of(end_ms);
                 if e <= s {
-                    // hold shorter than a slot — degrade to a tap
+                    // hold shorter than a slot - degrade to a tap
                     place(s, col, '1');
                 } else if place(s, col, '2') {
                     place(e, col, '3');
@@ -533,7 +533,7 @@ CircleSize:4
         // Verify no row has notes in ALL four columns (that would mean collision)
         for line in sm.lines() {
             if line == "1111" {
-                panic!("found phantom row 1111 — notes are collapsing into same row:\n{}", sm);
+                panic!("found phantom row 1111 - notes are collapsing into same row:\n{}", sm);
             }
         }
 
@@ -650,7 +650,7 @@ CircleSize:4
         // Notes count in the measures (at least 8 '1's for 8 tap notes)
         let note_count = sm.matches('1').count();
         assert!(note_count >= 8, "expected at least 8 notes, got {}", note_count);
-        // No negative-beat overflow issues — all notes in measures
+        // No negative-beat overflow issues - all notes in measures
         assert!(!sm.contains(",,\n"), "no empty measures");
         assert!(!sm.contains(",0000\n"), "no empty measures");
     }

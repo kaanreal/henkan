@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+﻿#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 /// Known CLI subcommands that trigger CLI/TUI mode instead of GUI.
 const CLI_COMMANDS: &[&str] = &[
@@ -34,7 +34,7 @@ fn main() {
 
     // No args / unrecognized: check if running from a terminal
     // (on non-Windows, the app binary can be invoked directly from
-    //  the command line — launch the interactive TUI in that case)
+    //  the command line - launch the interactive TUI in that case)
     #[cfg(not(windows))]
     {
         use crossterm::tty::IsTty;

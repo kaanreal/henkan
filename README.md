@@ -1,4 +1,4 @@
-# Henkan 変換
+﻿# Henkan 変換
 
 **osu!mania ↔ Etterna / StepMania beatmap converter.**
 
@@ -18,7 +18,7 @@ Drag a .osu, .osz, or .sm file onto the window and it just works. Cross-platform
 - **Hold/Long notes** - start/end translation
 - **Background references** - preserved across formats
 
-> Note: SV (scroll velocity) is not converted in the osu → .sm direction —
+> Note: SV (scroll velocity) is not converted in the osu → .sm direction -
 > the .sm format has no equivalent of osu's green lines.
 
 ## Screenshots

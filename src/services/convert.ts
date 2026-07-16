@@ -1,4 +1,4 @@
-import type { Beatmap, ConvertDirection, ExportConfig } from '../types/beatmap'
+﻿import type { Beatmap, ConvertDirection, ExportConfig } from '../types/beatmap'
 import { isTauri } from './environment'
 import { readFileText } from './files'
 import { getCachedFile } from './fileCache'
@@ -46,7 +46,7 @@ export function isOsz(path: string): boolean {
 }
 
 /** Ensure the media files for the given OSZ path are in fileInputCache (restores from cache if needed).
- *  No-op in Tauri — native invoke handles OSZ via the filesystem directly. */
+ *  No-op in Tauri - native invoke handles OSZ via the filesystem directly. */
 export async function ensureOszMediaCached(sourceFile: string): Promise<void> {
   if (!isOsz(sourceFile)) return
   if (isTauri()) return
