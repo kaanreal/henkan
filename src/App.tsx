@@ -133,7 +133,7 @@ function App() {
   const [installing, setInstalling] = useState(false)
 
   // Version dialog state
-  const [appVersion, setAppVersion] = useState<string | null>(isTauri() ? null : '1.0.0')
+  const [appVersion, setAppVersion] = useState<string | null>(isTauri() ? null : import.meta.env.VITE_APP_VERSION)
   const [showVersionDialog, setShowVersionDialog] = useState(false)
   const [checking, setChecking] = useState(false)
   const [checkResult, setCheckResult] = useState<'up-to-date' | 'update-found' | 'error' | null>(null)
