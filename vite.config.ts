@@ -2,6 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import type { IncomingMessage, ServerResponse } from 'http'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
+
+const pkg = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'))
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
 const MIRROR_BASE = 'https://catboy.best'
@@ -137,6 +141,9 @@ function apiPlugin() {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), apiPlugin()],
+  define: {
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version),
+  },
   clearScreen: false,
   server: {
     port: 5173,
