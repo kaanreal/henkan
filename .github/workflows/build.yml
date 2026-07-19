@@ -117,10 +117,12 @@ jobs:
                   REPO="${{ github.repository }}"
                   BUNDLE_DIR="bundles"
 
-                  echo "=== DEBUG: Bundle directory contents ==="
-                  find "$BUNDLE_DIR" -type f | head -50
+                  echo "=== DEBUG: Bundle directory top-level ==="
+                  ls -R "$BUNDLE_DIR" | grep -E '\.(sig|msi|dmg|AppImage|exe|deb)$' || true
                   echo "=== DEBUG: Sig files ==="
-                  find "$BUNDLE_DIR" -name "*.sig" -type f
+                  find "$BUNDLE_DIR" -name "*.sig" -type f || true
+                  echo "=== DEBUG: All files (first 30) ==="
+                  find "$BUNDLE_DIR" -type f -not -path '*/\.*' | head -30 || true
                   echo "=== DEBUG: End ==="
 
                   echo "{" > updater.json
