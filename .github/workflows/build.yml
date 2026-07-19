@@ -117,6 +117,12 @@ jobs:
                   REPO="${{ github.repository }}"
                   BUNDLE_DIR="bundles"
 
+                  echo "=== DEBUG: Bundle directory contents ==="
+                  find "$BUNDLE_DIR" -type f | head -50
+                  echo "=== DEBUG: Sig files ==="
+                  find "$BUNDLE_DIR" -name "*.sig" -type f
+                  echo "=== DEBUG: End ==="
+
                   echo "{" > updater.json
                   echo "  \"version\": \"$VERSION\"," >> updater.json
                   echo "  \"pub_date\": \"$PUB_DATE\"," >> updater.json
