@@ -68,6 +68,17 @@ export interface ExportConfig {
   preview_time: number
   conversion_rate: number
   preserve_pitch: boolean
+  // SM advanced fields (osu → etterna) — null = use defaults
+  subtitle: string | null
+  title_translit: string | null
+  subtitle_translit: string | null
+  artist_translit: string | null
+  genre: string | null
+  credit: string | null
+  display_bpm: string | null
+  sample_start: string | null
+  sample_length: string | null
+  selectable: string | null
 }
 
 export type ConvertDirection = 'osu-to-etterna' | 'etterna-to-osu'

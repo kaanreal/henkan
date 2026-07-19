@@ -84,7 +84,7 @@ pub fn cli_convert_beatmap(beatmap: &mut Beatmap, config: &ExportConfig) -> Resu
     scale_timing_for_rate(beatmap, config.conversion_rate);
     match beatmap.source_format {
         SourceFormat::OsuMania =>
-            converters::osu_to_etterna::convert(beatmap, config.global_timing_ms, &config.creator)
+            converters::osu_to_etterna::convert(beatmap, config)
                 .map_err(|e| format!("Conversion error: {}", e)),
         SourceFormat::Etterna =>
             converters::etterna_to_osu::convert(beatmap, config)
@@ -632,7 +632,7 @@ fn convert_beatmap(
 
     match beatmap.source_format {
         SourceFormat::OsuMania => {
-            converters::osu_to_etterna::convert(&beatmap, config.global_timing_ms, &config.creator)
+            converters::osu_to_etterna::convert(&beatmap, &config)
                 .map_err(|e| format!("Conversion error: {}", e))
         }
         SourceFormat::Etterna => {
@@ -1624,7 +1624,7 @@ fn export_all_beatmaps(
                 scale_timing_for_rate(bm, config.conversion_rate);
 
                 let converted =
-                    converters::osu_to_etterna::convert(bm, config.global_timing_ms, &config.creator)
+                    converters::osu_to_etterna::convert(bm, &config)
                         .map_err(|e| format!("Conversion error for {}: {}", fname, e))?;
 
                 if i == 0 {

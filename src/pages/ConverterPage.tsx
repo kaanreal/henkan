@@ -50,6 +50,9 @@ function configFromEntry(entry: PackEntry): ExportConfig {
     preview_time: 0,
     conversion_rate: 1,
     preserve_pitch: true,
+    subtitle: null, title_translit: null, subtitle_translit: null,
+    artist_translit: null, genre: null, credit: null,
+    display_bpm: null, sample_start: null, sample_length: null, selectable: null,
   }
 }
 

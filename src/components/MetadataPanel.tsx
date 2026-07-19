@@ -40,6 +40,7 @@ export function MetadataPanel({
   const isOsu = beatmap.source_format === 'OsuMania'
   const targetExt = isOsu ? '.sm' : '.osu'
   const totalNotes = tapCount + holdCount
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   return (
     <div className="w-full max-w-xl space-y-5 animate-fade-in">
@@ -215,6 +216,58 @@ export function MetadataPanel({
         </div>
       </div>
 
+      {/* Advanced .sm metadata */}
+      {direction === 'osu-to-etterna' && (
+        <div className="animate-fade-in">
+          <button
+            onClick={() => setShowAdvanced(s => !s)}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl
+              bg-white/[0.03] border border-dashed border-white/10
+              text-xs font-medium text-surface-400
+              hover:bg-white/[0.06] hover:border-white/15 hover:text-surface-200
+              active:scale-[0.97] transition-all duration-100 cursor-pointer"
+          >
+            <span className={`text-surface-500 transition-transform duration-150 ${showAdvanced ? 'rotate-90' : ''}`}>▸</span>
+            <span>{showAdvanced ? 'Hide' : 'Show'} Advanced (.sm Metadata)</span>
+          </button>
+          {showAdvanced && (
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-2 gap-2.5">
+                <Field label="Subtitle (#SUBTITLE)" value={config.subtitle ?? ''} onChange={v => onUpdateConfig({ subtitle: v || null })} />
+                <Field label="Title Translit (#TITLETRANSLIT)" value={config.title_translit ?? ''} onChange={v => onUpdateConfig({ title_translit: v || null })} />
+                <Field label="Subtitle Translit (#SUBTITLETRANSLIT)" value={config.subtitle_translit ?? ''} onChange={v => onUpdateConfig({ subtitle_translit: v || null })} />
+                <Field label="Artist Translit (#ARTISTTRANSLIT)" value={config.artist_translit ?? ''} onChange={v => onUpdateConfig({ artist_translit: v || null })} />
+                <Field label="Genre (#GENRE)" value={config.genre ?? ''} onChange={v => onUpdateConfig({ genre: v || null })} />
+                <Field label="Credit (#CREDIT)" value={config.credit ?? ''} onChange={v => onUpdateConfig({ credit: v || null })} />
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <Field label="Display BPM (#DISPLAYBPM)" value={config.display_bpm ?? ''} onChange={v => onUpdateConfig({ display_bpm: v || null })} placeholder="180 / 120:240 / *" />
+                <NullableNumberField label="Sample Start (#SAMPLESTART)" value={config.sample_start ?? ''} onChange={v => onUpdateConfig({ sample_start: v || null })} />
+                <NullableNumberField label="Sample Length (#SAMPLELENGTH)" value={config.sample_length ?? ''} onChange={v => onUpdateConfig({ sample_length: v || null })} />
+              </div>
+              <div>
+                <span className="text-[11px] text-surface-500 ml-1 font-medium">Selectable (#SELECTABLE)</span>
+                <div className="flex bg-white/[0.04] rounded-lg border border-white/5 p-0.5 gap-0.5 mt-1">
+                  {['YES', 'NO', 'ROULETTE'].map(o => (
+                    <button
+                      key={o}
+                      onClick={() => onUpdateConfig({ selectable: o === 'YES' ? null : o })}
+                      className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-75
+                        ${(config.selectable ?? 'YES') === o
+                          ? 'bg-accent text-white shadow-sm'
+                          : 'text-surface-400 hover:text-surface-200'
+                        }`}
+                    >
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Output format */}
       <div className="flex items-center gap-2 animate-fade-in">
         <span className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase mr-1">Format</span>
@@ -257,12 +310,13 @@ export function MetadataPanel({
   )
 }
 
-function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[11px] text-surface-500 ml-1 font-medium">{label}</span>
       <input
         value={value}
+        placeholder={placeholder}
         onChange={e => onChange(e.target.value)}
         className="w-full h-9 bg-white/[0.04] border border-white/8 rounded-lg px-3 text-sm text-surface-200
           outline-none transition-all duration-75 placeholder:text-surface-600
@@ -297,6 +351,42 @@ function NumberField({ label, value, min, max, onChange }: { label: string; valu
         onKeyDown={e => { if (e.key === 'Enter') commit(local ?? String(value)) }}
         className="w-full h-9 bg-white/[0.04] border border-white/8 rounded-lg px-3 text-sm text-surface-200
           outline-none transition-all duration-75
+          focus:border-accent/40 focus:bg-white/[0.06]"
+      />
+    </label>
+  )
+}
+
+function NullableNumberField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const [local, setLocal] = useState<string | null>(null)
+  const display = local !== null ? local : value
+
+  const commit = (raw: string) => {
+    if (raw === '') {
+      onChange('')
+    } else {
+      const v = parseFloat(raw)
+      if (!isNaN(v) && v >= 0) {
+        onChange(String(v))
+      }
+    }
+    setLocal(null)
+  }
+
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] text-surface-500 ml-1 font-medium">{label}</span>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={display}
+        placeholder="omit"
+        onChange={e => setLocal(e.target.value)}
+        onFocus={() => setLocal(value)}
+        onBlur={() => commit(local ?? value)}
+        onKeyDown={e => { if (e.key === 'Enter') commit(local ?? value) }}
+        className="w-full h-9 bg-white/[0.04] border border-white/8 rounded-lg px-3 text-sm text-surface-200
+          outline-none transition-all duration-75 placeholder:text-surface-600
           focus:border-accent/40 focus:bg-white/[0.06]"
       />
     </label>

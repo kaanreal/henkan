@@ -44,6 +44,9 @@ function buildConfig(beatmap: Beatmap | null): ExportConfig {
     preview_time: beatmap.preview_time,
     conversion_rate: 1,
     preserve_pitch: true,
+    subtitle: null, title_translit: null, subtitle_translit: null,
+    artist_translit: null, genre: null, credit: null,
+    display_bpm: null, sample_start: null, sample_length: null, selectable: null,
   }
 }
 
@@ -55,8 +58,10 @@ function emptyConfig(): ExportConfig {
     cdtitle_filename: null,
     global_timing_ms: 50, output_format: 'osz',
     hp_drain: 8, overall_difficulty: 8,
-    preview_time: 0, conversion_rate: 1,
-    preserve_pitch: true,
+    preview_time: 0, conversion_rate: 1, preserve_pitch: true,
+    subtitle: null, title_translit: null, subtitle_translit: null,
+    artist_translit: null, genre: null, credit: null,
+    display_bpm: null, sample_start: null, sample_length: null, selectable: null,
   }
 }
 
