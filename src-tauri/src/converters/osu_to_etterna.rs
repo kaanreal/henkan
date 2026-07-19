@@ -1,9 +1,9 @@
-﻿use crate::models::beatmap::Beatmap;
+﻿use crate::models::beatmap::{Beatmap, ExportConfig};
 use crate::models::timing::ms_to_beat;
 use anyhow::Result;
 use std::fmt::Write;
 
-pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str) -> Result<String> {
+pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     let tps = &beatmap.timing_points;
 
     // compute beat shift so earliest note/timing-point lands at beat 0
@@ -13,7 +13,7 @@ pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str
 
     // Global timing correction: shift #OFFSET without changing the note grid,
     // so all notes play later (positive) or earlier (negative).
-    let display_offset = offset + (global_timing_ms / 1000.0);
+    let display_offset = offset + (config.global_timing_ms / 1000.0);
 
     let mut out = String::new();
 
@@ -22,13 +22,31 @@ pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str
 
     // ── headers ──────────────────────────────────────────────
     writeln!(out, "#TITLE:{};", escape(&beatmap.title))?;
-    writeln!(out, "#SUBTITLE:{};", escape(&beatmap.difficulty_name))?;
+    if let Some(ref v) = config.subtitle {
+        writeln!(out, "#SUBTITLE:{};", escape(v))?;
+    } else if !beatmap.difficulty_name.is_empty() {
+        writeln!(out, "#SUBTITLE:{};", escape(&beatmap.difficulty_name))?;
+    }
     writeln!(out, "#ARTIST:{};", escape(&beatmap.artist))?;
-    writeln!(out, "#TITLETRANSLIT:{};", escape(&beatmap.title))?;
-    writeln!(out, "#SUBTITLETRANSLIT:{};", escape(&beatmap.difficulty_name))?;
-    writeln!(out, "#ARTISTTRANSLIT:{};", escape(&beatmap.artist))?;
-    writeln!(out, "#GENRE:{};", escape(&beatmap.source))?;
-    writeln!(out, "#CREDIT:{};", escape(&beatmap.creator))?;
+    if let Some(ref v) = config.title_translit {
+        writeln!(out, "#TITLETRANSLIT:{};", escape(v))?;
+    }
+    if let Some(ref v) = config.subtitle_translit {
+        writeln!(out, "#SUBTITLETRANSLIT:{};", escape(v))?;
+    }
+    if let Some(ref v) = config.artist_translit {
+        writeln!(out, "#ARTISTTRANSLIT:{};", escape(v))?;
+    }
+    if let Some(ref v) = config.genre {
+        writeln!(out, "#GENRE:{};", escape(v))?;
+    } else if !beatmap.source.is_empty() {
+        writeln!(out, "#GENRE:{};", escape(&beatmap.source))?;
+    }
+    if let Some(ref v) = config.credit {
+        writeln!(out, "#CREDIT:{};", escape(v))?;
+    } else {
+        writeln!(out, "#CREDIT:{};", escape(&beatmap.creator))?;
+    }
     writeln!(out, "#MUSIC:{};", escape(&beatmap.audio_filename))?;
 
     if beatmap.background_filename.is_some() {
@@ -40,12 +58,21 @@ pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str
     writeln!(out, "#CDTITLE:cdtitle.png;")?;
 
     // SM convention: beat 0 occurs at time -OFFSET seconds.
-    // compute_offset returns the time of beat 0 (≤ 0), so negate it here.
     let sm_offset = if display_offset == 0.0 { 0.0 } else { -display_offset };
     writeln!(out, "#OFFSET:{:.3};", sm_offset)?;
-    writeln!(out, "#SAMPLESTART:{:.3};", beatmap.preview_time / 1000.0)?;
-    writeln!(out, "#SAMPLELENGTH:10.000;")?;
-    writeln!(out, "#SELECTABLE:YES;")?;
+
+    let sample_start = config.sample_start.as_deref()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(beatmap.preview_time / 1000.0);
+    writeln!(out, "#SAMPLESTART:{:.3};", sample_start)?;
+
+    let sample_length = config.sample_length.as_deref()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(10.0);
+    writeln!(out, "#SAMPLELENGTH:{:.3};", sample_length)?;
+
+    let selectable = config.selectable.as_deref().unwrap_or("YES");
+    writeln!(out, "#SELECTABLE:{};", selectable)?;
 
     // ── BPMS ─────────────────────────────────────────────────
     let bpms = compute_bpms(beatmap, beat_shift);
@@ -64,8 +91,9 @@ pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str
     writeln!(out, "#FGCHANGES:;")?;
 
     // ── DISPLAYBPM ──────────────────────────────────────────
-    // let Etterna auto-compute from BPMS data
-    // omit if all BPMs are sane (Etterna will use BPMS min/max)
+    if let Some(ref v) = config.display_bpm {
+        writeln!(out, "#DISPLAYBPM:{};", escape(v))?;
+    }
 
     // ── NOTES ────────────────────────────────────────────────
     let step_type = match beatmap.keys {
@@ -78,11 +106,9 @@ pub fn convert(beatmap: &Beatmap, global_timing_ms: f64, chart_description: &str
         _ => "dance-single",
     };
 
-    let diff_name = if chart_description.is_empty() {
-        if beatmap.difficulty_name.is_empty() { "Converted" } else { &beatmap.difficulty_name }
-    } else {
-        chart_description
-    };
+    let diff_name = if let Some(ref v) = config.subtitle {
+        if v.is_empty() { &beatmap.difficulty_name } else { v }
+    } else if beatmap.difficulty_name.is_empty() { "Converted" } else { &beatmap.difficulty_name };
 
     let meter = compute_meter(beatmap);
     writeln!(out, "#NOTES:")?;
@@ -319,6 +345,13 @@ mod tests {
     use super::*;
     use crate::parsers::osu::parse_osu;
 
+    fn test_config() -> ExportConfig {
+        ExportConfig {
+            global_timing_ms: 0.0,
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn test_rate_scaling_changes_output() {
         let osu = r#"osu file format v14
@@ -347,11 +380,12 @@ CircleSize:4
 448,192,4000,1,0,0:0:0:0:
 "#;
         let mut bm = parse_osu(osu).unwrap();
+        let cfg = test_config();
         // convert at 1x (no scaling)
-        let sm_1x = crate::converters::osu_to_etterna::convert(&bm, 0.0, "").unwrap();
+        let sm_1x = crate::converters::osu_to_etterna::convert(&bm, &cfg).unwrap();
         // scale timing for 2x and convert
         crate::scale_timing_for_rate(&mut bm, 2.0);
-        let sm_2x = crate::converters::osu_to_etterna::convert(&bm, 0.0, "").unwrap();
+        let sm_2x = crate::converters::osu_to_etterna::convert(&bm, &cfg).unwrap();
 
         // Re-parse and verify note times are earlier with 2x
         let reparsed_1x = crate::parsers::etterna::parse_sm(&sm_1x).unwrap();
@@ -403,7 +437,8 @@ CircleSize:4
         let bm = parse_osu(osu).unwrap();
         assert_eq!(bm.notes.len(), 5);
         assert_eq!(bm.keys, 4);
-        let sm = convert(&bm, 0.0, "").unwrap();
+        let cfg = test_config();
+        let sm = convert(&bm, &cfg).unwrap();
         assert!(sm.contains("1"));   // contains tap notes
         assert!(sm.contains("2"));   // contains hold head
         assert!(sm.contains("3"));
@@ -444,7 +479,8 @@ CircleSize:4
 64,192,3000,128,0,4500:0:0:0:0:
 "#;
         let bm = parse_osu(osu).unwrap();
-        let sm = convert(&bm, 0.0, "").unwrap();
+        let cfg = test_config();
+        let sm = convert(&bm, &cfg).unwrap();
         let reparsed = crate::parsers::etterna::parse_sm(&sm).unwrap();
         assert_eq!(reparsed.notes.len(), bm.notes.len(),
             "roundtrip note count mismatch: {} vs {}",
@@ -486,7 +522,8 @@ CircleSize:4
 448,192,1527,1,0,0:0:0:0:
 "#;
         let bm = parse_osu(osu).unwrap();
-        let sm = convert(&bm, 0.0, "").unwrap();
+        let cfg = test_config();
+        let sm = convert(&bm, &cfg).unwrap();
         let reparsed = crate::parsers::etterna::parse_sm(&sm).unwrap();
         assert_eq!(reparsed.notes.len(), bm.notes.len(),
             "roundtrip note count: {} vs {}", reparsed.notes.len(), bm.notes.len());
@@ -526,7 +563,8 @@ CircleSize:4
 192,192,9115,1,0,0:0:0:0:
 "#;
         let bm = parse_osu(osu).unwrap();
-        let sm = convert(&bm, 0.0, "").unwrap();
+        let cfg = test_config();
+        let sm = convert(&bm, &cfg).unwrap();
 
         // The first note (col 3) should be row 0001, not 1111
         // The second group (col 1 + col 0) should be row 1100
@@ -587,7 +625,8 @@ CircleSize:4
 192,192,6000,1,0,0:0:0:0:
 "#;
         let bm = parse_osu(osu).unwrap();
-        let sm = convert(&bm, 0.0, "").unwrap();
+        let cfg = test_config();
+        let sm = convert(&bm, &cfg).unwrap();
         let reparsed = crate::parsers::etterna::parse_sm(&sm).unwrap();
 
         assert_eq!(reparsed.notes.len(), bm.notes.len(),
@@ -639,7 +678,8 @@ CircleSize:4
 448,192,1527,1,0,0:0:0:0:
 "#;
         let bm = parse_osu(osu).unwrap();
-        let sm = convert(&bm, 0.0, "").unwrap();
+        let cfg = test_config();
+        let sm = convert(&bm, &cfg).unwrap();
         println!("=== SM OUTPUT (notes before TP) ===\n{}", sm);
         // BPMS check
         assert!(sm.contains("#BPMS:"), "BPMS line missing");
