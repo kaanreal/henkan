@@ -117,14 +117,6 @@ jobs:
                   REPO="${{ github.repository }}"
                   BUNDLE_DIR="bundles"
 
-                  echo "=== DEBUG: Bundle directory top-level ==="
-                  ls -R "$BUNDLE_DIR" | grep -E '\.(sig|msi|dmg|AppImage|exe|deb)$' || true
-                  echo "=== DEBUG: Sig files ==="
-                  find "$BUNDLE_DIR" -name "*.sig" -type f || true
-                  echo "=== DEBUG: All files (first 30) ==="
-                  find "$BUNDLE_DIR" -type f -not -path '*/\.*' | head -30 || true
-                  echo "=== DEBUG: End ==="
-
                   echo "{" > updater.json
                   echo "  \"version\": \"$VERSION\"," >> updater.json
                   echo "  \"pub_date\": \"$PUB_DATE\"," >> updater.json
@@ -141,6 +133,8 @@ jobs:
                       case "$FILENAME" in
                           *.AppImage.tar.gz) PLATFORM="linux-x86_64" ;;
                           *.AppImage)        PLATFORM="linux-x86_64" ;;
+                          *aarch64*.app.tar.gz) PLATFORM="darwin-aarch64" ;;
+                          *x64*.app.tar.gz)     PLATFORM="darwin-x86_64" ;;
                           *aarch64*.dmg)     PLATFORM="darwin-aarch64" ;;
                           *x64*.dmg)         PLATFORM="darwin-x86_64" ;;
                           *.msi)             PLATFORM="windows-x86_64" ;;
@@ -228,8 +222,11 @@ jobs:
                   files: |
                       bundles/**/*.msi
                       bundles/**/*.msi.sig
+                      bundles/**/*.nsis.exe
+                      bundles/**/*.nsis.exe.sig
                       bundles/**/*.dmg
-                      bundles/**/*.dmg.sig
+                      bundles/**/*.app.tar.gz
+                      bundles/**/*.app.tar.gz.sig
                       bundles/**/*.AppImage
                       bundles/**/*.AppImage.tar.gz
                       bundles/**/*.AppImage.tar.gz.sig
