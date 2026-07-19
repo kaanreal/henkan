@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.3.0](https://github.com/kaanreal/henkan/compare/v1.2.0...v1.3.0) (2026-07-19)
+
+
+### Features
+
+* **export:** add Advanced .sm Metadata section for osu→Etterna export 🌸 ([e593a60](https://github.com/kaanreal/henkan/commit/e593a606776f2d04e635302d7eefd06c67b42df9))
+* **seo:** add routing, landing pages, guides, and technical SEO 🌸 ([e41fb63](https://github.com/kaanreal/henkan/commit/e41fb630e69a072dafb796a290a14d6ba37c101d))
+
+
+### Bug Fixes
+
+* add missing SM metadata fields to BulkConvertDialog config 🐛 ([9477359](https://github.com/kaanreal/henkan/commit/9477359c24fcfc72be9bdb5f2c8378fd585db179))
+* **convert:** ensure all notes are snapped in osu! stable AIMod 🐛 ([fd0daec](https://github.com/kaanreal/henkan/commit/fd0daecd82e9a25a0e1f12ab2d5e21f15f4dc35b))
+* **export:** produce .osz instead of .zip when osz format is selected 🐛 ([c798836](https://github.com/kaanreal/henkan/commit/c798836f4ae4449c3ec23175816333e53b10753d))
+* inject version into web build from package.json ([7c23d75](https://github.com/kaanreal/henkan/commit/7c23d7585f07db1bde8ee6634f3d4d3f9c3baf84))
+* **web:** treat single-map folders as single files instead of packs 🐛 ([9f48785](https://github.com/kaanreal/henkan/commit/9f48785c809b98f7265e01a8abf4be277148d80a))
+
 ## [1.2.0](https://github.com/kaanreal/henkan/compare/v1.1.0...v1.2.0) (2026-07-14)
 
 
