@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.0](https://github.com/kaanreal/henkan/compare/v1.2.0...v1.3.0) (2026-07-19)
+
+
+### Features
+
+* **export:** 🌸 add Advanced .sm Metadata section for osu→Etterna export ([f793384](https://github.com/kaanreal/henkan/commit/f7933840a424e5c9a1c7b727e79de143188bece4))
+* **seo:** 🌸 add routing, landing pages, guides, and technical SEO ([8b291d6](https://github.com/kaanreal/henkan/commit/8b291d62b3b288711fc27785b1c81ae71c534e01))
+
+
+### Bug Fixes
+
+* **convert:** 🐛 ensure all notes are snapped in osu! stable AIMod ([b816839](https://github.com/kaanreal/henkan/commit/b8168396388cd5763d5c69dfe72a5da32ee3a888))
+* **export:** 🐛 produce .osz instead of .zip when osz format is selected ([ab347ac](https://github.com/kaanreal/henkan/commit/ab347ac28386033840195b7f7844f659b3ee6c46))
+* inject version into web build from package.json ([7c23d75](https://github.com/kaanreal/henkan/commit/7c23d7585f07db1bde8ee6634f3d4d3f9c3baf84))
+* **web:** 🐛 treat single-map folders as single files instead of packs ([677b525](https://github.com/kaanreal/henkan/commit/677b525066c6a7563fa077d192c8c2c699d4613b))
+
 ## [1.2.0](https://github.com/kaanreal/henkan/compare/v1.1.0...v1.2.0) (2026-07-14)
 
 
