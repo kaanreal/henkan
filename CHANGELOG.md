@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/kaanreal/henkan/compare/v1.3.0...v1.3.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* **ci:** enable createUpdaterArtifacts for .sig file generation 🔑 ([4dc187a](https://github.com/kaanreal/henkan/commit/4dc187a74cd0552cc277a2d0f977f47249bccfaf))
+
 ## [1.3.0](https://github.com/kaanreal/henkan/compare/v1.2.0...v1.3.0) (2026-07-19)
 
 
