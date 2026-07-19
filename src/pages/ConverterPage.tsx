@@ -864,14 +864,6 @@ export default function ConverterPage() {
       if (!picked) return
       folder = picked
     }
-    setPackFolder(folder)
-    setPackEditing(null)
-    setPackSelected(new Set())
-    setPackLoading(true)
-    setError(null)
-    setPackBannerUrl(null)
-    setPackBannerPath(null)
-    packBannerFileRef.current = null
 
     // Try scanning for .sm files first (existing etterna pack behavior)
     let entries: PackEntry[] = []
@@ -910,6 +902,23 @@ export default function ConverterPage() {
       return
     }
 
+    // Single file in folder — load directly as a single map, not a pack
+    if (entries.length === 1) {
+      setPackFolder(null)
+      setPackLoading(false)
+      handleFilesSelected([entries[0].source_file])
+      return
+    }
+
+    setPackFolder(folder)
+    setPackEditing(null)
+    setPackSelected(new Set())
+    setPackLoading(true)
+    setError(null)
+    setPackBannerUrl(null)
+    setPackBannerPath(null)
+    packBannerFileRef.current = null
+
     setPackType(detectedType)
     setPackEntries(entries)
     if (detectedType === 'osu' && direction !== 'osu-to-etterna') {
@@ -929,7 +938,7 @@ export default function ConverterPage() {
     } finally {
       setPackLoading(false)
     }
-  }, [setDirection, setError])
+  }, [handleFilesSelected, setDirection, setError])
 
   const handlePackEditSong = useCallback(async (index: number) => {
     const entry = packEntries[index]
