@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.0](https://github.com/kaanreal/henkan/compare/v1.3.1...v1.4.0) (2026-07-19)
+
+
+### Features
+
+* **updater:** render release notes as markdown and open update dialog from version check 🌸 ([4055580](https://github.com/kaanreal/henkan/commit/4055580c3e3bd4f839e1c86836ae23df8aaead47))
+
+
+### Bug Fixes
+
+* **ci:** add macOS .app.tar.gz updater patterns and upload NSIS/macOS updater artifacts 🔧 ([bb929e9](https://github.com/kaanreal/henkan/commit/bb929e9c9530e5c8d5263b8f3f67017a7207a25c))
+
 ## [1.3.1](https://github.com/kaanreal/henkan/compare/v1.3.0...v1.3.1) (2026-07-19)
 
 
