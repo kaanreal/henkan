@@ -91,6 +91,28 @@ pub struct ExportConfig {
     pub preserve_pitch: bool,
     #[serde(default = "default_fetch_avatar")]
     pub fetch_avatar: bool,
+
+    // SM advanced fields (osu → etterna) — all optional, empty = use defaults
+    #[serde(default)]
+    pub subtitle: Option<String>,
+    #[serde(default)]
+    pub title_translit: Option<String>,
+    #[serde(default)]
+    pub subtitle_translit: Option<String>,
+    #[serde(default)]
+    pub artist_translit: Option<String>,
+    #[serde(default)]
+    pub genre: Option<String>,
+    #[serde(default)]
+    pub credit: Option<String>,
+    #[serde(default)]
+    pub display_bpm: Option<String>,
+    #[serde(default)]
+    pub sample_start: Option<String>,
+    #[serde(default)]
+    pub sample_length: Option<String>,
+    #[serde(default)]
+    pub selectable: Option<String>,
 }
 
 impl Default for ExportConfig {
@@ -116,6 +138,16 @@ impl Default for ExportConfig {
             conversion_rate: 1.0,
             preserve_pitch: true,
             fetch_avatar: true,
+            subtitle: None,
+            title_translit: None,
+            subtitle_translit: None,
+            artist_translit: None,
+            genre: None,
+            credit: None,
+            display_bpm: None,
+            sample_start: None,
+            sample_length: None,
+            selectable: None,
         }
     }
 }
