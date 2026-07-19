@@ -72,17 +72,18 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     let mut lines: Vec<(f64, u8, String)> = Vec::new();
 
     for tp in &beatmap.timing_points {
-        let beat_length = if tp.beat_length > 0.0 {
-            tp.beat_length
-        } else {
-            -100.0
-        };
+        // Round to 12 decimal places to match osu! editor's output precision.
+        // At this magnitude f64 has enough precision for 12 digits, and osu!
+        // parses the timing point string back to f64 using the same number of
+        // digits — producing the exact same internal value used for grid math.
+        let raw = if tp.beat_length > 0.0 { tp.beat_length } else { -100.0 };
+        let beat_length = (raw * 1e12).round() / 1e12;
         let t = shift_tp(tp.time_ms);
         lines.push((
             t,
             if tp.uninherited { 0 } else { 1 },
             format!(
-                "{},{},{},{},{},{},{},{}",
+                "{},{:.12},{},{},{},{},{},{}",
                 t.round() as i64,
                 beat_length,
                 tp.meter,
@@ -99,12 +100,13 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
         if sv.multiplier <= 0.0 {
             continue;
         }
-        let sv_beat_length = -100.0 / sv.multiplier;
+        let sv_raw = -100.0 / sv.multiplier;
+        let sv_beat_length = (sv_raw * 1e12).round() / 1e12;
         let t = shift_tp(sv.time_ms);
         lines.push((
             t,
             1,
-            format!("{},{},{},{},{},{},{},{}", t.round() as i64, sv_beat_length, 4, 0, 0, 100, 0, 0),
+            format!("{},{:.12},{},{},{},{},{},{}", t.round() as i64, sv_beat_length, 4, 0, 0, 100, 0, 0),
         ));
     }
 
@@ -126,8 +128,10 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
         .timing_points
         .iter()
         .map(|tp| TimingPoint {
-            time_ms: shift_tp(tp.time_ms),
-            beat_length: tp.beat_length,
+            time_ms: shift_tp(tp.time_ms).round(),
+            // Round to 12 decimal places so snap_to_osu_grid uses the same
+            // beat_length that osu! will parse from the timing point string.
+            beat_length: (tp.beat_length * 1e12).round() / 1e12,
             meter: tp.meter,
             uninherited: tp.uninherited,
         })
@@ -136,17 +140,17 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     for note in &beatmap.notes {
         let x = ((note.column as f64 + 0.5) / beatmap.keys as f64 * 512.0) as u32;
         let shifted = shift_note(note.time_ms);
-        let time = snap_to_osu_grid(shifted, &osu_tps).round().max(0.0) as u64;
+        let time = snap_to_osu_grid(shifted, &osu_tps).max(0.0) as u64;
 
         if note.hold {
             let end_shifted = shift_note(note.hold_end_ms.unwrap_or(note.time_ms + 1000.0));
-            let end_time = snap_to_osu_grid(end_shifted, &osu_tps).round().max(0.0) as u64;
+            let end_time = snap_to_osu_grid(end_shifted, &osu_tps).max(0.0) as u64;
             output.push_str(&format!(
-                "{},{},{},128,0,{}:0:0:0:0:\n",
+                "{},{},{},128,0,{}:0:0:0:0:0\n",
                 x, 192, time, end_time
             ));
         } else {
-            output.push_str(&format!("{},{},{},1,0,0:0:0:0:\n", x, 192, time));
+            output.push_str(&format!("{},{},{},1,0,0:0,0,0,0,0\n", x, 192, time));
         }
     }
 

@@ -113,22 +113,164 @@ pub fn snap_time_ms(time_ms: f64, tps: &[TimingPoint]) -> f64 {
 }
 
 /// Snap a time to the nearest osu! beat grid position.
-/// Tries all 11 editor-supported divisors (1/1 through 1/16) and picks the closest.
+/// Returns an integer millisecond value that sits on or before a valid grid
+/// line for one of the editor-supported divisors that AIMod checks:
+/// 1/1, 1/2, 1/3, 1/4, 1/6, 1/8, 1/12, 1/16.
+///
+/// Uses floor (not round) when converting the floating-point grid position to
+/// an integer.  Stable's AIMod determines the "practical unsnap" via
+/// `(int)` truncation, which means a note placed *before* its grid line
+/// always scores 0 ms unsnap, while a note placed *after* scores +1 ms.
+/// Flooring guarantees every note lands at or before its grid line, keeping
+/// the practical unsnap at 0 for all divisors.
 pub fn snap_to_osu_grid(time_ms: f64, tps: &[TimingPoint]) -> f64 {
     let beat = ms_to_beat(time_ms, tps);
-    let divisors = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 12.0, 16.0];
+    let divisors = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0];
 
-    let mut best_snapped = beat;
+    let mut best_time = time_ms.floor();
     let mut best_error = f64::INFINITY;
 
     for &d in &divisors {
-        let snapped = (beat * d).round() / d;
-        let error = (beat - snapped).abs();
+        let snapped_beat = (beat * d).round() / d;
+        let snapped_ms = beat_to_ms(snapped_beat, tps);
+        let floored_ms = snapped_ms.floor();
+        let error = (time_ms - floored_ms).abs();
         if error < best_error {
             best_error = error;
-            best_snapped = snapped;
+            best_time = floored_ms;
         }
     }
 
-    beat_to_ms(best_snapped, tps)
+    best_time.max(0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tp(bpm: f64) -> TimingPoint {
+        TimingPoint {
+            time_ms: 0.0,
+            beat_length: 60_000.0 / bpm,
+            meter: 4,
+            uninherited: true,
+        }
+    }
+
+    fn tp_at(bpm: f64, time_ms: f64) -> TimingPoint {
+        TimingPoint {
+            time_ms,
+            beat_length: 60_000.0 / bpm,
+            meter: 4,
+            uninherited: true,
+        }
+    }
+
+    /// Check whether `time_ms` sits on a valid osu! grid line relative to `tp`.
+    /// Returns the minimum distance (in ms) to any of the 11 standard grid lines.
+    fn min_grid_error(time_ms: f64, tp: &TimingPoint) -> f64 {
+        let divisors = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 16];
+        let mut best = f64::INFINITY;
+        for &d in &divisors {
+            let spacing = tp.beat_length / d as f64;
+            let offset = time_ms - tp.time_ms;
+            let n = (offset / spacing).round();
+            let grid_line = tp.time_ms + n * spacing;
+            let err = (time_ms - grid_line).abs();
+            if err < best {
+                best = err;
+            }
+        }
+        best
+    }
+
+    #[test]
+    fn snap_returns_integer() {
+        let tps = [tp(120.0)];
+        for beat_div in 1..=16 {
+            for n in 0..20 {
+                let beat = n as f64 / beat_div as f64;
+                let time = beat_to_ms(beat, &tps);
+                let snapped = snap_to_osu_grid(time, &tps);
+                assert_eq!(snapped, snapped.round(), "beat {beat} at 120bpm");
+            }
+        }
+    }
+
+    #[test]
+    fn snap_120bpm_common_divisors() {
+        let tps = [tp(120.0)];
+        for d in [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 16] {
+            let beat = 1.0 / d as f64;
+            let time = beat_to_ms(beat, &tps);
+            let snapped = snap_to_osu_grid(time, &tps);
+            let err = min_grid_error(snapped, &tps[0]);
+            assert!(
+                err < 1.0,
+                "1/{d} at 120bpm: snapped to {snapped}ms, grid error {err}ms"
+            );
+        }
+    }
+
+    #[test]
+    fn snap_ugly_bpms() {
+        for bpm in [133.333, 187.5, 191.0, 193.0, 197.0, 199.0, 222.22] {
+            let tps = [tp(bpm)];
+            for d in [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 16] {
+                let beat = 1.0 / d as f64;
+                let time = beat_to_ms(beat, &tps);
+                let snapped = snap_to_osu_grid(time, &tps);
+                let err = min_grid_error(snapped, &tps[0]);
+                assert!(
+                    err < 1.0,
+                    "1/{d} at {bpm}bpm: snapped to {snapped}ms, grid error {err}ms"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn snap_with_offset() {
+        let tps = [tp_at(120.0, 333.0)];
+        for d in [1, 2, 3, 4, 8, 16] {
+            let beat = 1.0 / d as f64;
+            let time = beat_to_ms(beat, &tps);
+            let snapped = snap_to_osu_grid(time, &tps);
+            let err = min_grid_error(snapped, &tps[0]);
+            assert!(
+                err < 1.0,
+                "1/{d} at 120bpm offset 333ms: snapped to {snapped}ms, grid error {err}ms"
+            );
+        }
+    }
+
+    #[test]
+    fn snap_after_bpm_change() {
+        let tps = [tp_at(120.0, 0.0), tp_at(180.0, 2000.0)];
+        for d in [1, 2, 3, 4, 8, 16] {
+            let beat = 4.0 + 1.0 / d as f64;
+            let time = beat_to_ms(beat, &tps);
+            let snapped = snap_to_osu_grid(time, &tps);
+            let err = min_grid_error(snapped, &tps[1]);
+            assert!(
+                err < 1.0,
+                "1/{d} after bpm change: snapped to {snapped}ms, grid error {err}ms"
+            );
+        }
+    }
+
+    #[test]
+    fn snap_prefers_floor_for_non_integer_grid() {
+        let tps = [tp(120.0)];
+        let time = 166.666;
+        let snapped = snap_to_osu_grid(time, &tps);
+        assert_eq!(snapped, 166.0, "should floor to keep note before grid line");
+    }
+
+    #[test]
+    fn snap_never_returns_negative() {
+        let tps = [tp_at(120.0, 333.0)];
+        let snapped = snap_to_osu_grid(1.0, &tps);
+        assert!(snapped >= 0.0);
+    }
 }
