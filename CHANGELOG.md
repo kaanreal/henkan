@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/kaanreal/henkan/compare/v1.4.0...v1.5.0) (2026-07-19)
+
+
+### Features
+
+* **updater:** add download progress, phase tracking, and manual restart fallback 🌸 ([33d7357](https://github.com/kaanreal/henkan/commit/33d73577316ef901f936809316e4d0aa692941c9))
+
 ## [1.4.0](https://github.com/kaanreal/henkan/compare/v1.3.1...v1.4.0) (2026-07-19)
 
 
