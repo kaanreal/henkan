@@ -9,3 +9,5 @@ tauri-private.key
 src-tauri/gen/
 src-tauri/target/
 converts/
+*.key
+*.key.pub

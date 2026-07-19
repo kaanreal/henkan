@@ -49,7 +49,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYwQjc3OTlEMTMyQzI3MDMKUldRREp5d1RuWG0zWUlWMzMxUlRDSXZNd3M1Z3B2eHpJaHA4ZC9BL0thVSs5TEVIV2cwRVFQbG4K",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFDNkMyODUzNjFCNDM2QUEKUldTcU5yUmhVeWhzSEpvOFVreDhkaTBBd05VWVBwVnJCYWcvNUJtNUcrdkxoc3FDcDZ0UFd1L1kK",
       "endpoints": [
         "https://github.com/kaanreal/henkan/releases/latest/download/updater.json"
       ],
