@@ -84,7 +84,9 @@ export async function exportBeatmap(
   const filename = `${safeTitle} - ${safeCreator}${suffix}${ext}`
 
   const hasMedia = await resolveMediaFile(beatmap.source_dir, config.audio_filename || beatmap.audio_filename)
-  if (hasMedia) {
+  const bundleMedia = hasMedia && config.output_format !== 'osu'
+
+  if (bundleMedia) {
     const JSZip = (await import('jszip')).default
     const zip = new JSZip()
     zip.file(filename, convertedContent)
@@ -108,7 +110,8 @@ export async function exportBeatmap(
     await addCdtitleToZip(zip, beatmap.source_dir, config.cdtitle_filename || beatmap.cdtitle_filename, 'cdtitle.png', config.creator || beatmap.creator)
 
     const blob = await zip.generateAsync({ type: 'blob' })
-    const zipName = `${safeTitle} - ${safeCreator}${suffix}.zip`
+    const bundleExt = config.output_format === 'osz' ? '.osz' : '.zip'
+    const zipName = `${safeTitle} - ${safeCreator}${suffix}${bundleExt}`
     await saveBlobToFile(blob, zipName)
     return zipName
   }
