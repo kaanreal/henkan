@@ -123,8 +123,7 @@ jobs:
                   echo "  \"platforms\": {" >> updater.json
 
                   FIRST=true
-                  for sigfile in "$BUNDLE_DIR"/*.sig; do
-                      [ -f "$sigfile" ] || continue
+                  find "$BUNDLE_DIR" -name "*.sig" -type f -print0 | while IFS= read -r -d '' sigfile; do
                       SIG="$(tr -d '\n\r' < "$sigfile")"
                       ARCHIVE="${sigfile%.sig}"
                       FILENAME="$(basename "$ARCHIVE")"
@@ -133,9 +132,11 @@ jobs:
                       PLATFORM=""
                       case "$FILENAME" in
                           *.AppImage.tar.gz) PLATFORM="linux-x86_64" ;;
+                          *.AppImage)        PLATFORM="linux-x86_64" ;;
                           *aarch64*.dmg)     PLATFORM="darwin-aarch64" ;;
                           *x64*.dmg)         PLATFORM="darwin-x86_64" ;;
-                          *.msi.zip)         PLATFORM="windows-x86_64" ;;
+                          *.msi)             PLATFORM="windows-x86_64" ;;
+                          *.nsis.exe)        PLATFORM="windows-x86_64" ;;
                       esac
 
                       if [ -n "$PLATFORM" ]; then
@@ -218,8 +219,7 @@ jobs:
                   body: ${{ steps.release_notes.outputs.RELEASE_BODY }}
                   files: |
                       bundles/**/*.msi
-                      bundles/**/*.msi.zip
-                      bundles/**/*.msi.zip.sig
+                      bundles/**/*.msi.sig
                       bundles/**/*.dmg
                       bundles/**/*.dmg.sig
                       bundles/**/*.AppImage
