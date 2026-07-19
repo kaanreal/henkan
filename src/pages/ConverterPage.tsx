@@ -280,26 +280,56 @@ export default function ConverterPage() {
   }
 
   const [updateError, setUpdateError] = useState<string | null>(null)
+  const [updatePhase, setUpdatePhase] = useState<'idle' | 'downloading' | 'installing' | 'done'>('idle')
+  const [downloadProgress, setDownloadProgress] = useState<{ downloaded: number; total: number } | null>(null)
 
   const handleUpdate = async () => {
     if (!pendingUpdate) return
     setInstalling(true)
     setUpdateError(null)
+    setUpdatePhase('downloading')
+    setDownloadProgress(null)
     try {
       const { check } = await import('@tauri-apps/plugin-updater')
       const update = await check()
       if (update) {
-        await update.downloadAndInstall()
+        await update.downloadAndInstall((event) => {
+          switch (event.event) {
+            case 'Started':
+              setDownloadProgress({ downloaded: 0, total: event.data.contentLength ?? 0 })
+              break
+            case 'Progress':
+              setDownloadProgress(prev => ({
+                downloaded: (prev?.downloaded ?? 0) + event.data.chunkLength,
+                total: prev?.total ?? 0,
+              }))
+              break
+            case 'Finished':
+              setUpdatePhase('installing')
+              break
+          }
+        })
+        setUpdatePhase('done')
         const { relaunch } = await import('@tauri-apps/plugin-process')
         await relaunch()
       } else {
         setUpdateError('Update no longer available. Please try again.')
         setInstalling(false)
+        setUpdatePhase('idle')
       }
     } catch (e) {
+      console.error('Update failed:', e)
       setUpdateError(e instanceof Error ? e.message : 'Update failed. Please download manually from GitHub.')
       setInstalling(false)
+      setUpdatePhase('idle')
     }
+  }
+
+  const handleManualRestart = async () => {
+    try {
+      const { relaunch } = await import('@tauri-apps/plugin-process')
+      await relaunch()
+    } catch { window.location.reload() }
   }
 
   const handleDismissUpdate = (dontAskAgain: boolean) => {
@@ -1822,7 +1852,10 @@ export default function ConverterPage() {
           updateInfo={pendingUpdate}
           installing={installing}
           error={updateError}
+          updatePhase={updatePhase}
+          downloadProgress={downloadProgress}
           onUpdate={handleUpdate}
+          onManualRestart={handleManualRestart}
           onDismiss={handleDismissUpdate}
         />
 
