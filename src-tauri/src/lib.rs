@@ -2184,25 +2184,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_scan_songs_folder_on_actual_osu_songs_dir() {
-        let dir = r"C:\STUFF\osu!\Songs\2347537 Mitose Noriko - Class__EXSPHERE_NOSURGE;";
-        let result = scan_songs_folder(dir.to_string());
-        match &result {
-            Ok(entries) => {
-                eprintln!("[test] scan_songs_folder returned {} entries", entries.len());
-                for e in entries {
-                    eprintln!("[test]   entry: title={:?}, artist={:?}, file={:?}", e.title, e.artist, e.source_file);
-                }
-                assert!(!entries.is_empty(), "Expected at least 1 osu entry from {}", dir);
-            }
-            Err(err) => {
-                eprintln!("[test] scan_songs_folder error: {}", err);
-                panic!("scan_songs_folder failed: {}", err);
-            }
-        }
-    }
-
-    #[test]
     fn test_scan_songs_folder_finds_osu_files() {
         let dir = std::env::temp_dir().join("henkan_unit_test_scan");
         let _ = std::fs::remove_dir_all(&dir);
