@@ -23,8 +23,9 @@ async function fixture() {
   await writeFile(configPath, JSON.stringify({ plugins: { updater: { pubkey: Buffer.from(publicKey).toString('base64') } } }))
   const artifacts = {
     'linux-x86_64': 'Henkan_1.4.0_amd64.AppImage',
-    'windows-x86_64': 'Henkan_1.4.0_x64_en-US.msi',
+    'windows-x86_64': 'Henkan_1.4.0_x64-setup.exe',
     'darwin-aarch64': 'Henkan.app.tar.gz',
+    'darwin-x86_64': 'Henkan.app.tar.gz',
   }
   for (const [platform, filename] of Object.entries(artifacts)) {
     const directory = path.join(root, 'bundles', `henkan-${platform}`, 'bundle')
@@ -45,7 +46,7 @@ test('creates one complete entry per supported release platform', async () => {
       repository: 'kaanreal/henkan',
       configPath,
     })
-    assert.deepEqual(Object.keys(manifest.platforms), ['linux-x86_64', 'windows-x86_64', 'darwin-aarch64'])
+    assert.deepEqual(Object.keys(manifest.platforms), ['linux-x86_64', 'windows-x86_64', 'darwin-aarch64', 'darwin-x86_64'])
     assert.match(manifest.platforms['darwin-aarch64'].url, /Henkan\.app\.tar\.gz$/)
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -55,7 +56,7 @@ test('creates one complete entry per supported release platform', async () => {
 test('rejects an updater signed by a key the installed app does not trust', async () => {
   const { root, configPath } = await fixture()
   try {
-    const signaturePath = path.join(root, 'bundles', 'henkan-windows-x86_64', 'bundle', 'Henkan_1.4.0_x64_en-US.msi.sig')
+    const signaturePath = path.join(root, 'bundles', 'henkan-windows-x86_64', 'bundle', 'Henkan_1.4.0_x64-setup.exe.sig')
     const otherKey = Buffer.from('fedcba9876543210', 'hex')
     await writeFile(signaturePath, updaterSignature(otherKey))
     await assert.rejects(

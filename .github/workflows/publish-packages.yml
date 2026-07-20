@@ -15,6 +15,11 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
+      CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,9 +40,9 @@ jobs:
           VER="${{ steps.version.outputs.tag }}"
           V="${VER#v}"
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "source_sha256=$(curl -sL "https://github.com/kaanreal/henkan/archive/refs/tags/$VER.tar.gz" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "dmg_sha256=$(curl -sL "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan_${V}_aarch64.dmg" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "msi_sha256=$(curl -sL "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan_${V}_x64_en-US.msi" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "source_sha256=$(curl --fail --location --silent --show-error "https://github.com/kaanreal/henkan/archive/refs/tags/$VER.tar.gz" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "dmg_sha256=$(curl --fail --location --silent --show-error "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan_${V}_aarch64.dmg" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "installer_sha256=$(curl --fail --location --silent --show-error "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan_${V}_x64-setup.exe" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Publish to Homebrew
         if: env.HOMEBREW_TAP_TOKEN != ''
@@ -48,7 +53,7 @@ jobs:
             "${{ steps.version.outputs.tag }}" \
             "${{ steps.checksums.outputs.source_sha256 }}" \
             "${{ steps.checksums.outputs.dmg_sha256 }}" \
-            "${{ steps.checksums.outputs.msi_sha256 }}"
+            "${{ steps.checksums.outputs.installer_sha256 }}"
 
       - name: Publish to Winget
         if: env.WINGET_GITHUB_TOKEN != ''
@@ -59,7 +64,7 @@ jobs:
             "${{ steps.version.outputs.tag }}" \
             "${{ steps.checksums.outputs.source_sha256 }}" \
             "${{ steps.checksums.outputs.dmg_sha256 }}" \
-            "${{ steps.checksums.outputs.msi_sha256 }}"
+            "${{ steps.checksums.outputs.installer_sha256 }}"
 
       - name: Publish to Chocolatey
         if: env.CHOCOLATEY_API_KEY != ''
@@ -70,4 +75,15 @@ jobs:
             "${{ steps.version.outputs.tag }}" \
             "${{ steps.checksums.outputs.source_sha256 }}" \
             "${{ steps.checksums.outputs.dmg_sha256 }}" \
-            "${{ steps.checksums.outputs.msi_sha256 }}"
+            "${{ steps.checksums.outputs.installer_sha256 }}"
+
+      - name: Publish to AUR
+        if: env.AUR_SSH_PRIVATE_KEY != ''
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          packaging/ci-publish.sh aur \
+            "${{ steps.version.outputs.tag }}" \
+            "${{ steps.checksums.outputs.source_sha256 }}" \
+            "${{ steps.checksums.outputs.dmg_sha256 }}" \
+            "${{ steps.checksums.outputs.installer_sha256 }}"

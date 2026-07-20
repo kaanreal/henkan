@@ -1,106 +1,49 @@
-﻿# Henkan 変換
+# Henkan 変換
 
-**osu!mania ↔ Etterna / StepMania beatmap converter.**
+> A careful osu!mania ↔ Etterna / StepMania converter.
 
-The reliable VSRG converter you asked for.
+Henkan keeps the musical details intact: millisecond timing, BPM changes, long
+notes, metadata, and background references. Drop in an `.osu`, `.osz`, or `.sm`
+file and carry it to its next rhythm-game home.
 
-## Introduction
+![Henkan converter](public/screenshots/main-menu.png)
 
-> There are a handful of converters out there, but most of them mess up the timing - notes drift, BPM changes get flattened, and holds break. Henkan does it properly: millisecond-accurate timing, full note conversion, BPM changes preserved, holds intact. What comes out is exactly what went in.
+## What it does
 
-Drag a .osu, .osz, or .sm file onto the window and it just works. Cross-platform, native performance, no web wrapper.
+- Converts osu!mania (`.osu` / `.osz`) and Etterna/StepMania (`.sm`) maps both ways
+- Preserves timing points, holds, chart metadata, preview points, and backgrounds
+- Handles individual maps and pack folders
+- Runs as a native Tauri desktop app, CLI, and browser-capable converter
 
-## Features
+> Scroll velocity is not converted from osu!mania to `.sm`: standard StepMania
+> timing has no matching concept.
 
-- **osu!mania (.osu / .osz) ↔ Etterna (.sm)** - timing, holds, BPM changes, metadata
-- **Metadata mapping** - title, artist, creator, difficulty, preview point
-- **BPM changes** - multiple tempo changes supported
-- **Hold/Long notes** - start/end translation
-- **Background references** - preserved across formats
+## Get Henkan
 
-> Note: SV (scroll velocity) is not converted in the osu → .sm direction -
-> the .sm format has no equivalent of osu's green lines.
+| Platform | Install |
+| --- | --- |
+| macOS | `brew install --cask kaanreal/tap/henkan` |
+| macOS CLI | `brew install kaanreal/tap/henkan-cli` |
+| Windows | `winget install kaanreal.henkan` or `choco install henkan` |
+| Arch Linux | `yay -S henkan` |
+| Linux | Download an AppImage or `.deb` from [Releases](https://github.com/kaanreal/henkan/releases) |
 
-## Screenshots
+## A quick tour
 
-### Main Interface
+| Pack conversion | Map preview |
+| --- | --- |
+| ![Pack conversion](public/screenshots/pack-conversion.png) | ![Map preview](public/screenshots/preview.png) |
 
-![Main Interface](public/screenshots/main-menu.png)
+## Handbook
 
-### Pack Conversion
+- [Getting started](docs/getting-started.md)
+- [Conversion notes](docs/conversion-notes.md)
+- [Project map](docs/project-map.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
 
-![Pack Conversion](public/screenshots/pack-conversion.png)
+## Built with care
 
-### Etterna Conversion
+Tauri + React + Rust + WebAssembly.
 
-![Etterna Conversion](public/screenshots/etterna-conversion.png)
-
-### Osu! Conversion
-
-![Osu! Conversion](public/screenshots/osu-conversion.png)
-
-### Preview
-
-![Preview](public/screenshots/preview.png)
-
-## Install
-
-### macOS
-
-**Desktop app** (Apple Silicon):
-
-```bash
-brew tap kaanreal/tap
-brew install --cask kaanreal/tap/henkan
-```
-
-**CLI only** (builds from source, requires Rust):
-
-```bash
-brew tap kaanreal/tap
-brew install kaanreal/tap/henkan-cli
-```
-
----
-
-### Windows
-
-**Winget:**
-
-```powershell
-winget install kaanreal.henkan
-```
-
-**Chocolatey:**
-
-```powershell
-choco install henkan
-```
-
----
-
-### Linux
-
-**Arch (AUR):**
-
-```bash
-yay -S henkan
-```
-
-**AppImage / .deb:** download from [Releases](https://github.com/kaanreal/henkan/releases).
-
----
-
-### Direct download
-
-Pre-built binaries for all platforms are on the [Releases](https://github.com/kaanreal/henkan/releases) page.
-
-| Platform | Format |
-|----------|--------|
-| Windows | `.msi` |
-| macOS (Apple Silicon) | `.dmg` |
-| Linux | `.AppImage`, `.deb` |
-
----
-
-Built with [Tauri](https://tauri.app) + [React](https://react.dev) + [Rust](https://rust-lang.org).
+If Henkan helped your maps find a new home, a star on GitHub is always lovely.

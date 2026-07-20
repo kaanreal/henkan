@@ -85,7 +85,7 @@ publish_aur() {
     return
   }
 
-  local tarball_url="$RELEASE_URL/v$VER.tar.gz"
+  local tarball_url="https://github.com/$GH_REPO/archive/refs/tags/v$VER.tar.gz"
   local tarball_sha
   tarball_sha=$(fetch_sha256 "$tarball_url")
 
@@ -190,10 +190,10 @@ CASK
 publish_winget() {
   echo "--- Publishing to Winget ---"
 
-  local msi_url="$RELEASE_URL/Henkan_${VER}_x64_en-US.msi"
-  local msi_sha
-  msi_sha=$(fetch_sha256 "$msi_url") || {
-    echo "WARNING: Could not fetch .msi checksum. Skipping Winget."
+  local installer_url="$RELEASE_URL/Henkan_${VER}_x64-setup.exe"
+  local installer_sha
+  installer_sha=$(fetch_sha256 "$installer_url") || {
+    echo "WARNING: Could not fetch NSIS installer checksum. Skipping Winget."
     return
   }
 
@@ -213,15 +213,13 @@ publish_winget() {
 PackageIdentifier: kaanreal.henkan
 PackageVersion: $VER
 InstallerLocale: en-US
-InstallerType: wix
+InstallerType: nullsoft
 InstallerSwitches:
-  Silent: /quiet /norestart
-  SilentWithProgress: /passive /norestart
-ProductCode: "{CHANGE_ME}"
+  Silent: /S
 Installers:
   - Architecture: x64
-    InstallerUrl: $msi_url
-    InstallerSha256: $msi_sha
+    InstallerUrl: $installer_url
+    InstallerSha256: $installer_sha
 ManifestType: installer
 ManifestVersion: 1.6.0
 YAML
@@ -277,10 +275,10 @@ YAML
 publish_choco() {
   echo "--- Publishing to Chocolatey ---"
 
-  local msi_url="$RELEASE_URL/Henkan_${VER}_x64_en-US.msi"
-  local msi_sha
-  msi_sha=$(fetch_sha256 "$msi_url") || {
-    echo "WARNING: Could not fetch .msi checksum. Skipping Chocolatey."
+  local installer_url="$RELEASE_URL/Henkan_${VER}_x64-setup.exe"
+  local installer_sha
+  installer_sha=$(fetch_sha256 "$installer_url") || {
+    echo "WARNING: Could not fetch NSIS installer checksum. Skipping Chocolatey."
     return
   }
 
@@ -296,8 +294,8 @@ publish_choco() {
   cp "$TEMPLATES/chocolateyuninstall.ps1" "$CHOCO_DIR/tools/"
 
   sed_i "s/{{VERSION}}/$VER/g" "$CHOCO_DIR/henkan.nuspec"
-  sed_i "s|{{MSI_URL}}|$msi_url|g" "$CHOCO_DIR/tools/chocolateyinstall.ps1"
-  sed_i "s/{{MSI_SHA}}/$msi_sha/g" "$CHOCO_DIR/tools/chocolateyinstall.ps1"
+  sed_i "s|{{INSTALLER_URL}}|$installer_url|g" "$CHOCO_DIR/tools/chocolateyinstall.ps1"
+  sed_i "s/{{INSTALLER_SHA}}/$installer_sha/g" "$CHOCO_DIR/tools/chocolateyinstall.ps1"
 
   cd "$CHOCO_DIR"
   choco pack

@@ -7,6 +7,7 @@
     <authors>kaanreal</authors>
     <owners>kaanreal</owners>
     <projectUrl>https://github.com/kaanreal/henkan</projectUrl>
+    <packageSourceUrl>https://github.com/kaanreal/henkan/tree/main/packaging/chocolatey</packageSourceUrl>
     <iconUrl>https://raw.githubusercontent.com/kaanreal/henkan/main/public/logo32.png</iconUrl>
     <licenseUrl>https://github.com/kaanreal/henkan/blob/main/LICENSE</licenseUrl>
     <projectSourceUrl>https://github.com/kaanreal/henkan</projectSourceUrl>

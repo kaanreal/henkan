@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$url        = '{{MSI_URL}}'
-$checksum   = '{{MSI_SHA}}'
+$url        = '{{INSTALLER_URL}}'
+$checksum   = '{{INSTALLER_SHA}}'
 $checksumType = 'sha256'
-Install-ChocolateyPackage 'henkan' 'msi' '/quiet /norestart' $url -checksum $checksum -checksumType $checksumType
+Install-ChocolateyPackage 'henkan' 'exe' '/S' $url -checksum $checksum -checksumType $checksumType
