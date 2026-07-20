@@ -159,7 +159,6 @@ export function parse_sm_difficulty(content, index) {
 }
 
 /**
- * Rate label for difficulty name suffix
  * @param {number} rate
  * @returns {string | undefined}
  */
@@ -174,7 +173,6 @@ export function rate_label_text(rate) {
 }
 
 /**
- * Apply rate scaling to beatmap timing and notes (mutates in place). Returns updated JSON.
  * @param {string} beatmap_json
  * @param {number} rate
  * @returns {string}
@@ -202,8 +200,9 @@ export function scale_timing_for_rate(beatmap_json, rate) {
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
-        __wbg_Error_92b29b0548f8b746: function(arg0, arg1) {
-            const ret = Error(getStringFromWasm0(arg0, arg1));
+        __wbindgen_cast_0000000000000001: function(arg0, arg1) {
+            // Cast intrinsic for `Ref(String) -> Externref`.
+            const ret = getStringFromWasm0(arg0, arg1);
             return ret;
         },
         __wbindgen_init_externref_table: function() {

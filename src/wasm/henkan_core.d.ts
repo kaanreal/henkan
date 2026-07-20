@@ -13,14 +13,8 @@ export function parse_sm_content(content: string): string;
 
 export function parse_sm_difficulty(content: string, index: number): string;
 
-/**
- * Rate label for difficulty name suffix
- */
 export function rate_label_text(rate: number): string | undefined;
 
-/**
- * Apply rate scaling to beatmap timing and notes (mutates in place). Returns updated JSON.
- */
 export function scale_timing_for_rate(beatmap_json: string, rate: number): string;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;

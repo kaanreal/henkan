@@ -1759,6 +1759,7 @@ fn create_dummy_diff(
     osu.push_str("AudioFilename: dummy.mp3\n");
     osu.push_str("AudioLeadIn: 0\n");
     osu.push_str("Mode: 3\n");
+    osu.push_str("Countdown: 0\n");
     osu.push_str("PreviewTime: 0\n\n");
     osu.push_str("[Metadata]\n");
     osu.push_str(&format!("Title:{}\n", title));
