@@ -54,6 +54,8 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     }
     if beatmap.banner_filename.as_ref().is_some_and(|s| !s.is_empty()) {
         writeln!(out, "#BANNER:banner.png;")?;
+    } else if beatmap.background_filename.is_some() {
+        writeln!(out, "#BANNER:bg.png;")?;
     }
     writeln!(out, "#CDTITLE:cdtitle.png;")?;
 
