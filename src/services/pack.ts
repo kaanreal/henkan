@@ -164,6 +164,7 @@ export function generateDummyDiffContent(
   osu += 'AudioFilename: dummy.mp3\n'
   osu += 'AudioLeadIn: 0\n'
   osu += 'Mode: 3\n'
+  osu += 'Countdown: 0\n'
   osu += `PreviewTime: 0\n\n`
   osu += '[Metadata]\n'
   osu += `Title:${escape(title)}\n`

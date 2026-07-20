@@ -14,6 +14,7 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     output.push_str(&format!("AudioFilename: {}\n", beatmap.audio_filename));
     output.push_str(&format!("AudioLeadIn: {}\n", beatmap.lead_in_ms as u64));
     output.push_str("Mode: 3\n");
+    output.push_str("Countdown: 0\n");
     output.push_str(&format!("PreviewTime: {}\n", beatmap.preview_time as i64));
     output.push('\n');
 

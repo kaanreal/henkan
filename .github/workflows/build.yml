@@ -11,7 +11,51 @@ permissions:
     pull-requests: write
 
 jobs:
+    build-wasm:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+
+            - name: Install Rust
+              run: |
+                  rustup set profile minimal
+                  rustup toolchain install stable
+                  rustup default stable
+                  rustup target add wasm32-unknown-unknown
+
+            - name: Install wasm-pack
+              run: cargo install wasm-pack
+
+            - name: Build WASM
+              run: wasm-pack build --target web --release wasm-core
+
+            - name: Copy WASM artifacts
+              run: cp wasm-core/pkg/henkan_core_bg.wasm wasm-core/pkg/henkan_core.js wasm-core/pkg/henkan_core.d.ts wasm-core/pkg/henkan_core_bg.wasm.d.ts src/wasm/
+
+            - name: Check for changes
+              id: changes
+              run: |
+                  git add src/wasm/
+                  if git diff --cached --quiet; then
+                    echo "changed=false" >> $GITHUB_OUTPUT
+                  else
+                    echo "changed=true" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: Commit updated WASM
+              if: steps.changes.outputs.changed == 'true'
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git commit -m "chore(wasm): rebuild WASM binaries 🫖"
+                  git push
+
     release-please:
+        needs: build-wasm
         runs-on: ubuntu-latest
         outputs:
             release_created: ${{ steps.release.outputs.release_created }}
