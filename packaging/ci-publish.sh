@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Called by CI workflow. Usage:
-#   ci-publish.sh <target> <version> <source_sha256> <dmg_sha256> <msi_sha256>
+#   ci-publish.sh <target> <version> <source_sha256> <dmg_sha256> <installer_sha256>
 set -euo pipefail
 
 TARGET="$1"
 VER="$2"          # e.g. v1.1.0
 SRC_SHA="$3"
 DMG_SHA="$4"
-MSI_SHA="$5"
+INSTALLER_SHA="$5"
 
 V="${VER#v}"
 REPO="kaanreal/henkan"
 TAG_URL="https://github.com/$REPO/archive/refs/tags/$VER.tar.gz"
 REL_URL="https://github.com/$REPO/releases/download/$VER"
-MSI_URL="$REL_URL/Henkan_${V}_x64_en-US.msi"
+INSTALLER_URL="$REL_URL/Henkan_${V}_x64-setup.exe"
 DMG_URL="$REL_URL/Henkan_${V}_aarch64.dmg"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -34,6 +34,30 @@ git_config() {
 }
 
 case "$TARGET" in
+aur)
+  # The AUR is a Git repository. The repository must be created once by the
+  # maintainer at aur.archlinux.org before this automation can push to it.
+  install -d -m 700 ~/.ssh
+  printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+  chmod 600 ~/.ssh/id_ed25519
+  ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+  git clone "ssh://aur@aur.archlinux.org/henkan.git" /tmp/henkan-aur
+
+  cp "$SCRIPT_DIR/aur/PKGBUILD" /tmp/henkan-aur/PKGBUILD
+  cp "$SCRIPT_DIR/aur/.SRCINFO" /tmp/henkan-aur/.SRCINFO
+  sed_i "s/^pkgver=.*/pkgver=$V/" /tmp/henkan-aur/PKGBUILD
+  sed_i "s/^pkgrel=.*/pkgrel=1/" /tmp/henkan-aur/PKGBUILD
+  sed_i "s/sha256sums=('.*')/sha256sums=('$SRC_SHA')/" /tmp/henkan-aur/PKGBUILD
+  sed_i "s/^\tpkgver = .*/\tpkgver = $V/" /tmp/henkan-aur/.SRCINFO
+  sed_i "s/^\tsha256sums = .*/\tsha256sums = $SRC_SHA/" /tmp/henkan-aur/.SRCINFO
+
+  cd /tmp/henkan-aur
+  git_config
+  git add PKGBUILD .SRCINFO
+  git commit -m "chore: update to $VER"
+  git push
+  ;;
+
 homebrew)
   git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/kaanreal/homebrew-tap.git" /tmp/brew-tap
   mkdir -p /tmp/brew-tap/Formula /tmp/brew-tap/Casks
@@ -95,15 +119,13 @@ winget)
 PackageIdentifier: kaanreal.henkan
 PackageVersion: $V
 InstallerLocale: en-US
-InstallerType: wix
+InstallerType: nullsoft
 InstallerSwitches:
-  Silent: /quiet /norestart
-  SilentWithProgress: /passive /norestart
-ProductCode: "{CHANGE_ME}"
+  Silent: /S
 Installers:
   - Architecture: x64
-    InstallerUrl: $MSI_URL
-    InstallerSha256: $MSI_SHA
+    InstallerUrl: $INSTALLER_URL
+    InstallerSha256: $INSTALLER_SHA
 ManifestType: installer
 ManifestVersion: 1.6.0
 YAML
@@ -150,8 +172,8 @@ choco)
   cp "$TEMPLATES/chocolateyuninstall.ps1" /tmp/choco/tools/
 
   sed_i "s/{{VERSION}}/$V/g" /tmp/choco/henkan.nuspec
-  sed_i "s|{{MSI_URL}}|$MSI_URL|g" /tmp/choco/tools/chocolateyinstall.ps1
-  sed_i "s/{{MSI_SHA}}/$MSI_SHA/g" /tmp/choco/tools/chocolateyinstall.ps1
+  sed_i "s|{{INSTALLER_URL}}|$INSTALLER_URL|g" /tmp/choco/tools/chocolateyinstall.ps1
+  sed_i "s/{{INSTALLER_SHA}}/$INSTALLER_SHA/g" /tmp/choco/tools/chocolateyinstall.ps1
 
   # Build .nupkg manually (it's a ZIP with .nupkg extension)
   # NuGet packages require OPC format: [Content_Types].xml + _rels/.rels

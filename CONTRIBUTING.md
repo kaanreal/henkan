@@ -1,55 +1,72 @@
-# Contributing
+# Contributing to Henkan
 
-## Prerequisites
+Thanks for spending time with Henkan. Small, focused changes are easiest to
+review and safest to release.
 
-- Node.js 20+
-- Rust 1.80+
-- Windows: Visual Studio Build Tools / Linux: `libwebkit2gtk-4.1-dev`
+## Before you start
 
-## Setup
+- Node.js 20 or newer
+- Rust stable
+- Platform prerequisites for [Tauri](https://v2.tauri.app/start/prerequisites/)
 
 ```bash
 git clone https://github.com/kaanreal/henkan.git
 cd henkan
-npm install
-cp src-tauri/.env.example src-tauri/.env  # add your Aptabase key
+npm ci
+cp src-tauri/.env.example src-tauri/.env
 ```
 
-## Development
+`src-tauri/.env` is local-only. Do not commit keys or analytics credentials.
+
+## Everyday commands
 
 ```bash
-npm run dev          # start Tauri dev server (hot-reload)
-npm run tauri build  # production build
+npm run dev            # run the app in development
+npm run build          # type-check and build the web bundle
+npm run lint           # lint TypeScript and React
+npm run test:updater   # test release-manifest generation
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-## Code Quality
+If you change Rust formatting, also run `cargo fmt --check` from `src-tauri`.
 
-```bash
-npm run lint         # ESLint + TypeScript check
-npm run lint:prettier
-cd src-tauri && cargo clippy && cargo fmt --check
+## A calm contribution flow
+
+1. Open an issue first for a larger change, so the direction is clear.
+2. Branch from `main` with a short, descriptive name.
+3. Keep one concern per pull request.
+4. Add or update tests when behaviour changes.
+5. Include a screenshot for visible UI work and list the commands you ran.
+
+## Commit messages
+
+Henkan uses Conventional Commits because Release Please reads the **start** of
+the commit subject to decide versions and changelog entries. Keep that part
+plain; put one small mood emoji at the beginning of the human description if it
+suits the change.
+
+```text
+feat: 🌷 add pack banner preview
+fix(parser): 🫖 preserve negative beat offsets
+docs: 📚 clarify Linux installation
+chore(wasm): rebuild bindings
 ```
 
-## Testing
+Useful types are `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci`, and
+`chore`. Use `feat!:` or a `BREAKING CHANGE:` footer only for a deliberate
+breaking change. Avoid emoji-only, vague subjects such as `✨ update stuff`.
 
-```bash
-cd src-tauri && cargo test
-```
+For pull requests, use **Squash and merge** and make the squash title the final
+conventional commit. It leaves `main` readable and gives Release Please one
+clear entry to process.
 
-## Pull Requests
+## Where things live
 
-1. Use conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`
-2. Keep PRs focused on a single concern
-3. Update tests if adding or changing behavior
-4. Verify the build passes locally before pushing
+- `src/` — React interface, state, and desktop/web services
+- `src-tauri/` — native application and CLI
+- `wasm-core/` — browser-compatible conversion core
+- `api/` — hosted endpoints
+- `packaging/` — package-manager recipes
+- `docs/` — user and maintainer documentation
 
-## Commit Convention
-
-We use [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
-feat: add .osz pack export
-fix: preserve #SAMPLESTART from SM files
-chore(deps): bump tauri to 2.2
-docs: add contributing guide
-```
+Please do not hand-edit generated files in `src/wasm/`; use `npm run build:wasm`.

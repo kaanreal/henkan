@@ -4,9 +4,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const PLATFORM_RULES = {
   'linux-x86_64': [/\.AppImage\.sig$/, /\.AppImage\.tar\.gz\.sig$/],
-  // v1.2.0 was distributed as MSI, so its update must remain an MSI as well.
-  'windows-x86_64': [/\.msi\.sig$/],
+  // NSIS is the current Windows updater payload; keeping the MSI pattern makes
+  // the manifest generator usable when validating an older release archive.
+  'windows-x86_64': [/\.exe\.sig$/, /\.msi\.sig$/],
   'darwin-aarch64': [/\.app\.tar\.gz\.sig$/],
+  'darwin-x86_64': [/\.app\.tar\.gz\.sig$/],
 }
 
 async function walk(directory) {

@@ -7,12 +7,12 @@ $softwareName = 'Henkan*'
 
 if ($key.Count -eq 1) {
   $key | ForEach-Object {
-    $silentArgs = "$($_.PSChildName) /quiet /norestart"
+    $silentArgs = "$($_.PSChildName) /S"
     if ($_.UninstallString) {
-      $silentArgs = "$($_.UninstallString) /quiet /norestart"
+      $silentArgs = "$($_.UninstallString) /S"
     }
     Uninstall-ChocolateyPackage -PackageName $packageName `
-                                -FileType 'msi' `
+                                -FileType 'exe' `
                                 -SilentArgs $silentArgs `
                                 -ValidExitCodes @(0, 3010, 1605, 1614, 1641)
   }

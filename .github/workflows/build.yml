@@ -77,12 +77,19 @@ jobs:
                     - os: ubuntu-latest
                       target: x86_64-unknown-linux-gnu
                       platform-name: linux-x86_64
+                      bundles: appimage,deb,rpm
                     - os: windows-latest
                       target: x86_64-pc-windows-msvc
                       platform-name: windows-x86_64
+                      bundles: nsis
                     - os: macos-latest
                       target: aarch64-apple-darwin
                       platform-name: darwin-aarch64
+                      bundles: dmg,app
+                    - os: macos-13
+                      target: x86_64-apple-darwin
+                      platform-name: darwin-x86_64
+                      bundles: dmg,app
 
         runs-on: ${{ matrix.os }}
         steps:
@@ -128,7 +135,7 @@ jobs:
             - run: npm ci
 
             - name: Build Tauri release
-              run: npm run tauri build -- --target ${{ matrix.target }}
+              run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
               env:
                   APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
                   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -228,8 +235,8 @@ jobs:
                   name: Release v${{ steps.version.outputs.version }}
                   body: ${{ steps.release_notes.outputs.RELEASE_BODY }}
                   files: |
-                      bundles/**/*.msi
-                      bundles/**/*.msi.sig
+                      bundles/**/*.exe
+                      bundles/**/*.exe.sig
                       bundles/**/*.dmg
                       bundles/**/*.app.tar.gz
                       bundles/**/*.app.tar.gz.sig
@@ -238,5 +245,6 @@ jobs:
                       bundles/**/*.AppImage.tar.gz
                       bundles/**/*.AppImage.tar.gz.sig
                       bundles/**/*.deb
+                      bundles/**/*.rpm
                       updater.json
                   generate_release_notes: false
