@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.1](https://github.com/kaanreal/henkan/compare/v1.3.0...v1.3.1) (2026-07-20)
+
+
+### Bug Fixes
+
+* **updater:** generate and validate updater artifacts 🔧 ([5a1ca96](https://github.com/kaanreal/henkan/commit/5a1ca96a8291857a4f880e5f29d2133d4e3f11e7))
+* **updater:** generate and validate updater artifacts 🔧 ([430579f](https://github.com/kaanreal/henkan/commit/430579f80b78afc7aa95aa89abe4df5bee060386))
+* **wasm:** rebuild WASM binaries with countdown off and snapping fixes 🫖 ([402cfe9](https://github.com/kaanreal/henkan/commit/402cfe98b343e68de66709c4778931d6bba429ce))
+
 ## [1.3.0](https://github.com/kaanreal/henkan/compare/v1.2.0...v1.3.0) (2026-07-19)
 
 
