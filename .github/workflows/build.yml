@@ -84,7 +84,7 @@ jobs:
             - run: npm ci
 
             - name: Build Tauri release
-              run: npm run tauri build
+              run: npm run tauri build -- --target ${{ matrix.target }}
               env:
                   APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
                   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -94,18 +94,19 @@ jobs:
               uses: actions/upload-artifact@v4
               with:
                   name: henkan-${{ matrix.platform-name }}
-                  path: src-tauri/target/release/bundle
+                  path: src-tauri/target/${{ matrix.target }}/release/bundle
 
     generate-updater-json:
         needs: [build, release-please]
         runs-on: ubuntu-latest
         steps:
+            - uses: actions/checkout@v4
+
             - name: Download all platform bundles
               uses: actions/download-artifact@v4
               with:
                   pattern: henkan-*
                   path: bundles
-                  merge-multiple: true
 
             - name: Create updater.json
               shell: bash
@@ -113,54 +114,12 @@ jobs:
                   TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
               run: |
                   VERSION="${TAG_NAME#v}"
-                  PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                  REPO="${{ github.repository }}"
-                  BUNDLE_DIR="bundles"
-
-                  echo "=== DEBUG: Bundle directory top-level ==="
-                  ls -R "$BUNDLE_DIR" | grep -E '\.(sig|msi|dmg|AppImage|exe|deb)$' || true
-                  echo "=== DEBUG: Sig files ==="
-                  find "$BUNDLE_DIR" -name "*.sig" -type f || true
-                  echo "=== DEBUG: All files (first 30) ==="
-                  find "$BUNDLE_DIR" -type f -not -path '*/\.*' | head -30 || true
-                  echo "=== DEBUG: End ==="
-
-                  echo "{" > updater.json
-                  echo "  \"version\": \"$VERSION\"," >> updater.json
-                  echo "  \"pub_date\": \"$PUB_DATE\"," >> updater.json
-                  echo "  \"platforms\": {" >> updater.json
-
-                  FIRST=true
-                  find "$BUNDLE_DIR" -name "*.sig" -type f -print0 | while IFS= read -r -d '' sigfile; do
-                      SIG="$(tr -d '\n\r' < "$sigfile")"
-                      ARCHIVE="${sigfile%.sig}"
-                      FILENAME="$(basename "$ARCHIVE")"
-                      URL="https://github.com/$REPO/releases/download/$TAG_NAME/$FILENAME"
-
-                      PLATFORM=""
-                      case "$FILENAME" in
-                          *.AppImage.tar.gz) PLATFORM="linux-x86_64" ;;
-                          *.AppImage)        PLATFORM="linux-x86_64" ;;
-                          *aarch64*.dmg)     PLATFORM="darwin-aarch64" ;;
-                          *x64*.dmg)         PLATFORM="darwin-x86_64" ;;
-                          *.msi)             PLATFORM="windows-x86_64" ;;
-                          *.nsis.exe)        PLATFORM="windows-x86_64" ;;
-                      esac
-
-                      if [ -n "$PLATFORM" ]; then
-                          [ "$FIRST" = false ] && echo "," >> updater.json
-                          FIRST=false
-                          echo "    \"$PLATFORM\": {" >> updater.json
-                          echo "      \"signature\": \"$SIG\"," >> updater.json
-                          echo "      \"url\": \"$URL\"" >> updater.json
-                          echo "    }" >> updater.json
-                      fi
-                  done
-
-                  echo "  }," >> updater.json
-                  echo "  \"notes\": \"https://github.com/$REPO/releases/tag/$TAG_NAME\"" >> updater.json
-                  echo "}" >> updater.json
-
+                  node scripts/generate-updater-manifest.mjs \
+                    --bundles bundles \
+                    --version "$VERSION" \
+                    --tag "$TAG_NAME" \
+                    --repo "${{ github.repository }}" \
+                    --output updater.json
                   cat updater.json
 
             - name: Upload updater.json
@@ -211,7 +170,6 @@ jobs:
               with:
                   pattern: henkan-*
                   path: bundles
-                  merge-multiple: true
 
             - name: Download updater.json
               uses: actions/download-artifact@v4
@@ -229,8 +187,10 @@ jobs:
                       bundles/**/*.msi
                       bundles/**/*.msi.sig
                       bundles/**/*.dmg
-                      bundles/**/*.dmg.sig
+                      bundles/**/*.app.tar.gz
+                      bundles/**/*.app.tar.gz.sig
                       bundles/**/*.AppImage
+                      bundles/**/*.AppImage.sig
                       bundles/**/*.AppImage.tar.gz
                       bundles/**/*.AppImage.tar.gz.sig
                       bundles/**/*.deb
