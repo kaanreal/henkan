@@ -1839,6 +1839,85 @@ fn zip_folder(folder_path: String, output_path: String) -> Result<String, String
     Ok(output_path)
 }
 
+#[tauri::command]
+fn directory_contains_skin(path: String) -> bool {
+    fn walk(dir: &Path, visited: &mut usize) -> bool {
+        if *visited >= 4_000 || !dir.is_dir() {
+            return false;
+        }
+        let Ok(entries) = fs::read_dir(dir) else {
+            return false;
+        };
+        for entry in entries.flatten() {
+            *visited += 1;
+            if *visited > 4_000 {
+                return false;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                if walk(&path, visited) {
+                    return true;
+                }
+                continue;
+            }
+            let name = path.file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if matches!(name.as_str(), "skin.ini" | "noteskin.lua" | "metrics.ini") {
+                return true;
+            }
+        }
+        false
+    }
+
+    let mut visited = 0;
+    walk(Path::new(&path), &mut visited)
+}
+
+#[tauri::command]
+fn archive_directory(path: String) -> Result<Vec<u8>, String> {
+    use std::io::{Cursor, Write};
+
+    fn walk(
+        zip_w: &mut zip::ZipWriter<Cursor<Vec<u8>>>,
+        dir: &Path,
+        base: &Path,
+        opts: &zip::write::FileOptions<'_, ()>,
+        count: &mut usize,
+    ) -> Result<(), String> {
+        let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read folder: {e}"))?;
+        for entry in entries.flatten() {
+            *count += 1;
+            if *count > 4_000 {
+                return Err("This skin folder contains more than 4,000 files.".to_string());
+            }
+            let child = entry.path();
+            if child.is_dir() {
+                walk(zip_w, &child, base, opts, count)?;
+                continue;
+            }
+            let relative = child.strip_prefix(base).unwrap_or(&child).to_string_lossy().replace('\\', "/");
+            let bytes = fs::read(&child).map_err(|e| format!("Failed to read {relative}: {e}"))?;
+            zip_w.start_file(relative, *opts).map_err(|e| format!("Zip error: {e}"))?;
+            zip_w.write_all(&bytes).map_err(|e| format!("Zip write error: {e}"))?;
+        }
+        Ok(())
+    }
+
+    let folder = Path::new(&path);
+    if !folder.is_dir() {
+        return Err("The dropped path is not a folder.".to_string());
+    }
+    let cursor = Cursor::new(Vec::new());
+    let mut zip_w = zip::ZipWriter::new(cursor);
+    let opts: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    walk(&mut zip_w, folder, folder, &opts, &mut 0)?;
+    let cursor = zip_w.finish().map_err(|e| format!("Zip finalize error: {e}"))?;
+    Ok(cursor.into_inner())
+}
+
 
 /// After sorting by computed meter, reassign meters sequentially (1, 2, 3, …)
 /// so the .sm file always starts at meter 1.
@@ -2161,6 +2240,7 @@ pub fn run() {
             export_all_beatmaps,
             create_dummy_diff,
             zip_folder,
+            archive_directory,
             save_file,
             write_file_bytes,
             clean_dir,
@@ -2168,6 +2248,7 @@ pub fn run() {
             scan_songs_folder,
             find_pack_banner,
             is_directory,
+            directory_contains_skin,
             open_file,
             open_url,
             get_github_stars,

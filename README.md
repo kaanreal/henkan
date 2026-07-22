@@ -11,9 +11,11 @@ file and carry it to its next rhythm-game home.
 ## What it does
 
 - Converts osu!mania (`.osu` / `.osz`) and Etterna/StepMania (`.sm`) maps both ways
+- Converts 4K osu!mania gameplay skins (`.osk`, `.zip`, or folders) and Etterna dance noteskins both ways
 - Preserves timing points, holds, chart metadata, preview points, and backgrounds
 - Handles individual maps and pack folders
 - Runs as a native Tauri desktop app, CLI, and browser-capable converter
+- Detects skin files and folders dropped on the main converter and opens the skin workflow automatically
 
 > Scroll velocity is not converted from osu!mania to `.sm`: standard StepMania
 > timing has no matching concept.

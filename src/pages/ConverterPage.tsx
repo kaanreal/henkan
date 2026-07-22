@@ -1,5 +1,6 @@
 ﻿import type { Beatmap, ExportConfig, PackEntry } from '../types/beatmap'
 import { useCallback, useState, useEffect, useRef, startTransition } from 'react'
+import { Link, useNavigate } from 'react-router'
 import { useConverterStore } from '../stores/useConverterStore'
 import { useQueueStore, type QueueItem, buildConfig, emptyConfig, generateId, detectDirection } from '../stores/useQueueStore'
 import { ErrorBoundary } from '../components/ErrorBoundary'
@@ -27,6 +28,17 @@ import { parseFile, selectDifficulty, convertBeatmap, ensureOszMediaCached } fro
 import { exportBeatmap, exportAllBeatmaps, zipFolder, addCdtitleToZip } from '../services/export'
 import { scanPack, scanSongsFolder, loadPackBannerUrl, createDummyDiff, cleanDir, generateDummyDiffContent } from '../services/pack'
 import { openFile } from '../services/platform'
+import {
+  archiveSkinFolderFiles,
+  archiveSkinFolderPath,
+  containsSkinMarker,
+  isSkinArchiveName,
+  isSkinFolderPath,
+  readDroppedDirectory,
+  setPendingSkinInput,
+  type SkinInput,
+} from '../services/skinInput'
+import { detectSkinArchive } from '../services/skinConverter'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
@@ -111,6 +123,7 @@ async function resolveMediaName(sourceDir: string, filename: string | null | und
 }
 
 export default function ConverterPage() {
+  const navigate = useNavigate()
   const {
     beatmap, config, direction, mediaUrls,
     isConverting, exportPath, error, dragging,
@@ -129,6 +142,17 @@ export default function ConverterPage() {
   const [showPackSettings, setShowPackSettings] = useState(false)
   const [packConvertAllMode, setPackConvertAllMode] = useState(false)
   const [queueLoading, setQueueLoading] = useState(false)
+
+  const routeSkinInput = useCallback(async (input: SkinInput): Promise<boolean> => {
+    try {
+      await detectSkinArchive(input)
+      setPendingSkinInput(input)
+      navigate('/skin-converter')
+      return true
+    } catch {
+      return false
+    }
+  }, [navigate])
 
   // Update checking state
   const [pendingUpdate, setPendingUpdate] = useState<{ version: string; body: string | null; date: string | null } | null>(null)
@@ -425,6 +449,17 @@ export default function ConverterPage() {
       }
     }
   }, [queueAddItem, queueUpdateItem, queueSetActiveId, queueItems.length, setDirection, setBeatmap, loadQueueMedia])
+
+  const handleMainFilesSelected = useCallback(async (paths: string[]) => {
+    const skinPath = paths.find(isSkinArchiveName)
+    if (skinPath) {
+      const input = getCachedFile(skinPath) || skinPath
+      if (await routeSkinInput(input)) return
+      setError('That archive is not a readable osu!mania or Etterna skin.')
+      return
+    }
+    await handleFilesSelected(paths)
+  }, [handleFilesSelected, routeSkinInput, setError])
 
   const handleQueueSelect = useCallback(async (item: QueueItem) => {
     if (item.id === queueActiveId || !item.beatmap) return
@@ -1375,6 +1410,7 @@ export default function ConverterPage() {
             for (const p of evt.payload.paths) {
               if (seen.has(p)) continue
               seen.add(p)
+              if (isSkinArchiveName(p) && await routeSkinInput(p)) return
               const ext = p.match(/\.[^.]+$/)?.[0]?.toLowerCase()
               if (!ext || !ACCEPTED_EXTS.includes(ext)) {
                 if (folderPath === null) folderPath = p
@@ -1386,13 +1422,17 @@ export default function ConverterPage() {
               const { isDir } = await import('../services/platform')
               const isDirectory = await isDir(folderPath)
               if (isDirectory) {
+                if (await isSkinFolderPath(folderPath)) {
+                  const archive = await archiveSkinFolderPath(folderPath)
+                  if (await routeSkinInput(archive)) return
+                }
                 handleOpenPack(folderPath)
               } else {
                 // Non-directory, non-accepted file - just ignore or try to add it anyway
                 console.log('[drop] skipping non-directory, non-accepted path:', folderPath)
               }
             }
-            if (files.length > 0) handleFilesSelected(files)
+            if (files.length > 0) handleMainFilesSelected(files)
           }
         }).then(fn => { unlisten = fn })
       }).catch(() => {})
@@ -1402,7 +1442,7 @@ export default function ConverterPage() {
       cancelled = true
       unlisten?.()
     }
-  }, [setDragging, handleFilesSelected, handleOpenPack])
+  }, [setDragging, handleMainFilesSelected, handleOpenPack, routeSkinInput])
 
   const tapCount = beatmap?.notes.filter(n => !n.hold).length ?? 0
   const holdCount = beatmap?.notes.filter(n => n.hold).length ?? 0
@@ -1418,57 +1458,47 @@ export default function ConverterPage() {
           e.preventDefault()
           setDragging(false)
           if (isTauri()) return
-          const files = Array.from(e.dataTransfer?.files || [])
-          if (!files.length) return
           const now = Date.now()
           if (now - lastDropRef.current < 500) return
           lastDropRef.current = now
+
+          const items = Array.from(e.dataTransfer?.items || [])
+          const dirEntry = items
+            .map((item) => item.webkitGetAsEntry?.())
+            .find((entry): entry is FileSystemDirectoryEntry => Boolean(entry?.isDirectory))
+          if (dirEntry) {
+            const realFiles = await readDroppedDirectory(dirEntry)
+            if (!realFiles.length) return
+            fileInputCache.length = 0
+            fileInputCache.push(...realFiles)
+            if (containsSkinMarker(realFiles)) {
+              const archive = await archiveSkinFolderFiles(realFiles, dirEntry.name)
+              if (await routeSkinInput(archive)) return
+            }
+            handleOpenPack(dirEntry.name)
+            return
+          }
+
+          const files = Array.from(e.dataTransfer?.files || [])
+          if (!files.length) return
           fileInputCache.push(...files)
+
+          const skinArchive = files.find((file) => isSkinArchiveName(file.name))
+          if (skinArchive) {
+            if (await routeSkinInput(skinArchive)) return
+            setError('That archive is not a readable osu!mania or Etterna skin.')
+            return
+          }
 
           // Detect folder drop
           const hasWebkitPath = files.some(f => (f as any).webkitRelativePath)
           if (hasWebkitPath) {
             const rootFolder = (files[0] as any).webkitRelativePath.split('/')[0]
-            handleOpenPack(rootFolder)
-            return
-          }
-
-          // Detect folder drop via webkitGetAsEntry (works in Firefox/Edge)
-          // Firefox returns stub File objects in e.dataTransfer.files for folder drops;
-          // real file contents are only accessible through FileSystemDirectoryReader.
-          const items = Array.from(e.dataTransfer?.items || [])
-          const dirEntry = items.find(item => {
-            const entry = item.webkitGetAsEntry?.()
-            return entry?.isDirectory
-          })?.webkitGetAsEntry?.()
-          if (dirEntry && dirEntry.isDirectory) {
-            const readDir = (entry: FileSystemDirectoryEntry): Promise<File[]> =>
-              new Promise((resolve) => {
-                const reader = entry.createReader()
-                const all: File[] = []
-                const readBatch = () => {
-                  reader.readEntries(async (entries) => {
-                    if (entries.length === 0) { resolve(all); return }
-                    for (const e of entries) {
-                      if (e.isFile) {
-                        const f = await new Promise<File | null>(r => (e as FileSystemFileEntry).file(r, () => r(null)))
-                        if (f) all.push(f)
-                      } else if (e.isDirectory) {
-                        const sub = await readDir(e as FileSystemDirectoryEntry)
-                        all.push(...sub)
-                      }
-                    }
-                    readBatch()
-                  }, () => resolve(all))
-                }
-                readBatch()
-              })
-            const realFiles = await readDir(dirEntry as FileSystemDirectoryEntry)
-            if (realFiles.length > 0) {
-              fileInputCache.length = 0
-              fileInputCache.push(...realFiles)
+            if (containsSkinMarker(files)) {
+              const archive = await archiveSkinFolderFiles(files, rootFolder)
+              if (await routeSkinInput(archive)) return
             }
-            handleOpenPack(dirEntry.name)
+            handleOpenPack(rootFolder)
             return
           }
 
@@ -1494,7 +1524,7 @@ export default function ConverterPage() {
             seen.add(p)
             filePaths.push(p)
           }
-          if (filePaths.length > 0) handleFilesSelected(filePaths)
+          if (filePaths.length > 0) handleMainFilesSelected(filePaths)
         }}
       >
         {mediaUrls.background && (
@@ -1588,7 +1618,7 @@ export default function ConverterPage() {
               <>
               <FallingArrows />
               <div className="flex flex-col items-center gap-4 w-full max-w-lg my-auto relative z-10">
-                <DropZone dragging={dragging} onFilesSelected={handleFilesSelected} direction={direction} />
+                <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
                 <div className="flex items-center gap-3 w-full max-w-md">
                   <div className="flex-1 h-px bg-white/5" />
                   <span className="text-[11px] text-surface-500 tracking-widest uppercase">or</span>
@@ -1615,6 +1645,12 @@ export default function ConverterPage() {
                 >
                   Open pack folder
                 </button>
+                <Link
+                  to="/skin-converter"
+                  className="text-xs text-surface-500 hover:text-surface-300 transition-colors duration-75"
+                >
+                  Convert a skin instead →
+                </Link>
               </div>
               </>
             )}
@@ -1653,7 +1689,7 @@ export default function ConverterPage() {
                           <p className="text-sm text-red-400 mb-1">Failed to load {activeItem.fileName}</p>
                           <p className="text-xs text-surface-500">{activeItem.error}</p>
                         </div>
-                        <DropZone dragging={dragging} onFilesSelected={handleFilesSelected} direction={direction} />
+                        <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
                       </div>
                     )
                   }
@@ -1679,7 +1715,7 @@ export default function ConverterPage() {
                   return (
                     <div className="flex flex-col items-center gap-6 animate-fade-in my-auto">
                       <p className="text-sm text-surface-500">Select a file from the queue above</p>
-                      <DropZone dragging={dragging} onFilesSelected={handleFilesSelected} direction={direction} />
+                      <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
                     </div>
                   )
                 })()}

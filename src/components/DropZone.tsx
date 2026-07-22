@@ -16,7 +16,7 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
     try {
       const selected = await openFiles({
         multiple: true,
-        filters: [{ name: 'Beatmap Files', extensions: ['osu', 'osz', 'sm'] }],
+        filters: [{ name: 'Beatmaps and skins', extensions: ['osu', 'osz', 'sm', 'osk', 'zip'] }],
       })
       if (selected) {
         onFilesSelected(selected)
@@ -30,7 +30,7 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
     fileInputCache.push(...files)
-    const paths = files.map(f => (f as any).path || f.name)
+    const paths = files.map((file) => (file as File & { path?: string }).path || file.name)
     onFilesSelected(paths)
   }, [onFilesSelected])
 
@@ -49,7 +49,7 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
       <input
         ref={inputRef}
         type="file"
-        accept=".osu,.osz,.sm"
+        accept=".osu,.osz,.sm,.osk,.zip"
         className="hidden"
         multiple
         onChange={handleFileChange}
@@ -76,10 +76,10 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
 
         <div className="text-center space-y-1 sm:space-y-1.5">
           <p className="text-lg sm:text-xl font-semibold text-surface-200">
-            {dragging ? 'Release to drop' : 'Drop a beatmap'}
+            {dragging ? 'Release to detect' : 'Drop a beatmap or skin'}
           </p>
           <p className="text-sm text-surface-500">
-            or click to browse &mdash; .osu, .osz, .sm
+            or click to browse &mdash; files and folders supported
           </p>
         </div>
       </div>
