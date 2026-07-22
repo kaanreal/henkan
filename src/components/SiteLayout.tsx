@@ -10,6 +10,7 @@ export function SiteHeader() {
         </Link>
         <nav className="flex items-center gap-1">
           <Link to="/osu-to-stepmania" className="px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all">Converter</Link>
+          <Link to="/skin-converter" className="px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all">Skins</Link>
           <Link to="/osu-mania-pack-creator" className="px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all">Pack Creator</Link>
           <Link to="/osu-mania-map-viewer" className="px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all">Map Viewer</Link>
           <a href="https://github.com/kaanreal/henkan" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all">GitHub</a>
@@ -28,6 +29,7 @@ export function SiteFooter() {
             <h4 className="font-medium text-surface-300 mb-2">Tools</h4>
             <ul className="space-y-1.5">
               <li><Link to="/osu-to-stepmania" className="hover:text-surface-300 transition-colors">Converter</Link></li>
+              <li><Link to="/skin-converter" className="hover:text-surface-300 transition-colors">Skin Converter</Link></li>
               <li><Link to="/osu-mania-pack-creator" className="hover:text-surface-300 transition-colors">Pack Creator</Link></li>
               <li><Link to="/osu-mania-map-viewer" className="hover:text-surface-300 transition-colors">Map Viewer</Link></li>
             </ul>
