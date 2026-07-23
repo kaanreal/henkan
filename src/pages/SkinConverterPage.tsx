@@ -19,9 +19,12 @@ import {
 import {
   buildSkinPreview,
   convertSkinArchive,
+  DEFAULT_OSU_COLUMN_WIDTH,
   DEFAULT_OSU_HIT_POSITION,
   detectSkinArchive,
+  MAX_OSU_COLUMN_WIDTH,
   MAX_OSU_HIT_POSITION,
+  MIN_OSU_COLUMN_WIDTH,
   MIN_OSU_HIT_POSITION,
 } from '../services/skinConverter'
 import type { SkinDirection, SkinInspection, SkinPreview } from '../types/skin'
@@ -80,6 +83,7 @@ export function SkinConverterPage() {
   const [inspection, setInspection] = useState<SkinInspection | null>(null)
   const [previewUrls, setPreviewUrls] = useState<SkinPreviewUrls | null>(null)
   const [hitPosition, setHitPosition] = useState(DEFAULT_OSU_HIT_POSITION)
+  const [columnWidth, setColumnWidth] = useState(DEFAULT_OSU_COLUMN_WIDTH)
   const [dragging, setDragging] = useState(false)
   const [status, setStatus] = useState<'idle' | 'inspecting' | 'converting' | 'complete'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -101,6 +105,7 @@ export function SkinConverterPage() {
     setInspection(null)
     replacePreview(null)
     setHitPosition(DEFAULT_OSU_HIT_POSITION)
+    setColumnWidth(DEFAULT_OSU_COLUMN_WIDTH)
     setError(null)
     setStatus('inspecting')
     try {
@@ -146,6 +151,7 @@ export function SkinConverterPage() {
     setInspection(null)
     replacePreview(null)
     setHitPosition(DEFAULT_OSU_HIT_POSITION)
+    setColumnWidth(DEFAULT_OSU_COLUMN_WIDTH)
     setError(null)
     setStatus('idle')
     if (inputRef.current) inputRef.current.value = ''
@@ -160,7 +166,7 @@ export function SkinConverterPage() {
       // Let React revoke preview object URLs before conversion allocates its
       // larger long-note canvases. This matters for image-heavy skins.
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-      const result = await convertSkinArchive(input, direction, { hitPosition })
+      const result = await convertSkinArchive(input, direction, { hitPosition, columnWidth })
       const saved = await persistArchive(result.blob, result.filename)
       setInspection(result.inspection)
       setStatus(saved ? 'complete' : 'idle')
@@ -175,7 +181,7 @@ export function SkinConverterPage() {
       setStatus('idle')
       void trackEvent('skin_conversion_failed', { direction })
     }
-  }, [direction, hitPosition, input, inspection, replacePreview, status])
+  }, [columnWidth, direction, hitPosition, input, inspection, replacePreview, status])
 
   useEffect(() => {
     return () => revokePreviewObjectUrls(previewUrlsRef.current)
@@ -312,20 +318,36 @@ export function SkinConverterPage() {
                       <p className="mt-0.5 text-[11px] text-surface-600">Notes fall toward the receptor row.</p>
                     </div>
                     {direction === 'etterna-to-osu' && (
-                      <label className="skin-hit-position">
-                        <span>Hit position</span>
-                        <input
-                          type="number"
-                            min={MIN_OSU_HIT_POSITION}
-                            max={MAX_OSU_HIT_POSITION}
-                          value={hitPosition}
-                          onChange={(event) => {
-                            const value = Number(event.target.value)
-                            if (Number.isFinite(value)) setHitPosition(Math.max(MIN_OSU_HIT_POSITION, Math.min(MAX_OSU_HIT_POSITION, Math.round(value))))
-                          }}
-                          aria-label="Hit position value"
-                        />
-                      </label>
+                      <div className="flex items-center gap-2">
+                        <label className="skin-hit-position">
+                          <span>Hit position</span>
+                          <input
+                            type="number"
+                              min={MIN_OSU_HIT_POSITION}
+                              max={MAX_OSU_HIT_POSITION}
+                            value={hitPosition}
+                            onChange={(event) => {
+                              const value = Number(event.target.value)
+                              if (Number.isFinite(value)) setHitPosition(Math.max(MIN_OSU_HIT_POSITION, Math.min(MAX_OSU_HIT_POSITION, Math.round(value))))
+                            }}
+                            aria-label="Hit position value"
+                          />
+                        </label>
+                        <label className="skin-hit-position">
+                          <span>Column width</span>
+                          <input
+                            type="number"
+                            min={MIN_OSU_COLUMN_WIDTH}
+                            max={MAX_OSU_COLUMN_WIDTH}
+                            value={columnWidth}
+                            onChange={(event) => {
+                              const value = Number(event.target.value)
+                              if (Number.isFinite(value)) setColumnWidth(Math.max(MIN_OSU_COLUMN_WIDTH, Math.min(MAX_OSU_COLUMN_WIDTH, Math.round(value))))
+                            }}
+                            aria-label="Column width value"
+                          />
+                        </label>
+                      </div>
                     )}
                   </div>
 
@@ -359,22 +381,40 @@ export function SkinConverterPage() {
                   </div>
 
                   {direction === 'etterna-to-osu' && (
-                    <div className="skin-hit-slider">
-                      <span aria-hidden="true">{MIN_OSU_HIT_POSITION}</span>
-                      <input
-                        type="range"
-                        min={MIN_OSU_HIT_POSITION}
-                        max={MAX_OSU_HIT_POSITION}
-                        step="1"
-                        value={hitPosition}
-                        onChange={(event) => setHitPosition(Number(event.target.value))}
-                        aria-label="Adjust osu!mania hit position"
-                        data-hit-position-input
-                      />
-                      <span aria-hidden="true">{MAX_OSU_HIT_POSITION}</span>
-                      {hitPosition !== DEFAULT_OSU_HIT_POSITION && (
-                        <button type="button" onClick={() => setHitPosition(DEFAULT_OSU_HIT_POSITION)}>Reset to 420</button>
-                      )}
+                    <div className="space-y-2">
+                      <div className="skin-hit-slider">
+                        <span aria-hidden="true">{MIN_OSU_HIT_POSITION}</span>
+                        <input
+                          type="range"
+                          min={MIN_OSU_HIT_POSITION}
+                          max={MAX_OSU_HIT_POSITION}
+                          step="1"
+                          value={hitPosition}
+                          onChange={(event) => setHitPosition(Number(event.target.value))}
+                          aria-label="Adjust osu!mania hit position"
+                          data-hit-position-input
+                        />
+                        <span aria-hidden="true">{MAX_OSU_HIT_POSITION}</span>
+                        {hitPosition !== DEFAULT_OSU_HIT_POSITION && (
+                          <button type="button" onClick={() => setHitPosition(DEFAULT_OSU_HIT_POSITION)}>Reset to 420</button>
+                        )}
+                      </div>
+                      <div className="skin-hit-slider">
+                        <span aria-hidden="true">{MIN_OSU_COLUMN_WIDTH}</span>
+                        <input
+                          type="range"
+                          min={MIN_OSU_COLUMN_WIDTH}
+                          max={MAX_OSU_COLUMN_WIDTH}
+                          step="1"
+                          value={columnWidth}
+                          onChange={(event) => setColumnWidth(Number(event.target.value))}
+                          aria-label="Adjust osu!mania column width"
+                        />
+                        <span aria-hidden="true">{MAX_OSU_COLUMN_WIDTH}</span>
+                        {columnWidth !== DEFAULT_OSU_COLUMN_WIDTH && (
+                          <button type="button" onClick={() => setColumnWidth(DEFAULT_OSU_COLUMN_WIDTH)}>Reset to 70</button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

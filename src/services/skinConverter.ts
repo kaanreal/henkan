@@ -17,7 +17,9 @@ const OSU_CASCADE_HEIGHT = 16_384
 export const DEFAULT_OSU_HIT_POSITION = 420
 export const MIN_OSU_HIT_POSITION = 355
 export const MAX_OSU_HIT_POSITION = 480
-const OSU_COLUMN_WIDTH = 70
+export const DEFAULT_OSU_COLUMN_WIDTH = 70
+export const MIN_OSU_COLUMN_WIDTH = 40
+export const MAX_OSU_COLUMN_WIDTH = 140
 const DANCE_COLUMNS = ['Left', 'Down', 'Up', 'Right'] as const
 const OSU_RECEPTOR_NAMES = ['left', 'down', 'up', 'right'] as const
 const OSU_RECEPTOR_LAYOUT = {
@@ -896,6 +898,7 @@ async function keyFromReceptor(
   receptor: RasterAsset,
   tap: RasterAsset,
   hitPosition: number,
+  columnWidth: number,
 ): Promise<RasterAsset> {
   const image = await decodeImage(receptor.blob)
   const sourceCanvas = document.createElement('canvas')
@@ -930,7 +933,7 @@ async function keyFromReceptor(
   // transparent HD canvas by the same screen-space delta as HitPosition so
   // receptors remain centred on the note hit point.
   const hitPositionOffset = Math.round(
-    (hitPosition - DEFAULT_OSU_HIT_POSITION) * OSU_RECEPTOR_LAYOUT.width / OSU_COLUMN_WIDTH,
+    (hitPosition - DEFAULT_OSU_HIT_POSITION) * OSU_RECEPTOR_LAYOUT.width / columnWidth,
   )
   const drawY = OSU_RECEPTOR_LAYOUT.artworkY
     + hitPositionOffset
@@ -974,6 +977,7 @@ function mergeTemplateSkinIni(
   skinName: string,
   gameplayLines: string[],
   hitPosition: number,
+  columnWidth: number,
 ): string {
   let result = template.replace(/\r\n/g, '\n')
   const headers = [...result.matchAll(/^\[([^\]]+)]\s*$/gm)]
@@ -987,7 +991,14 @@ function mergeTemplateSkinIni(
   const maniaStart = headers[maniaIndex].index
   const maniaEnd = headers[maniaIndex + 1]?.index ?? result.length
   const maniaLines = result.slice(maniaStart, maniaEnd).split('\n')
-    .map((line) => /^\s*HitPosition\s*:/i.test(line) ? `HitPosition: ${hitPosition}` : line)
+    .map((line) => {
+      if (/^\s*HitPosition\s*:/i.test(line)) return `HitPosition: ${hitPosition}`
+      if (/^\s*ColumnWidth\s*:/i.test(line)) {
+        const count = line.split(',').length || 4
+        return `ColumnWidth: ${Array(count).fill(columnWidth).join(',')}`
+      }
+      return line
+    })
     .filter((line) => !/^\s*`?(?:(?:KeyImage|NoteImage)\d+(?:D|H|L|T)?|NoteBodyStyle(?:\d+)?|NoteFlipWhenUpsideDown\d+T)\s*:/i.test(line))
   const imageIndex = maniaLines.findIndex((line) => /^\s*Hit0\s*:/i.test(line))
   maniaLines.splice(imageIndex < 0 ? maniaLines.length : imageIndex, 0, '// Converted notes and receptors', ...gameplayLines, '')
@@ -1346,6 +1357,10 @@ async function convertEtternaToOsu(
     MIN_OSU_HIT_POSITION,
     Math.min(MAX_OSU_HIT_POSITION, Math.round(options.hitPosition ?? DEFAULT_OSU_HIT_POSITION)),
   )
+  const columnWidth = Math.max(
+    MIN_OSU_COLUMN_WIDTH,
+    Math.min(MAX_OSU_COLUMN_WIDTH, Math.round(options.columnWidth ?? DEFAULT_OSU_COLUMN_WIDTH)),
+  )
   const { inspection, assets, rotations } = await inspectEtterna(archive)
   const JSZip = (await import('jszip')).default
   const templateUrl = new URL('templates/etterna-osu-base.osk', document.baseURI)
@@ -1398,10 +1413,10 @@ async function convertEtternaToOsu(
       : fittedHead
     const body = await cascadeHoldBody(fittedBody, symmetricTapHead ? fittedTail : null)
     const tail = await joinTailToBody(fittedTail, fittedBody)
-    const key = await keyFromReceptor(receptor, rotatedTap, hitPosition)
+    const key = await keyFromReceptor(receptor, rotatedTap, hitPosition, columnWidth)
     const rawPressedReceptor = lane[5].entry ? await rasteriseResolved(lane[5]) : rawReceptor
     const pressedReceptor = await rotateRaster(rawPressedReceptor, rotations[index].receptor)
-    const pressedKey = await keyFromReceptor(pressedReceptor, rotatedTap, hitPosition)
+    const pressedKey = await keyFromReceptor(pressedReceptor, rotatedTap, hitPosition, columnWidth)
     rendered.push({ tap, head, body, tail, key, pressedKey })
   }
 
@@ -1468,7 +1483,7 @@ async function convertEtternaToOsu(
   const skinName = safeName(inspection.name)
   const templateIni = output.file('skin.ini')
   if (!templateIni) throw new Error('The bundled osu! base skin is missing skin.ini.')
-  const skinIni = mergeTemplateSkinIni(await templateIni.async('string'), skinName, iniLines, hitPosition)
+  const skinIni = mergeTemplateSkinIni(await templateIni.async('string'), skinName, iniLines, hitPosition, columnWidth)
   output.file('skin.ini', skinIni)
   output.file('_blank.png', await transparentPng())
 
