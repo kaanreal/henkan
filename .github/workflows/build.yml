@@ -134,8 +134,16 @@ jobs:
 
             - run: npm ci
 
+            - name: Install sse2neon header (macOS ARM64)
+              if: matrix.os == 'macos-latest'
+              run: |
+                  mkdir -p "$RUNNER_TEMP/sse2neon"
+                  curl -fsSL https://raw.githubusercontent.com/DLTcollab/sse2neon/master/sse2neon.h -o "$RUNNER_TEMP/sse2neon/sse2neon.h"
+                  echo "CXXFLAGS=-I$RUNNER_TEMP/sse2neon" >> "$GITHUB_ENV"
+                  echo "CFLAGS=-I$RUNNER_TEMP/sse2neon" >> "$GITHUB_ENV"
+
             - name: Build Tauri release
-              run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+              run: npm run tauri build -- --features minacalc --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
               env:
                   APTABASE_KEY: ${{ secrets.APTABASE_KEY }}
                   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

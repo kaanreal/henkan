@@ -20,7 +20,7 @@ path = "src/bin/cli.rs"
 tauri-build = { version = "2", features = [] }
 
 [features]
-default = ["minacalc"]
+default = []
 minacalc = ["dep:minacalc-rs"]
 
 [dependencies]
