@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0](https://github.com/kaanreal/henkan/compare/v1.3.1...v1.4.0) (2026-07-23)
+
+
+### Features
+
+* **converter:** add difficulty name presets with minacalc MSD support 🌟 ([6a4acb7](https://github.com/kaanreal/henkan/commit/6a4acb7e759f46435ad0398e0b964ac8754801ef))
+* **skins:** add column width setting for osu!mania skin conversion 🎨 ([c6a318a](https://github.com/kaanreal/henkan/commit/c6a318af269c426d4e19c06ae3421013679316f9))
+* **skins:** add cross-platform skin conversion 🌸 ([52550c7](https://github.com/kaanreal/henkan/commit/52550c79affef67ee929e401b43655a8064b853d))
+
+
+### Bug Fixes
+
+* **ci:** skip minacalc in test builds, install sse2neon for macOS release 🔧 ([df41cbb](https://github.com/kaanreal/henkan/commit/df41cbb6bad93d8147cbb5720ca27579d0a79dc5))
+* **converter:** filter extreme BPM timing points from osu output 🐛 ([86f5de2](https://github.com/kaanreal/henkan/commit/86f5de20dcff7b57d696d0b0285db9b4c3a2b988))
+* **converter:** filter extreme BPM timing points from osu output 🐛 ([07c5f2a](https://github.com/kaanreal/henkan/commit/07c5f2ad8480952aaa029576a622ea0c850fbfa4))
+
 ## [1.3.1](https://github.com/kaanreal/henkan/compare/v1.3.0...v1.3.1) (2026-07-20)
 
 
