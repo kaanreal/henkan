@@ -233,7 +233,7 @@ export function SkinConverterPage() {
   return (
     <div className="skin-page h-full flex flex-col bg-surface-950 text-surface-100 overflow-hidden">
       <Helmet>
-        <title>Skin Converter — Henkan</title>
+        <title>Skin Converter - Henkan</title>
         <meta name="description" content="Convert 4K osu!mania gameplay skins and Etterna dance noteskins in either direction." />
       </Helmet>
       <Header

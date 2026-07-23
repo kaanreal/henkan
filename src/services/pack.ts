@@ -231,6 +231,7 @@ export async function scanSongsFolder(folder: string): Promise<PackEntry[]> {
           keys: bm.keys,
           note_count: bm.notes.length,
           audio_filename: bm.audio_filename || null,
+          difficulty_rating: bm.difficulty_rating ?? null,
         }],
       })
     } catch {

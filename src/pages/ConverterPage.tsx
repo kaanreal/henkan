@@ -950,7 +950,7 @@ export default function ConverterPage() {
       return
     }
 
-    // Single file in folder — load directly as a single map, not a pack
+    // Single file in folder - load directly as a single map, not a pack
     if (entries.length === 1) {
       setPackFolder(null)
       setPackLoading(false)

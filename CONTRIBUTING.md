@@ -62,11 +62,11 @@ clear entry to process.
 
 ## Where things live
 
-- `src/` — React interface, state, and desktop/web services
-- `src-tauri/` — native application and CLI
-- `wasm-core/` — browser-compatible conversion core
-- `api/` — hosted endpoints
-- `packaging/` — package-manager recipes
-- `docs/` — user and maintainer documentation
+- `src/` - React interface, state, and desktop/web services
+- `src-tauri/` - native application and CLI
+- `wasm-core/` - browser-compatible conversion core
+- `api/` - hosted endpoints
+- `packaging/` - package-manager recipes
+- `docs/` - user and maintainer documentation
 
 Please do not hand-edit generated files in `src/wasm/`; use `npm run build:wasm`.

@@ -1,6 +1,6 @@
 # Henkan handbook
 
-Welcome to the Henkan handbook — the practical notes for converting mania maps
+Welcome to the Henkan handbook -- the practical notes for converting mania maps
 without losing the details that make them feel right.
 
 - [Getting started](getting-started.md)

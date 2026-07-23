@@ -1,4 +1,4 @@
-﻿import type { Beatmap, ConvertDirection, ExportConfig } from '../types/beatmap'
+﻿import type { Beatmap, ConvertDirection, DiffInfo, ExportConfig } from '../types/beatmap'
 import { isTauri } from './environment'
 import { readFileText } from './files'
 import { getCachedFile } from './fileCache'
@@ -20,7 +20,7 @@ interface OszMediaFile {
 interface OszData {
   osuEntries: { name: string; text: string }[]
   sourceDir: string
-  difficulties: { name: string; keys: number; note_count: number; audio_filename: string | null }[]
+  difficulties: DiffInfo[]
   mediaFiles: OszMediaFile[]
 }
 export const oszContentCache = new Map<string, OszData>()
@@ -122,7 +122,7 @@ async function extractOsz(path: string): Promise<OszData> {
   }
 
   // Parse all osu entries to build the difficulties list
-  const difficulties: { name: string; keys: number; note_count: number; audio_filename: string | null }[] = []
+  const difficulties: DiffInfo[] = []
   for (const entry of osuEntries) {
     if (entry.text) {
       try {
@@ -132,6 +132,7 @@ async function extractOsz(path: string): Promise<OszData> {
           keys: bm.keys,
           note_count: bm.notes?.length || 0,
           audio_filename: bm.audio_filename || null,
+          difficulty_rating: bm.difficulty_rating ?? null,
         })
       } catch { /* skip unparseable */ }
     }
@@ -195,6 +196,7 @@ export async function parseFile(
           keys: b.keys,
           note_count: b.notes?.length || 0,
           audio_filename: b.audio_filename || null,
+          difficulty_rating: b.difficulty_rating ?? null,
         }))
       } else {
         beatmap = await wasmParseSm(content)
@@ -225,7 +227,7 @@ export async function selectDifficulty(
     const beatmap = await wasmParseOsu(osuEntries[index].text)
     beatmap.source_dir = sourceDir
     beatmap.source_file = pathOrContent
-    beatmap.available_difficulties = difficulties
+    beatmap.available_difficulties = difficulties.map(d => ({ ...d, difficulty_rating: d.difficulty_rating ?? null }))
     return beatmap
   }
 
@@ -248,6 +250,7 @@ export async function selectDifficulty(
       keys: b.keys,
       note_count: b.notes?.length || 0,
       audio_filename: b.audio_filename || null,
+      difficulty_rating: b.difficulty_rating ?? null,
     }))
   }
   return beatmap
