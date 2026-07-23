@@ -3,6 +3,16 @@ use crate::models::timing::{SVEvent, TimingPoint};
 use anyhow::Result;
 use std::collections::HashMap;
 
+#[cfg(feature = "minacalc")]
+fn try_compute_msd(beatmap: &Beatmap) -> Option<f64> {
+    crate::msd::compute_msd(beatmap)
+}
+
+#[cfg(not(feature = "minacalc"))]
+fn try_compute_msd(_beatmap: &Beatmap) -> Option<f64> {
+    None
+}
+
 pub fn parse_osu(content: &str) -> Result<Beatmap> {
     parse_osu_with_source(content, "")
 }
@@ -63,6 +73,7 @@ pub fn parse_osu_with_source(content: &str, source_dir: &str) -> Result<Beatmap>
         beatmap.background_filename = Some(bg);
     }
 
+    beatmap.difficulty_rating = try_compute_msd(&beatmap);
     beatmap.compute_duration();
     Ok(beatmap)
 }

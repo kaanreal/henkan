@@ -55,7 +55,7 @@ export function ResultPanel({ content, filename }: ResultPanelProps) {
         </div>
       </div>
 
-      <pre className="p-5 text-xs font-mono text-surface-400 leading-relaxed overflow-auto max-h-72 select-all">
+      <pre className="p-5 text-xs font-mono text-surface-400 leading-relaxed overflow-auto custom-scrollbar max-h-72 select-all">
         {preview}
       </pre>
 

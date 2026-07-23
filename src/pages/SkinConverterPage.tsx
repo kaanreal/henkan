@@ -234,7 +234,7 @@ export function SkinConverterPage() {
         appVersion={import.meta.env.VITE_APP_VERSION || null}
       />
 
-      <main className="flex-1 min-h-0 overflow-y-auto px-4 py-6 sm:py-8">
+      <main className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-6 sm:py-8">
         <section className="w-full max-w-xl mx-auto animate-fade-in" aria-labelledby="skin-converter-title">
           <div className="mb-5">
             <h1 id="skin-converter-title" className="text-lg font-semibold tracking-tight">Skin converter</h1>

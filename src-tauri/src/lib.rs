@@ -2,6 +2,18 @@
 pub mod models;
 pub mod parsers;
 pub mod cli_tui;
+#[cfg(feature = "minacalc")]
+pub mod msd;
+
+#[cfg(feature = "minacalc")]
+fn try_compute_msd(bm: &Beatmap) -> Option<f64> {
+    msd::compute_msd(bm)
+}
+
+#[cfg(not(feature = "minacalc"))]
+fn try_compute_msd(_bm: &Beatmap) -> Option<f64> {
+    None
+}
 
 /// Public API exposed for integration tests and CLI.
 pub use parsers::etterna::parse_sm;
@@ -46,6 +58,7 @@ pub fn cli_parse_file(path: &str, direction: &str) -> Result<Beatmap, String> {
                 keys: beatmap.keys,
                 note_count: beatmap.notes.len(),
                 audio_filename: Some(beatmap.audio_filename.clone()),
+                difficulty_rating: None,
             });
             beatmap.compute_duration();
             Ok(beatmap)
@@ -82,6 +95,9 @@ pub fn cli_convert_beatmap(beatmap: &mut Beatmap, config: &ExportConfig) -> Resu
     beatmap.cdtitle_filename = config.cdtitle_filename.clone();
     beatmap.preview_time = config.preview_time;
     scale_timing_for_rate(beatmap, config.conversion_rate);
+    if beatmap.difficulty_rating.is_none() {
+        beatmap.difficulty_rating = try_compute_msd(beatmap);
+    }
     match beatmap.source_format {
         SourceFormat::OsuMania =>
             converters::osu_to_etterna::convert(beatmap, config)
@@ -260,6 +276,7 @@ pub fn extract_osz_all(path: &str) -> Result<OszResult, String> {
         keys: p.2.keys,
         note_count: p.2.notes.len(),
         audio_filename: Some(p.2.audio_filename.clone()),
+        difficulty_rating: None,
     }).collect();
 
     beatmap.available_difficulties = diffs;
@@ -305,6 +322,7 @@ fn select_difficulty(path: String, index: usize) -> Result<Beatmap, String> {
             beatmap.title = new_bm.title;
             beatmap.artist = new_bm.artist;
             beatmap.difficulty_name = new_bm.difficulty_name;
+            beatmap.difficulty_rating = new_bm.difficulty_rating;
             beatmap.keys = new_bm.keys;
             beatmap.notes = new_bm.notes;
             beatmap.timing_points = new_bm.timing_points;
@@ -382,6 +400,7 @@ fn parse_file(path: String, direction: String) -> Result<Beatmap, String> {
                 keys: beatmap.keys,
                 note_count: beatmap.notes.len(),
                 audio_filename: Some(beatmap.audio_filename.clone()),
+                difficulty_rating: None,
             });
             beatmap.compute_duration();
             Ok(beatmap)
@@ -584,6 +603,53 @@ pub fn rate_label(rate: f64) -> Option<String> {
     Some(format!("[{}x]", trimmed))
 }
 
+pub fn expand_diff_template(template: &str, bm: &Beatmap, config: &ExportConfig, rate: f64) -> String {
+    if template.is_empty() {
+        return config.difficulty_name.clone();
+    }
+    let bpm_str = {
+        let bpms: Vec<i64> = bm.timing_points.iter()
+            .filter(|tp| tp.uninherited && tp.beat_length > 0.0)
+            .map(|tp| (60_000.0 / tp.beat_length).round() as i64)
+            .collect();
+        if bpms.is_empty() { "0".to_string() }
+        else if bpms.len() == 1 { bpms[0].to_string() }
+        else {
+            let min = bpms.iter().min().unwrap();
+            let max = bpms.iter().max().unwrap();
+            if min == max { min.to_string() } else { format!("{}-{}", min, max) }
+        }
+    };
+    let rate_label_str = if (rate - 1.0).abs() < f64::EPSILON {
+        String::new()
+    } else {
+        let s = format!("{:.2}", rate);
+        let trimmed = s.trim_end_matches('0').trim_end_matches('.');
+        format!("{}x", trimmed)
+    };
+
+    let mut result = template.to_string();
+    result = result.replace("<diff>", &config.difficulty_name);
+    result = result.replace("<creator>", &config.creator);
+    result = result.replace("<title>", &config.title);
+    result = result.replace("<artist>", &config.artist);
+    result = result.replace("<bpm>", &bpm_str);
+    result = result.replace("<rate>", &rate_label_str);
+    let msd_str = bm.difficulty_rating.map(|v| {
+        if v == (v as i64) as f64 { format!("{}", v as i64) } else { format!("{:.2}", v) }
+    }).unwrap_or_default();
+    result = result.replace("<msd>", &msd_str);
+    result
+}
+
+#[tauri::command]
+fn expand_diff_name(template: String, beatmap: Beatmap, config: ExportConfig, rate: f64) -> String {
+    if template.is_empty() {
+        return config.difficulty_name;
+    }
+    expand_diff_template(&template, &beatmap, &config, rate)
+}
+
 pub fn scale_timing_for_rate(bm: &mut Beatmap, rate: f64) {
     if (rate - 1.0).abs() < f64::EPSILON { return; }
     let inv = 1.0 / rate;
@@ -629,6 +695,10 @@ fn convert_beatmap(
     beatmap.preview_time = config.preview_time;
 
     scale_timing_for_rate(&mut beatmap, config.conversion_rate);
+
+    if beatmap.difficulty_rating.is_none() {
+        beatmap.difficulty_rating = try_compute_msd(&beatmap);
+    }
 
     match beatmap.source_format {
         SourceFormat::OsuMania => {
@@ -1156,6 +1226,7 @@ fn scan_songs_folder(folder: String) -> Result<Vec<PackEntry>, String> {
                                         keys: bm.keys,
                                         note_count: bm.notes.len(),
                                         audio_filename: Some(bm.audio_filename),
+                                        difficulty_rating: None,
                                     }],
                                 });
                             }
@@ -1339,12 +1410,18 @@ fn export_all_beatmaps(
                 for i in 0..sections.len() {
                     let mut bm = parsers::etterna::parse_sm_difficulty(&content, i)
                         .map_err(|e| format!("Parse error: {}", e))?;
+                    let original_creator = bm.creator.clone();
                     bm.title = config.title.clone();
                     bm.artist = config.artist.clone();
                     if !config.creator.is_empty() { bm.creator = config.creator.clone(); }
                     bm.source = config.source.clone();
                     bm.tags = config.tags.clone();
                     if config.preview_time != 0.0 { bm.preview_time = config.preview_time; }
+                    if let Some(ref tpl) = config.diff_name_template {
+                        let mut template_cfg = config.clone();
+                        template_cfg.creator = original_creator;
+                        bm.difficulty_name = expand_diff_template(tpl, &bm, &template_cfg, config.conversion_rate);
+                    }
                     scale_timing_for_rate(&mut bm, config.conversion_rate);
                     if let Some(label) = rate_label(config.conversion_rate) {
                         bm.difficulty_name.push(' ');
@@ -1453,6 +1530,7 @@ fn export_all_beatmaps(
                 for i in 0..sections.len() {
                     let mut bm = parsers::etterna::parse_sm_difficulty(&content, i)
                         .map_err(|e| format!("Parse error: {}", e))?;
+                    let original_creator = bm.creator.clone();
                     bm.title = config.title.clone();
                     bm.artist = config.artist.clone();
                     if !config.creator.is_empty() { bm.creator = config.creator.clone(); }
@@ -1472,6 +1550,11 @@ fn export_all_beatmaps(
                         }
                     }
 
+                    if let Some(ref tpl) = config.diff_name_template {
+                        let mut template_cfg = config.clone();
+                        template_cfg.creator = original_creator;
+                        bm.difficulty_name = expand_diff_template(tpl, &bm, &template_cfg, config.conversion_rate);
+                    }
                     scale_timing_for_rate(&mut bm, config.conversion_rate);
                     if let Some(label) = rate_label(config.conversion_rate) {
                         bm.difficulty_name.push(' ');
@@ -1595,6 +1678,9 @@ fn export_all_beatmaps(
             let highest_diff = parsed.last()
                 .map(|e| {
                     let mut dn = e.1.difficulty_name.clone();
+                    if let Some(ref tpl) = config.diff_name_template {
+                        dn = expand_diff_template(tpl, &e.1, &config, config.conversion_rate);
+                    }
                     if let Some(label) = rate_label(config.conversion_rate) {
                         dn.push(' ');
                         dn.push_str(&label);
@@ -1616,6 +1702,9 @@ fn export_all_beatmaps(
                     bm.source = config.source.clone();
                 bm.tags = config.tags.clone();
                 bm.difficulty_name = config.difficulty_name.clone();
+                if let Some(ref tpl) = config.diff_name_template {
+                    bm.difficulty_name = expand_diff_template(tpl, bm, &config, config.conversion_rate);
+                }
                 if let Some(label) = rate_label(config.conversion_rate) {
                     bm.difficulty_name.push(' ');
                     bm.difficulty_name.push_str(&label);
@@ -2233,6 +2322,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             parse_file,
             select_difficulty,
+            expand_diff_name,
             resolve_file,
             read_file_as_data_url,
             convert_beatmap,

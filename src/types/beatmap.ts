@@ -24,6 +24,7 @@ export interface DiffInfo {
   keys: number
   note_count: number
   audio_filename: string | null
+  difficulty_rating: number | null
 }
 
 export interface Beatmap {
@@ -46,6 +47,7 @@ export interface Beatmap {
   keys: number
   notes: Note[]
   duration_ms: number
+  difficulty_rating: number | null
   source_format: SourceFormat
   available_difficulties: DiffInfo[]
 }
@@ -79,6 +81,7 @@ export interface ExportConfig {
   sample_start: string | null
   sample_length: string | null
   selectable: string | null
+  diff_name_template: string | null
 }
 
 export type ConvertDirection = 'osu-to-etterna' | 'etterna-to-osu'
