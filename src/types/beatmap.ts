@@ -70,7 +70,7 @@ export interface ExportConfig {
   preview_time: number
   conversion_rate: number
   preserve_pitch: boolean
-  // SM advanced fields (osu → etterna) — null = use defaults
+  // SM advanced fields (osu -> etterna) - null = use defaults
   subtitle: string | null
   title_translit: string | null
   subtitle_translit: string | null

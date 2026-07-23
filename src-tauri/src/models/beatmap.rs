@@ -98,7 +98,7 @@ pub struct ExportConfig {
     #[serde(default = "default_fetch_avatar")]
     pub fetch_avatar: bool,
 
-    // SM advanced fields (osu → etterna) — all optional, empty = use defaults
+    // SM advanced fields (osu -> etterna) - all optional, empty = use defaults
     #[serde(default)]
     pub subtitle: Option<String>,
     #[serde(default)]
