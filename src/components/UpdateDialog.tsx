@@ -44,7 +44,7 @@ export function UpdateDialog({ open, updateInfo, installing, onUpdate, onDismiss
               </svg>
               <span className="text-xs font-medium text-surface-500 uppercase tracking-wider">Release Notes</span>
             </div>
-            <div className="bg-black/20 rounded-xl p-4 max-h-64 overflow-y-auto text-sm text-surface-300 leading-relaxed whitespace-pre-wrap">
+            <div className="bg-black/20 rounded-xl p-4 max-h-64 overflow-y-auto custom-scrollbar text-sm text-surface-300 leading-relaxed whitespace-pre-wrap">
               {updateInfo.body}
             </div>
           </div>

@@ -16,6 +16,8 @@ pub struct DiffInfo {
     pub keys: u32,
     pub note_count: usize,
     pub audio_filename: Option<String>,
+    #[serde(default)]
+    pub difficulty_rating: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +52,10 @@ pub struct Beatmap {
 
     // Computed
     pub duration_ms: f64,
+
+    // Difficulty rating (MSD for Etterna charts, star rating for osu)
+    #[serde(default)]
+    pub difficulty_rating: Option<f64>,
 
     // Source tracking
     pub source_format: SourceFormat,
@@ -113,6 +119,8 @@ pub struct ExportConfig {
     pub sample_length: Option<String>,
     #[serde(default)]
     pub selectable: Option<String>,
+    #[serde(default)]
+    pub diff_name_template: Option<String>,
 }
 
 impl Default for ExportConfig {
@@ -148,6 +156,7 @@ impl Default for ExportConfig {
             sample_start: None,
             sample_length: None,
             selectable: None,
+            diff_name_template: None,
         }
     }
 }
@@ -190,6 +199,7 @@ impl Beatmap {
             keys,
             notes: Vec::new(),
             duration_ms: 0.0,
+            difficulty_rating: None,
             source_format: SourceFormat::OsuMania,
             available_difficulties: Vec::new(),
         }

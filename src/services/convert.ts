@@ -309,3 +309,18 @@ export async function scaleTimingForRate(
   }
   return await wasmScaleTimingForRate(beatmap, rate)
 }
+
+export async function expandDiffName(
+  template: string,
+  beatmap: Beatmap,
+  config: ExportConfig,
+  rate: number,
+): Promise<string> {
+  if (isTauri()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    return await invoke<string>('expand_diff_name', { template, beatmap, config, rate })
+  }
+  // Web fallback: use TS expansion (MSD won't be available without minacalc)
+  const { expandDiffTemplate } = await import('../lib/diffTemplate')
+  return expandDiffTemplate(template, beatmap, config, rate)
+}

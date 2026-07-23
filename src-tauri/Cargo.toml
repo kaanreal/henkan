@@ -19,6 +19,10 @@ path = "src/bin/cli.rs"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+default = ["minacalc"]
+minacalc = ["dep:minacalc-rs"]
+
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-aptabase = "1.0.0"
@@ -42,6 +46,7 @@ hound = "3"
 ratatui = "0.29"
 crossterm = "0.28"
 rand = "0.8"
+minacalc-rs = { version = "0.4", optional = true }
 
 [profile.release]
 lto = true

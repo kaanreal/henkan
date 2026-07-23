@@ -2,6 +2,26 @@ use crate::models::beatmap::{Beatmap, DiffInfo, Note};
 use crate::models::timing::TimingPoint;
 use anyhow::Result;
 
+#[cfg(feature = "minacalc")]
+fn try_compute_msd(beatmap: &Beatmap) -> Option<f64> {
+    crate::msd::compute_msd(beatmap)
+}
+
+#[cfg(not(feature = "minacalc"))]
+fn try_compute_msd(_beatmap: &Beatmap) -> Option<f64> {
+    None
+}
+
+#[cfg(feature = "minacalc")]
+fn try_compute_msd_batch(note_slices: &[&[Note]]) -> Vec<Option<f64>> {
+    crate::msd::compute_msd_batch(note_slices)
+}
+
+#[cfg(not(feature = "minacalc"))]
+fn try_compute_msd_batch(note_slices: &[&[Note]]) -> Vec<Option<f64>> {
+    note_slices.iter().map(|_| None).collect()
+}
+
 pub fn parse_sm(content: &str) -> Result<Beatmap> {
     let raw = content.replace("\r\n", "\n");
     let headers = parse_headers(&raw);
@@ -61,9 +81,11 @@ pub fn parse_sm(content: &str) -> Result<Beatmap> {
             keys: k,
             note_count: count,
             audio_filename: audio.clone(),
+            difficulty_rating: detect_meter(s),
         }
     }).collect();
 
+    beatmap.difficulty_rating = try_compute_msd(&beatmap);
     beatmap.compute_duration();
     Ok(beatmap)
 }
@@ -120,9 +142,11 @@ pub fn parse_sm_difficulty(content: &str, index: usize) -> Result<Beatmap> {
             keys: k,
             note_count: count,
             audio_filename: audio.clone(),
+            difficulty_rating: detect_meter(s),
         }
     }).collect();
 
+    beatmap.difficulty_rating = try_compute_msd(&beatmap);
     beatmap.compute_duration();
     Ok(beatmap)
 }
@@ -156,10 +180,34 @@ pub fn parse_sm_all(content: &str) -> Result<Vec<Beatmap>> {
     let banner = headers.get("BANNER").cloned().filter(|s| !s.is_empty());
     let cdtitle = headers.get("CDTITLE").cloned().filter(|s| !s.is_empty());
 
+    // Pre-parse all sections once
+    let parsed_sections: Vec<_> = sections.iter().map(|s| {
+        let k = detect_keys(s);
+        let notes = parse_notes_data(s, k, &bpm_changes, &stops, offset).unwrap_or_default();
+        let diff_name = detect_difficulty(s);
+        let note_count = count_notes(s);
+        (k, notes, diff_name, note_count)
+    }).collect();
+
+    // Batch-compute MSD for all note slices in one Calc instance
+    let note_refs: Vec<&[Note]> = parsed_sections.iter().map(|(_, notes, _, _)| notes.as_slice()).collect();
+    let msd_ratings = try_compute_msd_batch(&note_refs);
+
+    // Build shared available_difficulties once
+    let available_difficulties: Vec<DiffInfo> = parsed_sections.iter().zip(&msd_ratings).enumerate().map(|(i, ((k, _notes, diff_name, note_count), rating))| {
+        DiffInfo {
+            name: diff_name.clone(),
+            keys: *k,
+            note_count: *note_count,
+            audio_filename: audio.clone(),
+            difficulty_rating: rating.or_else(|| detect_meter(&sections[i])),
+        }
+    }).collect();
+
     let mut result = Vec::with_capacity(sections.len());
-    for notes_str in &sections {
-        let keys = detect_keys(notes_str);
-        let mut beatmap = Beatmap::new(keys);
+    for (i, _notes_str) in sections.iter().enumerate() {
+        let (keys, notes, dn, _) = &parsed_sections[i];
+        let mut beatmap = Beatmap::new(*keys);
         beatmap.source_format = crate::models::beatmap::SourceFormat::Etterna;
         beatmap.title = title.clone();
         beatmap.artist = artist.clone();
@@ -171,24 +219,10 @@ pub fn parse_sm_all(content: &str) -> Result<Vec<Beatmap>> {
         beatmap.cdtitle_filename = cdtitle.clone();
         beatmap.preview_time = preview_time;
         beatmap.timing_points = timing_points.clone();
-
-        if let Some(notes) = parse_notes_data(notes_str, keys, &bpm_changes, &stops, offset) {
-            beatmap.notes = notes;
-        }
-        let dn = detect_difficulty(notes_str);
-        if !dn.is_empty() { beatmap.difficulty_name = dn; }
-
-        let _k = keys;
-        let _count = count_notes(notes_str);
-        beatmap.available_difficulties = sections.iter().map(|s| {
-            DiffInfo {
-                name: detect_difficulty(s),
-                keys: detect_keys(s),
-                note_count: count_notes(s),
-                audio_filename: audio.clone(),
-            }
-        }).collect();
-
+        beatmap.notes = notes.clone();
+        if !dn.is_empty() { beatmap.difficulty_name = dn.clone(); }
+        beatmap.difficulty_rating = msd_ratings[i];
+        beatmap.available_difficulties = available_difficulties.clone();
         beatmap.compute_duration();
         result.push(beatmap);
     }
@@ -285,6 +319,16 @@ fn detect_difficulty(notes_section: &str) -> String {
         lines[1].trim().trim_matches(':').trim().trim_matches('"').to_string()
     } else {
         String::new()
+    }
+}
+
+fn detect_meter(notes_section: &str) -> Option<f64> {
+    let lines: Vec<&str> = notes_section.lines().collect();
+    if lines.len() > 2 {
+        let raw = lines[2].trim().trim_matches(':').trim().trim_matches('"');
+        raw.parse::<f64>().ok()
+    } else {
+        None
     }
 }
 

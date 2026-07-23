@@ -18,6 +18,7 @@ export {
   parseSmAll,
   convertBeatmap,
   scaleTimingForRate,
+  expandDiffName,
 } from './convert'
 export {
   exportBeatmap,

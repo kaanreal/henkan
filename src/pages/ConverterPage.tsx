@@ -17,6 +17,7 @@ import { BulkConvertDialog } from '../components/BulkConvertDialog'
 import { PackBrowser } from '../components/PackBrowser'
 import { FallingArrows } from '../components/FallingArrows'
 import { PackSettingsDialog } from '../components/PackSettingsDialog'
+import { DiffPresetManager } from '../components/DiffPresetManager'
 import { UpdateDialog } from '../components/UpdateDialog'
 import { BeatmapMirrorDialog } from '../components/BeatmapMirrorDialog'
 import { WebAudioPlayer } from '../lib/WebAudioPlayer'
@@ -24,7 +25,7 @@ import { isTauri } from '../services/environment'
 import { openFiles as dialogOpenFiles, openDirectory as dialogOpenDirectory, saveFile as dialogSaveFile } from '../services/dialogs'
 import { fileInputCache, getCachedFile, clearFileCache } from '../services/fileCache'
 import { readFileAsDataUrl, resolveMediaFile, saveBlobToFile } from '../services/files'
-import { parseFile, selectDifficulty, convertBeatmap, ensureOszMediaCached } from '../services/convert'
+import { parseFile, selectDifficulty, convertBeatmap, expandDiffName, ensureOszMediaCached } from '../services/convert'
 import { exportBeatmap, exportAllBeatmaps, zipFolder, addCdtitleToZip } from '../services/export'
 import { scanPack, scanSongsFolder, loadPackBannerUrl, createDummyDiff, cleanDir, generateDummyDiffContent } from '../services/pack'
 import { openFile } from '../services/platform'
@@ -65,6 +66,7 @@ function configFromEntry(entry: PackEntry): ExportConfig {
     subtitle: null, title_translit: null, subtitle_translit: null,
     artist_translit: null, genre: null, credit: null,
     display_bpm: null, sample_start: null, sample_length: null, selectable: null,
+    diff_name_template: null,
   }
 }
 
@@ -189,6 +191,10 @@ export default function ConverterPage() {
   const [packBannerPath, setPackBannerPath] = useState<string | null>(null)
   const packBannerFileRef = useRef<File | null>(null)
   const packConfigsRef = useRef<Map<number, ExportConfig>>(new Map())
+
+  // Diff name template state
+  const [diffNameTemplate, setDiffNameTemplate] = useState('')
+  const [showPresetManager, setShowPresetManager] = useState(false)
 
   // Shared audio player - owned by App, used by AudioPlayer and PreviewOverlay
   const audioPlayerRef = useRef<WebAudioPlayer | null>(null)
@@ -751,7 +757,7 @@ export default function ConverterPage() {
               ...cur,
               audio_filename: bm.audio_filename || cur.audio_filename,
               background_filename: bm.background_filename ?? cur.background_filename,
-              difficulty_name: bm.difficulty_name,
+              difficulty_name: diffNameTemplate ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate) : (cur.difficulty_name || bm.difficulty_name),
               preview_time: bm.preview_time,
             }
             const content = await convertBeatmap(bm, diffCfg)
@@ -788,7 +794,7 @@ export default function ConverterPage() {
               ...cur,
               audio_filename: bm.audio_filename || cur.audio_filename,
               background_filename: bm.background_filename ?? cur.background_filename,
-              difficulty_name: bm.difficulty_name,
+              difficulty_name: diffNameTemplate ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate) : (cur.difficulty_name || bm.difficulty_name),
               preview_time: bm.preview_time,
             }
             const content = await convertBeatmap(bm, diffCfg)
@@ -810,7 +816,7 @@ export default function ConverterPage() {
               ...cur,
               audio_filename: bm.audio_filename || cur.audio_filename,
               background_filename: bm.background_filename ?? cur.background_filename,
-              difficulty_name: bm.difficulty_name,
+              difficulty_name: diffNameTemplate ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate) : (cur.difficulty_name || bm.difficulty_name),
               preview_time: bm.preview_time,
             }
             const content = await convertBeatmap(bm, diffCfg)
@@ -822,12 +828,19 @@ export default function ConverterPage() {
         const allAtOne = Math.abs(cur.conversion_rate - 1) < 0.01
         const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
         if (isOsz && direction === 'osu-to-etterna' && indices.length > 1 && allAtOne) {
-          const paths = await exportAllBeatmaps(beatmap.source_file, cur, exportDir, indices)
+          // Apply template to config before passing to exportAllBeatmaps
+          const cfgWithTemplate = diffNameTemplate
+            ? { ...cur, difficulty_name: await expandDiffName(diffNameTemplate, beatmap!, cur, cur.conversion_rate) }
+            : cur
+          const paths = await exportAllBeatmaps(beatmap.source_file, cfgWithTemplate, exportDir, indices)
           allPaths.push(...paths)
         } else {
           for (const idx of indices) {
             const bm = await selectDifficulty(beatmap.source_file, idx)
-            const cfg = { ...cur }
+            const cfg = {
+              ...cur,
+              difficulty_name: diffNameTemplate ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate) : (cur.difficulty_name || bm.difficulty_name),
+            }
             const content = await convertBeatmap(bm, cfg)
             const result = await exportBeatmap(bm, cfg, content, exportDir)
             allPaths.push(result)
@@ -852,7 +865,7 @@ export default function ConverterPage() {
     } finally {
       setConverting(false)
     }
-  }, [beatmap, direction, queueActiveId, queueUpdateItem, setConverting, setError, setExportPath])
+  }, [beatmap, direction, diffNameTemplate, queueActiveId, queueUpdateItem, setConverting, setError, setExportPath])
 
   const handleConvertDialogConfirm = useCallback(async (indices: number[]) => {
     if (!beatmap?.source_file || indices.length === 0) return
@@ -1091,7 +1104,7 @@ export default function ConverterPage() {
     setShowPackSettings(true)
   }, [packEntries, isConverting])
 
-  const runPackConversion = useCallback(async (settings: { mode: string; creator: string; hp_drain: number; overall_difficulty: number }) => {
+  const runPackConversion = useCallback(async (settings: { mode: string; creator: string; hp_drain: number; overall_difficulty: number; diff_name_template: string }) => {
     const indices = packConvertAllMode
       ? packEntries.map((_, i) => i)
       : [...packSelected]
@@ -1124,12 +1137,16 @@ export default function ConverterPage() {
             creator: settings.creator || baseCfg.creator,
             hp_drain: settings.hp_drain,
             overall_difficulty: settings.overall_difficulty,
+            diff_name_template: settings.diff_name_template || null,
           }
 
           if (packType === 'osu') {
             // Osu pack: each entry is a single .osu file, convert directly to .sm
             const bm = await parseFile(entry.source_file, 'osu-to-etterna')
-            const smContent = await convertBeatmap(bm, cfg)
+            const osuCfg = settings.diff_name_template
+              ? { ...cfg, difficulty_name: await expandDiffName(settings.diff_name_template, bm, { ...cfg, creator: bm.creator || cfg.creator }, cfg.conversion_rate) }
+              : cfg
+            const smContent = await convertBeatmap(bm, osuCfg)
 
             // Audio
             const audioOrig = entry.available_difficulties[0]?.audio_filename
@@ -1192,7 +1209,10 @@ export default function ConverterPage() {
             for (let bi = 0; bi < beatmaps.length; bi++) {
               const bm = beatmaps[bi]
               if (!bm) continue
-              let content = await convertBeatmap(bm, cfg)
+              const bmCfg = settings.diff_name_template
+                ? { ...cfg, difficulty_name: await expandDiffName(settings.diff_name_template, bm, { ...cfg, creator: bm.creator || cfg.creator }, cfg.conversion_rate) }
+                : cfg
+              let content = await convertBeatmap(bm, bmCfg)
               // Fix hardcoded "bg.jpg" reference to the actual background filename
               for (const [orig, renamed] of renameMap) {
                 content = content.replaceAll(orig, renamed)
@@ -1200,7 +1220,7 @@ export default function ConverterPage() {
               if (bgOrig && renameMap.get(bgOrig)) {
                 content = content.replaceAll('"bg.jpg"', `"${renameMap.get(bgOrig)}"`)
               }
-              const safeDiff = (cfg.difficulty_name || bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
+              const safeDiff = (bmCfg.difficulty_name || bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
               const ext = '.osu'
               const filename = safeDiff ? `${safeTitle} [${safeDiff}]${ext}` : `${safeTitle}${ext}`
               zip.file(filename, content)
@@ -1267,12 +1287,16 @@ export default function ConverterPage() {
             creator: settings.creator || (savedCfg || configFromEntry(entry)).creator,
             hp_drain: settings.hp_drain,
             overall_difficulty: settings.overall_difficulty,
+            diff_name_template: settings.diff_name_template || null,
           }
           if (packType === 'osu') {
             // Osu pack: each entry is a single .osu file, convert directly to .sm
             const bm = await parseFile(entry.source_file, 'osu-to-etterna')
-            const smContent = await convertBeatmap(bm, cfg)
-            const result = await exportBeatmap(bm, cfg, smContent, workDir, bm.difficulty_name, false)
+            const osuCfg = settings.diff_name_template
+              ? { ...cfg, difficulty_name: await expandDiffName(settings.diff_name_template, bm, { ...cfg, creator: bm.creator || cfg.creator }, cfg.conversion_rate) }
+              : cfg
+            const smContent = await convertBeatmap(bm, osuCfg)
+            const result = await exportBeatmap(bm, osuCfg, smContent, workDir, bm.difficulty_name, false)
             allPaths.push(result)
           } else {
             const paths = await exportAllBeatmaps(entry.source_file, cfg, workDir, undefined, packFolderName)
@@ -1605,11 +1629,14 @@ export default function ConverterPage() {
                   isConverting={isConverting}
                   switchingDifficulty={switchingDifficulty}
                   direction={direction}
+                  diffNameTemplate={diffNameTemplate}
                   onUpdateConfig={(p) => useConverterStore.getState().updateConfig(p)}
                   onChangeFile={handleChangeFile}
                   onConvert={handleConvert}
                   onReset={reset}
                   onSelectDifficulty={handleSelectDifficulty}
+                  onUpdateDiffNameTemplate={setDiffNameTemplate}
+                  onOpenPresetManager={() => setShowPresetManager(true)}
                 />
               </div>
             )}
@@ -1704,11 +1731,14 @@ export default function ConverterPage() {
                         isConverting={isConverting}
                         switchingDifficulty={switchingDifficulty}
                         direction={activeItem.direction}
+                        diffNameTemplate={diffNameTemplate}
                         onUpdateConfig={(p) => useConverterStore.getState().updateConfig(p)}
                         onChangeFile={handleChangeFile}
                         onConvert={handleConvert}
                         onReset={handleReset}
                         onSelectDifficulty={handleSelectDifficulty}
+                        onUpdateDiffNameTemplate={setDiffNameTemplate}
+                        onOpenPresetManager={() => setShowPresetManager(true)}
                       />
                     )
                   }
@@ -1733,11 +1763,14 @@ export default function ConverterPage() {
                   isConverting={isConverting}
                   switchingDifficulty={switchingDifficulty}
                   direction={direction}
+                  diffNameTemplate={diffNameTemplate}
                   onUpdateConfig={(p) => useConverterStore.getState().updateConfig(p)}
                   onChangeFile={handleChangeFile}
                   onConvert={handleConvert}
                   onReset={handleReset}
                   onSelectDifficulty={handleSelectDifficulty}
+                  onUpdateDiffNameTemplate={setDiffNameTemplate}
+                  onOpenPresetManager={() => setShowPresetManager(true)}
                 />
               </div>
             )}
@@ -1830,12 +1863,14 @@ export default function ConverterPage() {
             creator: useConverterStore.getState().config.creator,
             hp_drain: useConverterStore.getState().config.hp_drain,
             overall_difficulty: useConverterStore.getState().config.overall_difficulty,
+            diff_name_template: diffNameTemplate,
           }}
           onConfirm={(settings) => {
             setShowPackSettings(false)
             runPackConversion(settings)
           }}
           onCancel={handlePackSettingsCancel}
+          onOpenPresetManager={() => setShowPresetManager(true)}
         />
 
         {/* Update dialog */}
@@ -1930,6 +1965,14 @@ export default function ConverterPage() {
           onDownloadAndQueue={handleMirrorDownload}
         />
 
+        {/* Diff preset manager dialog */}
+        <DiffPresetManager
+          open={showPresetManager}
+          beatmap={beatmap}
+          config={config}
+          onClose={() => setShowPresetManager(false)}
+        />
+
         {/* Post-export overlay */}
         {lastExportPath && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-fade-in">
@@ -1941,7 +1984,7 @@ export default function ConverterPage() {
                   </svg>
                 </div>
                 <h2 className="text-xl font-semibold text-surface-100 mb-1">Export complete</h2>
-                <div className="text-xs text-surface-400 mb-6 space-y-1 max-h-24 overflow-y-auto">
+                <div className="text-xs text-surface-400 mb-6 space-y-1 max-h-24 overflow-y-auto custom-scrollbar">
                   {lastExportPath.split('\n').map((p, i) => (
                     <p key={i} className="break-all">{p}</p>
                   ))}

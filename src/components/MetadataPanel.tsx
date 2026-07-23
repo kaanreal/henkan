@@ -1,6 +1,8 @@
 ﻿import { useState } from 'react'
 import type { Beatmap, ConvertDirection, ExportConfig } from '../types/beatmap'
 import { FilePicker } from './FilePicker'
+import { useDiffPresetsStore } from '../stores/useDiffPresetsStore'
+import { expandDiffTemplate } from '../lib/diffTemplate'
 
 interface Props {
   beatmap: Beatmap
@@ -11,11 +13,14 @@ interface Props {
   isConverting: boolean
   switchingDifficulty: boolean
   direction: ConvertDirection
+  diffNameTemplate: string
   onUpdateConfig: (partial: Partial<ExportConfig>) => void
   onChangeFile: (field: string, current: string | null) => void
   onConvert: () => void
   onReset: () => void
   onSelectDifficulty: (index: number) => void
+  onUpdateDiffNameTemplate: (template: string) => void
+  onOpenPresetManager: () => void
 }
 
 function fmt(s: number) {
@@ -34,13 +39,20 @@ function BpmDisplay(timing_points: Beatmap['timing_points']) {
 
 export function MetadataPanel({
   beatmap, config, mediaUrls, tapCount, holdCount,
-  isConverting, switchingDifficulty, direction,
+  isConverting, switchingDifficulty, direction, diffNameTemplate,
   onUpdateConfig, onChangeFile, onConvert, onReset, onSelectDifficulty,
+  onUpdateDiffNameTemplate, onOpenPresetManager,
 }: Props) {
   const isOsu = beatmap.source_format === 'OsuMania'
   const targetExt = isOsu ? '.sm' : '.osu'
   const totalNotes = tapCount + holdCount
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const { presets } = useDiffPresetsStore()
+
+  const hasTemplate = diffNameTemplate.length > 0
+  const expandedDiffName = hasTemplate
+    ? expandDiffTemplate(diffNameTemplate, beatmap, config, config.conversion_rate)
+    : config.difficulty_name
 
   return (
     <div className="w-full max-w-xl space-y-5 animate-fade-in">
@@ -51,7 +63,7 @@ export function MetadataPanel({
           {config.artist} - {config.title}
         </h1>
         <p className="text-sm text-surface-500">
-          mapped by {config.creator} · {config.difficulty_name}
+          mapped by {config.creator} · {expandedDiffName || config.difficulty_name}
         </p>
       </div>
 
@@ -110,7 +122,7 @@ export function MetadataPanel({
       )}
 
       {/* Metadata editor */}
-      <div className=" animate-fade-in">
+      <div className="animate-fade-in">
         <div className="flex items-center gap-2 mb-2.5">
           <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Metadata</h2>
           <div className="h-px flex-1 bg-white/5" />
@@ -119,13 +131,70 @@ export function MetadataPanel({
           <Field label="Title" value={config.title} onChange={v => onUpdateConfig({ title: v })} />
           <Field label="Artist" value={config.artist} onChange={v => onUpdateConfig({ artist: v })} />
           <Field label="Mapper" value={config.creator} onChange={v => onUpdateConfig({ creator: v })} />
-          <Field label="Difficulty" value={config.difficulty_name} onChange={v => onUpdateConfig({ difficulty_name: v })} />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-surface-500 ml-1 font-medium">Difficulty Name</span>
+              <button
+                onClick={onOpenPresetManager}
+                className="text-[10px] text-surface-500 hover:text-accent-muted transition-colors"
+                title="Manage presets"
+              >
+                Manage presets
+              </button>
+            </div>
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                value={diffNameTemplate}
+                onChange={e => onUpdateDiffNameTemplate(e.target.value)}
+                placeholder={config.difficulty_name || '<diff> - <creator>'}
+                className="flex-1 h-9 bg-white/[0.04] border border-white/[0.06] rounded-lg px-3 text-sm text-surface-200 font-mono
+                  placeholder-surface-600 outline-none transition-all duration-75
+                  focus:border-accent/40 focus:bg-white/[0.06]"
+              />
+              <select
+                value={hasTemplate ? (presets.find(p => p.template === diffNameTemplate)?.id ?? '__custom') : '__none'}
+                onChange={e => {
+                  const val = e.target.value
+                  if (val === '__none') {
+                    onUpdateDiffNameTemplate('')
+                  } else if (val === '__custom') {
+                    // keep current template
+                  } else {
+                    const preset = presets.find(p => p.id === val)
+                    if (preset) onUpdateDiffNameTemplate(preset.template)
+                  }
+                }}
+                className="h-9 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2 text-xs text-surface-200
+                  outline-none transition-all duration-75 appearance-none cursor-pointer w-8 shrink-0
+                  focus:border-accent/40 focus:bg-accent/[0.03]"
+                title="Template presets"
+              >
+                <option value="__none" className="bg-surface-900">···</option>
+                {presets.map(p => (
+                  <option key={p.id} value={p.id} className="bg-surface-900">{p.name}</option>
+                ))}
+                {hasTemplate && !presets.some(p => p.template === diffNameTemplate) && (
+                  <option value="__custom" className="bg-surface-900">Custom</option>
+                )}
+              </select>
+            </div>
+          </div>
         </div>
+
+        {/* Live preview */}
+        {hasTemplate && (
+          <div className="mt-1.5 px-2 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.03]">
+            <span className="text-[10px] text-surface-500">
+              Result: <span className="text-surface-300 font-medium">{expandedDiffName || '(empty)'}</span>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Difficulty settings */}
       {direction === 'etterna-to-osu' && (
-        <div className=" animate-fade-in">
+        <div className="animate-fade-in">
           <div className="flex items-center gap-2 mb-2.5">
             <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Difficulty Settings</h2>
             <div className="h-px flex-1 bg-white/5" />
@@ -139,7 +208,7 @@ export function MetadataPanel({
 
       {/* Conversion rate - only for SM→osu */}
       {direction === 'etterna-to-osu' && (
-        <div className=" animate-fade-in">
+        <div className="animate-fade-in">
           <div className="flex items-center gap-2 mb-2">
             <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Rate</h2>
             <div className="h-px flex-1 bg-white/5" />
@@ -176,7 +245,7 @@ export function MetadataPanel({
       )}
 
       {/* File pickers */}
-      <div className=" animate-fade-in">
+      <div className="animate-fade-in">
         <div className="flex items-center gap-2 mb-2.5">
           <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Files</h2>
           <div className="h-px flex-1 bg-white/5" />
@@ -203,7 +272,6 @@ export function MetadataPanel({
               onClear={() => onUpdateConfig({ banner_filename: null })}
             />
           )}
-          {/* CD Title - only for SM target */}
           {direction === 'osu-to-etterna' && (
             <FilePicker
               label="CD Title"
@@ -313,7 +381,7 @@ export function MetadataPanel({
 function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[11px] text-surface-500 ml-1 font-medium">{label}</span>
+      {label && <span className="text-[11px] text-surface-500 ml-1 font-medium">{label}</span>}
       <input
         value={value}
         placeholder={placeholder}

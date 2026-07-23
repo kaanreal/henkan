@@ -138,6 +138,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
           subtitle: null, title_translit: null, subtitle_translit: null,
           artist_translit: null, genre: null, credit: null,
           display_bpm: null, sample_start: null, sample_length: null, selectable: null,
+          diff_name_template: null,
         }
 
         const content = await convertBeatmap(bm, cfg)
