@@ -41,4 +41,5 @@ export interface SkinPreview {
 
 export interface SkinConversionOptions {
   hitPosition?: number
+  columnWidth?: number
 }
