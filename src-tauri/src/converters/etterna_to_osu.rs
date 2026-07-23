@@ -65,6 +65,15 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     let shift_tp = |t: f64| t - global_timing_ms;
     let shift_note = |t: f64| (t - global_timing_ms).max(0.0);
 
+    // Skip uninherited timing points with extremely short beat lengths (>6000 BPM).
+    // Etterna charts sometimes use absurdly high BPM values as micro-segments
+    // (e.g. 27469 BPM for 4 beats ≈ 8ms). These create meaningless timing
+    // segments in osu and should be omitted. Notes are still timestamped
+    // correctly because build_timing used the full BPM list.
+    let is_extreme = |tp: &TimingPoint| {
+        tp.uninherited && tp.beat_length > 0.0 && tp.beat_length < 10.0
+    };
+
     output.push_str("[TimingPoints]\n");
 
     // collect BPM points and SV (inherited) points, then emit them in one
@@ -73,6 +82,9 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     let mut lines: Vec<(f64, u8, String)> = Vec::new();
 
     for tp in &beatmap.timing_points {
+        if is_extreme(tp) {
+            continue;
+        }
         // Round to 12 decimal places to match osu! editor's output precision.
         // At this magnitude f64 has enough precision for 12 digits, and osu!
         // parses the timing point string back to f64 using the same number of
@@ -128,6 +140,7 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     let osu_tps: Vec<TimingPoint> = beatmap
         .timing_points
         .iter()
+        .filter(|tp| !is_extreme(tp))
         .map(|tp| TimingPoint {
             time_ms: shift_tp(tp.time_ms).round(),
             // Round to 12 decimal places so snap_to_osu_grid uses the same
