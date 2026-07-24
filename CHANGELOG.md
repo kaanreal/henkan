@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/kaanreal/henkan/compare/v1.4.0...v1.4.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **ci:** add workflow_dispatch tag input to rebuild existing releases 🔧 ([3d09ea2](https://github.com/kaanreal/henkan/commit/3d09ea24819d5f2a89a20cf8c5c569405f3ecc80))
+
 ## [1.4.0](https://github.com/kaanreal/henkan/compare/v1.3.1...v1.4.0) (2026-07-23)
 
 
