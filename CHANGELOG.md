@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.1](https://github.com/kaanreal/henkan/compare/v1.4.0...v1.4.1) (2026-07-24)
+
+
+### Bug Fixes
+
+* **ci:** add always() to build condition for workflow_dispatch rebuild 🔧 ([4fe0635](https://github.com/kaanreal/henkan/commit/4fe0635f0bb4f76856bf928d21843faeced70c0a))
+* **ci:** add release-please back to publish needs 🔧 ([d3be953](https://github.com/kaanreal/henkan/commit/d3be953d1986bff5b6263e524cb2b5e519047ba1))
+* **ci:** add workflow_dispatch tag input to rebuild existing releases 🔧 ([3d09ea2](https://github.com/kaanreal/henkan/commit/3d09ea24819d5f2a89a20cf8c5c569405f3ecc80))
+* **ci:** skip missing platforms in updater manifest 🔧 ([9ae7ed9](https://github.com/kaanreal/henkan/commit/9ae7ed9aa8070f9f80857c1848369b515838938f))
+* **ci:** use gh release upload with MY_RELEASE_TOKEN 🔧 ([f943d80](https://github.com/kaanreal/henkan/commit/f943d801d301a58ab584d5915bb046dcc9e9ef90))
+
 ## [1.4.0](https://github.com/kaanreal/henkan/compare/v1.3.1...v1.4.0) (2026-07-23)
 
 
