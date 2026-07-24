@@ -52,7 +52,8 @@ export async function createUpdaterManifest({ bundlesDir, version, tag, reposito
       if (signaturePath) break
     }
     if (!signaturePath) {
-      throw new Error(`Missing signed updater artifact for ${platform}. Found: ${signatures.map(path.basename).join(', ') || 'none'}`)
+      if (signatures.length === 0) continue
+      throw new Error(`Missing signed updater artifact for ${platform}. Found: ${signatures.map(path.basename).join(', ')}`)
     }
 
     const archivePath = signaturePath.slice(0, -4)
