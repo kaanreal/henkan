@@ -86,10 +86,6 @@ jobs:
                       target: aarch64-apple-darwin
                       platform-name: darwin-aarch64
                       bundles: dmg,app
-                    - os: macos-13
-                      target: x86_64-apple-darwin
-                      platform-name: darwin-x86_64
-                      bundles: dmg,app
 
         runs-on: ${{ matrix.os }}
         steps:
