@@ -5,6 +5,11 @@ on:
         branches:
             - main
     workflow_dispatch:
+        inputs:
+            tag:
+                description: "Existing release tag to rebuild (e.g. v1.4.0). Leave empty for normal release flow."
+                required: false
+                type: string
 
 permissions:
     contents: write
@@ -12,6 +17,7 @@ permissions:
 
 jobs:
     build-wasm:
+        if: ${{ !inputs.tag }}
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
@@ -55,6 +61,7 @@ jobs:
                   git push
 
     release-please:
+        if: ${{ !inputs.tag }}
         needs: build-wasm
         runs-on: ubuntu-latest
         outputs:
@@ -69,8 +76,8 @@ jobs:
                   include-component-in-tag: false
 
     build:
-        needs: release-please
-        if: ${{ needs.release-please.outputs.release_created }}
+        needs: [release-please]
+        if: ${{ needs.release-please.outputs.release_created || inputs.tag }}
         strategy:
             matrix:
                 include:
@@ -100,7 +107,7 @@ jobs:
               id: version
               shell: bash
               env:
-                  TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+                  TAG_NAME: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
               run: |
                   VERSION="${TAG_NAME#v}"
                   echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -153,6 +160,7 @@ jobs:
 
     generate-updater-json:
         needs: [build, release-please]
+        if: ${{ always() && needs.build.result == 'success' }}
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
@@ -166,7 +174,7 @@ jobs:
             - name: Create updater.json
               shell: bash
               env:
-                  TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+                  TAG_NAME: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
               run: |
                   VERSION="${TAG_NAME#v}"
                   node scripts/generate-updater-manifest.mjs \
@@ -184,14 +192,15 @@ jobs:
                   path: updater.json
 
     publish:
-        needs: [build, generate-updater-json, release-please]
+        needs: [build, generate-updater-json]
+        if: ${{ always() && needs.build.result == 'success' }}
         runs-on: ubuntu-latest
         steps:
             - name: Extract version
               id: version
               shell: bash
               env:
-                  TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+                  TAG_NAME: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
               run: |
                   VERSION="${TAG_NAME#v}"
                   echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -200,23 +209,29 @@ jobs:
               id: release_notes
               shell: bash
               env:
-                  RP_BODY: ${{ needs.release-please.outputs.body }}
-                  TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+                  TAG_NAME: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
               run: |
                   VERSION="${TAG_NAME#v}"
-                  HEADER="# Henkan v$VERSION – Release Notes"
-                  CLEANED_BODY=$(echo "$RP_BODY" | sed '1d' | sed 's/^### /## /g')
-                  COMPARE_URL=$(echo "$RP_BODY" | grep -oE "https://github.com/[^/]+/[^/]+/compare/[v0-9.]+...[v0-9.]+" | head -n 1)
+                  HEADER="# Henkan v$VERSION - Release Notes"
 
-                  if [ -n "$COMPARE_URL" ]; then
-                    FOOTER="\n\n**Full Changelog**: ($COMPARE_URL)"
+                  if [ -n "${{ needs.release-please.outputs.body }}" ]; then
+                    RP_BODY="${{ needs.release-please.outputs.body }}"
+                    CLEANED_BODY=$(echo "$RP_BODY" | sed '1d' | sed 's/^### /## /g')
+                    COMPARE_URL=$(echo "$RP_BODY" | grep -oE "https://github.com/[^/]+/[^/]+/compare/[v0-9.]+...[v0-9.]+" | head -n 1)
+
+                    if [ -n "$COMPARE_URL" ]; then
+                      FOOTER="\n\n**Full Changelog**: ($COMPARE_URL)"
+                    else
+                      FOOTER=""
+                    fi
+                    BODY="$HEADER\n\n$CLEANED_BODY$FOOTER"
                   else
-                    FOOTER=""
+                    BODY="$HEADER\n\nRebuilt release artifacts."
                   fi
 
                   {
                     echo "RELEASE_BODY<<EOF"
-                    echo -e "$HEADER\n\n$CLEANED_BODY$FOOTER"
+                    echo -e "$BODY"
                     echo "EOF"
                   } >> $GITHUB_OUTPUT
 
@@ -235,7 +250,7 @@ jobs:
             - name: Upload to Release
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: ${{ needs.release-please.outputs.tag_name }}
+                  tag_name: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
                   name: Release v${{ steps.version.outputs.version }}
                   body: ${{ steps.release_notes.outputs.RELEASE_BODY }}
                   files: |
