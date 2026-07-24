@@ -77,7 +77,7 @@ jobs:
 
     build:
         needs: [release-please]
-        if: ${{ needs.release-please.outputs.release_created || inputs.tag }}
+        if: ${{ always() && (needs.release-please.outputs.release_created == 'true' || inputs.tag) }}
         strategy:
             matrix:
                 include:
