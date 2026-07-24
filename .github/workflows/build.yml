@@ -192,7 +192,7 @@ jobs:
                   path: updater.json
 
     publish:
-        needs: [build, generate-updater-json]
+        needs: [build, generate-updater-json, release-please]
         if: ${{ always() && needs.build.result == 'success' }}
         runs-on: ubuntu-latest
         steps:
