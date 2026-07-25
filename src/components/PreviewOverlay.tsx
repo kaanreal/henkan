@@ -183,7 +183,8 @@ export function PreviewOverlay({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'F12') { e.preventDefault(); return }
-      if (e.key === 'Escape' || e.code === 'Space') {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (e.key === 'Escape' || (e.code === 'Space' && tag !== 'INPUT' && tag !== 'TEXTAREA')) {
         e.preventDefault()
         close()
         return
