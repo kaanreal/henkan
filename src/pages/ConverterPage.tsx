@@ -209,7 +209,8 @@ export default function ConverterPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'F12') e.preventDefault()
-      if (e.code === 'Space' && beatmap && mediaUrls.audio) {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (e.code === 'Space' && beatmap && mediaUrls.audio && tag !== 'INPUT' && tag !== 'TEXTAREA') {
         e.preventDefault()
         if (!showPreview) {
           const player = audioPlayerRef.current
