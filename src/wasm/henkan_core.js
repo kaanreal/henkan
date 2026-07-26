@@ -30,19 +30,18 @@ export function convert_etterna_to_osu(beatmap_json, config_json) {
 
 /**
  * @param {string} beatmap_json
- * @param {number} global_timing_ms
- * @param {string} chart_description
+ * @param {string} config_json
  * @returns {string}
  */
-export function convert_osu_to_etterna(beatmap_json, global_timing_ms, chart_description) {
+export function convert_osu_to_etterna(beatmap_json, config_json) {
     let deferred4_0;
     let deferred4_1;
     try {
         const ptr0 = passStringToWasm0(beatmap_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(chart_description, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const ptr1 = passStringToWasm0(config_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.convert_osu_to_etterna(ptr0, len0, global_timing_ms, ptr1, len1);
+        const ret = wasm.convert_osu_to_etterna(ptr0, len0, ptr1, len1);
         var ptr3 = ret[0];
         var len3 = ret[1];
         if (ret[3]) {

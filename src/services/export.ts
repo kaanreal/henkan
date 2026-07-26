@@ -79,9 +79,11 @@ export async function exportBeatmap(
   const ext = beatmap.source_format === 'OsuMania' ? '.sm' : '.osu'
   const safeTitle = (config.title || beatmap.title).replace(/[/\\?%*:|"<>]/g, '_')
   const safeCreator = (config.creator || beatmap.creator).replace(/[/\\?%*:|"<>]/g, '_')
-  const safeDiff = (config.difficulty_name || beatmap.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
-  const suffix = filenameSuffix ? ` ${filenameSuffix}` : (safeDiff ? ` [${safeDiff}]` : '')
-  const filename = `${safeTitle} - ${safeCreator}${suffix}${ext}`
+  const base = beatmap.source_format === 'OsuMania'
+    ? `${safeTitle} [${safeCreator}]`
+    : `${(config.artist || beatmap.artist).replace(/[/\\?%*:|"<>]/g, '_')} - ${safeTitle}`
+  const suffix = filenameSuffix ? ` ${filenameSuffix}` : ''
+  const filename = `${base}${suffix}${ext}`
 
   const hasMedia = await resolveMediaFile(beatmap.source_dir, config.audio_filename || beatmap.audio_filename)
   const bundleMedia = hasMedia && config.output_format !== 'osu'
@@ -111,7 +113,7 @@ export async function exportBeatmap(
 
     const blob = await zip.generateAsync({ type: 'blob' })
     const bundleExt = config.output_format === 'osz' ? '.osz' : '.zip'
-    const zipName = `${safeTitle} - ${safeCreator}${suffix}${bundleExt}`
+    const zipName = `${base}${suffix}${bundleExt}`
     await saveBlobToFile(blob, zipName)
     return zipName
   }
@@ -186,7 +188,10 @@ export async function exportAllBeatmaps(
         const safeTitle = (config.title || bm.title).replace(/[/\\?%*:|"<>]/g, '_')
         const safeCreator = (config.creator || bm.creator).replace(/[/\\?%*:|"<>]/g, '_')
         const safeDiff = (bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
-        const filename = `${safeTitle} - ${safeCreator} [${safeDiff}]${ext}`
+        const baseName = bm.source_format === 'OsuMania'
+          ? `${safeTitle} [${safeCreator}]`
+          : `${(config.artist || bm.artist).replace(/[/\\?%*:|"<>]/g, '_')} - ${safeTitle}`
+        const filename = safeDiff ? `${baseName} [${safeDiff}]${ext}` : `${baseName}${ext}`
         zip.file(filename, content)
         paths.push(filename)
 
@@ -221,7 +226,10 @@ export async function exportAllBeatmaps(
       const safeTitle = (config.title || bm.title).replace(/[/\\?%*:|"<>]/g, '_')
       const safeCreator = (config.creator || bm.creator).replace(/[/\\?%*:|"<>]/g, '_')
       const safeDiff = (bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
-      const filename = `${safeTitle} - ${safeCreator} [${safeDiff}]${ext}`
+      const baseName = bm.source_format === 'OsuMania'
+        ? `${safeTitle} [${safeCreator}]`
+        : `${(config.artist || bm.artist).replace(/[/\\?%*:|"<>]/g, '_')} - ${safeTitle}`
+      const filename = safeDiff ? `${baseName} [${safeDiff}]${ext}` : `${baseName}${ext}`
       await saveContentToFile(filename, content)
       paths.push(filename)
     }

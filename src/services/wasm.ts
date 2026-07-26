@@ -45,11 +45,10 @@ export async function wasmConvertEtternaToOsu(beatmap: Beatmap, config: ExportCo
 
 export async function wasmConvertOsuToEtterna(
   beatmap: Beatmap,
-  globalTimingMs: number,
-  chartDescription: string,
+  config: ExportConfig,
 ): Promise<string> {
   const mod = await ensureWasm()
-  return mod.convert_osu_to_etterna(JSON.stringify(beatmap), globalTimingMs, chartDescription)
+  return mod.convert_osu_to_etterna(JSON.stringify(beatmap), JSON.stringify(config))
 }
 
 export async function wasmScaleTimingForRate(beatmap: Beatmap, rate: number): Promise<Beatmap> {

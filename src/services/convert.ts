@@ -298,8 +298,7 @@ export async function convertBeatmap(
   }
   return HENKAN_ATTRIBUTION + await wasmConvertOsuToEtterna(
     beatmap,
-    config.global_timing_ms,
-    config.creator,
+    config,
   )
 }
 
