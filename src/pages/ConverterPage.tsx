@@ -673,7 +673,12 @@ export default function ConverterPage() {
               if (!key) continue
               const file = getCachedFile(key)
               if (!file) continue
-              const mediaName = field.split('/').pop() || field
+              const originalName = field.split('/').pop() || field
+              const isBg = field === diffCfg.background_filename
+              const isBn = field === bm.banner_filename
+              const mediaName = isBg
+                ? (bm.source_format === 'OsuMania' ? 'bg.png' : 'bg.jpg')
+                : isBn ? 'banner.png' : originalName
               const mediaPath = `${safeName}/${safeDiff}/${mediaName}`
               if (addedMedia.has(mediaPath)) continue
               addedMedia.add(mediaPath)
@@ -774,7 +779,12 @@ export default function ConverterPage() {
               if (!key) continue
               const file = getCachedFile(key)
               if (!file) continue
-              const mediaName = field.split('/').pop() || field
+              const originalName = field.split('/').pop() || field
+              const isBg = field === diffCfg.background_filename
+              const isBn = field === bm.banner_filename
+              const mediaName = isBg
+                ? (bm.source_format === 'OsuMania' ? 'bg.png' : 'bg.jpg')
+                : isBn ? 'banner.png' : originalName
               const mediaPath = `${safeName}/${safeDiff}/${mediaName}`
               if (addedMedia.has(mediaPath)) continue
               addedMedia.add(mediaPath)

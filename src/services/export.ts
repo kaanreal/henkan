@@ -104,10 +104,17 @@ export async function exportBeatmap(
       if (!key) continue
       const file = getCachedFile(key)
       if (!file) continue
-      const name = key.split('/').pop() || key
-      if (added.has(name)) continue
-      added.add(name)
-      zip.file(name, await file.arrayBuffer())
+      const originalName = key.split('/').pop() || key
+      if (added.has(originalName)) continue
+      added.add(originalName)
+      const isBg = field === bg
+      const isBn = field === bn
+      const zipName = isBg
+        ? (beatmap.source_format === 'OsuMania' ? 'bg.png' : 'bg.jpg')
+        : isBn
+          ? 'banner.png'
+          : originalName
+      zip.file(zipName, await file.arrayBuffer())
     }
     await addCdtitleToZip(zip, beatmap.source_dir, config.cdtitle_filename || beatmap.cdtitle_filename, 'cdtitle.png', config.creator || beatmap.creator)
 
@@ -203,8 +210,13 @@ export async function exportAllBeatmaps(
           if (!key) continue
           const file = getCachedFile(key)
           if (!file) continue
-          const name = key.split('/').pop() || key
-          if (addedMedia.has(name)) continue
+          const originalName = key.split('/').pop() || key
+          if (addedMedia.has(originalName)) continue
+          const isBg = field === bm.background_filename
+          const isBn = field === bm.banner_filename
+          const name = isBg
+            ? (bm.source_format === 'OsuMania' ? 'bg.png' : 'bg.jpg')
+            : isBn ? 'banner.png' : originalName
           addedMedia.add(name)
           zip.file(name, await file.arrayBuffer())
         }
