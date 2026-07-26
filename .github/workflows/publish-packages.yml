@@ -46,8 +46,8 @@ jobs:
           }
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "source_sha256=$(checksum "https://github.com/kaanreal/henkan/archive/refs/tags/$VER.tar.gz")" >> "$GITHUB_OUTPUT"
-          echo "dmg_sha256=$(checksum "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan_${V}_aarch64.dmg")" >> "$GITHUB_OUTPUT"
-          echo "installer_sha256=$(checksum "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan_${V}_x64-setup.exe")" >> "$GITHUB_OUTPUT"
+          echo "dmg_sha256=$(checksum "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan-v${V}-macos.dmg")" >> "$GITHUB_OUTPUT"
+          echo "installer_sha256=$(checksum "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan-v${V}-windows-setup.exe")" >> "$GITHUB_OUTPUT"
 
       - name: Publish to Homebrew
         if: env.HOMEBREW_TAP_TOKEN != ''

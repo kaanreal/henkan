@@ -33,9 +33,7 @@
       "dmg",
       "app",
       "nsis",
-      "appimage",
-      "deb",
-      "rpm"
+      "appimage"
     ],
     "icon": [
       "icons/icon.ico",
@@ -51,11 +49,7 @@
         "installMode": "currentUser"
       }
     },
-    "linux": {
-      "deb": {
-        "depends": []
-      }
-    }
+    "linux": {}
   },
   "plugins": {
     "updater": {

@@ -84,7 +84,7 @@ jobs:
                     - os: ubuntu-latest
                       target: x86_64-unknown-linux-gnu
                       platform-name: linux-x86_64
-                      bundles: appimage,deb,rpm
+                      bundles: appimage
                     - os: windows-latest
                       target: x86_64-pc-windows-msvc
                       platform-name: windows-x86_64
@@ -152,6 +152,36 @@ jobs:
                   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
                   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+            - name: Rename artifacts for clean filenames
+              shell: bash
+              run: |
+                  BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+                  VERSION="${{ steps.version.outputs.version }}"
+
+                  case "${{ matrix.platform-name }}" in
+                    linux-x86_64) SHORT="linux" ;;
+                    windows-x86_64) SHORT="windows" ;;
+                    darwin-aarch64) SHORT="macos" ;;
+                  esac
+
+                  find "$BUNDLE_DIR" -type f -print0 | while IFS= read -r -d '' file; do
+                    dir="$(dirname "$file")"
+                    base="$(basename "$file")"
+                    new="$(echo "$base" | sed -E "s/^Henkan_${VERSION}_(amd64|x64|aarch64)/Henkan-v${VERSION}-${SHORT}/")"
+                    if [ "$SHORT" = "macos" ] && [ "$base" = "Henkan.app.tar.gz" ]; then
+                      new="Henkan-v${VERSION}-macos.app.tar.gz"
+                    fi
+                    if [ "$SHORT" = "macos" ] && [ "$base" = "Henkan.app.tar.gz.sig" ]; then
+                      new="Henkan-v${VERSION}-macos.app.tar.gz.sig"
+                    fi
+                    if [ "$base" != "$new" ]; then
+                      mv "$file" "$dir/$new"
+                    fi
+                  done
+
+                  echo "Renamed artifacts:"
+                  find "$BUNDLE_DIR" -type f | sort
+
             - name: Upload bundle artifact
               uses: actions/upload-artifact@v4
               with:
@@ -216,5 +246,5 @@ jobs:
               shell: bash
               run: |
                   TAG="${{ inputs.tag || needs.release-please.outputs.tag_name }}"
-                  FILES=$(find bundles -type f \( -name '*.exe' -o -name '*.exe.sig' -o -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*.AppImage.tar.gz' -o -name '*.AppImage.tar.gz.sig' -o -name '*.deb' -o -name '*.rpm' \))
+                  FILES=$(find bundles -type f \( -name '*.exe' -o -name '*.exe.sig' -o -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*.AppImage.tar.gz' -o -name '*.AppImage.tar.gz.sig' \))
                   gh release upload "$TAG" updater.json $FILES --clobber
