@@ -3,7 +3,7 @@
 
 export function convert_etterna_to_osu(beatmap_json: string, config_json: string): string;
 
-export function convert_osu_to_etterna(beatmap_json: string, global_timing_ms: number, chart_description: string): string;
+export function convert_osu_to_etterna(beatmap_json: string, config_json: string): string;
 
 export function parse_osu_content(content: string): string;
 
@@ -22,7 +22,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly convert_etterna_to_osu: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly convert_osu_to_etterna: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+    readonly convert_osu_to_etterna: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly parse_osu_content: (a: number, b: number) => [number, number, number, number];
     readonly parse_sm_all_difficulties: (a: number, b: number) => [number, number, number, number];
     readonly parse_sm_content: (a: number, b: number) => [number, number, number, number];

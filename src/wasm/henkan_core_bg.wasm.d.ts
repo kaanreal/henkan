@@ -2,7 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const convert_etterna_to_osu: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-export const convert_osu_to_etterna: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+export const convert_osu_to_etterna: (a: number, b: number, c: number, d: number) => [number, number, number, number];
 export const parse_osu_content: (a: number, b: number) => [number, number, number, number];
 export const parse_sm_all_difficulties: (a: number, b: number) => [number, number, number, number];
 export const parse_sm_content: (a: number, b: number) => [number, number, number, number];
