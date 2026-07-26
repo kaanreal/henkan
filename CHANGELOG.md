@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.5.0](https://github.com/kaanreal/henkan/compare/v1.4.0...v1.5.0) (2026-07-26)
+
+
+### Features
+
+* **update:** render release notes as markdown in update dialog 🌸 ([27792da](https://github.com/kaanreal/henkan/commit/27792dadc47e19375f5f76ccab40e3d947d2e432))
+
+
+### Bug Fixes
+
+* **ci:** clean rebuild workflow for v1.4.0 🔧 ([29190e8](https://github.com/kaanreal/henkan/commit/29190e8c15dea9f424430a4ec3f0a917da0829f9))
+* **ui:** prevent spacebar in input fields from opening preview 🐛 ([077052a](https://github.com/kaanreal/henkan/commit/077052a4d9dbe31cf54f92494e5a392ac4bfa5f8))
+* **web:** align web conversion and export with Tauri app 🐛 ([9b61df6](https://github.com/kaanreal/henkan/commit/9b61df668c8f2f4a53a4fc47e2a2b0bffa04a41b))
+* **web:** rename media files in export ZIP to match converter conventions 🐛 ([5f939a2](https://github.com/kaanreal/henkan/commit/5f939a2bc09758fe67be6b8de1bf95c84900b721))
+
 ## [1.4.0](https://github.com/kaanreal/henkan/compare/v1.3.1...v1.4.0) (2026-07-23)
 
 
