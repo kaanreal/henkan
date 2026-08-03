@@ -29,10 +29,16 @@ import {
 } from '../services/skinConverter'
 import type { SkinDirection, SkinInspection, SkinPreview } from '../types/skin'
 
-type SkinPreviewUrls = { lanes: Array<Record<'note' | 'holdHead' | 'holdBody' | 'holdTail' | 'receptor', string>> }
+type SkinPreviewUrls = {
+  lanes: Array<Record<'note' | 'holdHead' | 'holdBody' | 'holdTail' | 'receptor', string>>
+  hitPosition?: number
+  columnWidth?: number
+}
 
 function previewObjectUrls(preview: SkinPreview): SkinPreviewUrls {
   return {
+    hitPosition: preview.hitPosition,
+    columnWidth: preview.columnWidth,
     lanes: preview.lanes.map((lane) => ({
       note: URL.createObjectURL(lane.note.blob),
       holdHead: URL.createObjectURL(lane.holdHead.blob),
@@ -113,7 +119,7 @@ export function SkinConverterPage() {
       if (selectedInputRef.current !== nextInput) return
       setDirection(detected.direction)
       setInspection(detected.inspection)
-      const nextPreview = await buildSkinPreview(nextInput, detected.direction)
+      const nextPreview = await buildSkinPreview(nextInput, detected.direction).catch(() => null)
       if (selectedInputRef.current === nextInput) replacePreview(nextPreview)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Henkan could not inspect this archive.')
@@ -227,7 +233,9 @@ export function SkinConverterPage() {
   const fallbacks = inspection?.mappings.filter((item) => item.status === 'fallback').length || 0
   const missing = inspection?.mappings.filter((item) => item.status === 'missing').length || 0
   const outputLabel = direction === 'osu-to-etterna' ? 'Etterna dance noteskin' : 'complete osu!mania 4K skin'
-  const previewHitPosition = direction === 'etterna-to-osu' ? hitPosition : DEFAULT_OSU_HIT_POSITION
+  const previewHitPosition = direction === 'etterna-to-osu'
+    ? hitPosition
+    : previewUrls?.hitPosition || DEFAULT_OSU_HIT_POSITION
   const previewStyle = { '--hit-y': `${previewHitPosition / 480 * 100}%` } as CSSProperties
 
   return (

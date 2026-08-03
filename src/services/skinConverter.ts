@@ -1,4 +1,6 @@
 import type { JSZipObject } from 'jszip'
+import { decode as decodePng } from 'fast-png'
+import * as UTIF from 'utif'
 import { readFileArrayBuffer } from './files'
 import type {
   SkinAssetMapping,
@@ -63,6 +65,12 @@ interface DecodedImage {
   width: number
   height: number
   close: () => void
+}
+
+interface DecodedPixels {
+  width: number
+  height: number
+  data: Uint8ClampedArray
 }
 
 type SizedZipObject = JSZipObject & { _data?: { uncompressedSize?: number } }
@@ -233,6 +241,101 @@ async function decodeImage(blob: Blob): Promise<DecodedImage> {
     }
     image.src = url
   })
+}
+
+function isPng(bytes: Uint8Array): boolean {
+  return bytes.length >= 24
+    && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+}
+
+function isTiff(bytes: Uint8Array): boolean {
+  return bytes.length >= 8 && (
+    (bytes[0] === 0x49 && bytes[1] === 0x49 && bytes[2] === 0x2a && bytes[3] === 0x00)
+    || (bytes[0] === 0x4d && bytes[1] === 0x4d && bytes[2] === 0x00 && bytes[3] === 0x2a)
+  )
+}
+
+function checkedPixelCount(width: number, height: number, format: string): void {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0
+    || width * height > MAX_IMAGE_PIXELS) {
+    throw new Error(`This ${format} exceeds the ${MAX_IMAGE_PIXELS.toLocaleString()}-pixel image safety limit.`)
+  }
+}
+
+function tiffDimension(ifd: UTIF.IFD, tag: 't256' | 't257'): number {
+  const value = ifd[tag]
+  return Array.isArray(value) ? Number(value[0]) : 0
+}
+
+async function decodeImagePixels(blob: Blob): Promise<DecodedPixels> {
+  const buffer = await blob.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  if (isTiff(bytes)) {
+    const ifd = UTIF.decode(buffer)[0]
+    if (!ifd) throw new Error('This TIFF image does not contain a readable frame.')
+    checkedPixelCount(tiffDimension(ifd, 't256'), tiffDimension(ifd, 't257'), 'TIFF')
+    UTIF.decodeImage(buffer, ifd)
+    checkedPixelCount(ifd.width, ifd.height, 'TIFF')
+    return { width: ifd.width, height: ifd.height, data: new Uint8ClampedArray(UTIF.toRGBA8(ifd)) }
+  }
+  if (!isPng(bytes)) throw new Error('The browser could not decode this image format.')
+  const width = ((bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19]) >>> 0
+  const height = ((bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23]) >>> 0
+  checkedPixelCount(width, height, 'PNG')
+
+  const decoded = decodePng(bytes)
+  const rgba = new Uint8ClampedArray(decoded.width * decoded.height * 4)
+  const max = decoded.depth === 16 ? 65535 : (1 << decoded.depth) - 1
+  const channel = (index: number) => Math.round(Number(decoded.data[index]) * 255 / max)
+  for (let pixel = 0; pixel < decoded.width * decoded.height; pixel++) {
+    const source = pixel * decoded.channels
+    const target = pixel * 4
+    if (decoded.channels === 1) {
+      const gray = channel(source)
+      rgba[target] = gray
+      rgba[target + 1] = gray
+      rgba[target + 2] = gray
+      rgba[target + 3] = 255
+    } else if (decoded.channels === 2) {
+      const gray = channel(source)
+      rgba[target] = gray
+      rgba[target + 1] = gray
+      rgba[target + 2] = gray
+      rgba[target + 3] = channel(source + 1)
+    } else {
+      rgba[target] = channel(source)
+      rgba[target + 1] = channel(source + 1)
+      rgba[target + 2] = channel(source + 2)
+      rgba[target + 3] = decoded.channels === 4 ? channel(source + 3) : 255
+    }
+  }
+  return { width: decoded.width, height: decoded.height, data: rgba }
+}
+
+function drawPixelRegion(
+  context: CanvasRenderingContext2D,
+  image: DecodedPixels,
+  sourceX: number,
+  sourceY: number,
+  sourceWidth: number,
+  sourceHeight: number,
+  targetX: number,
+  targetY: number,
+  targetWidth: number,
+  targetHeight: number,
+): void {
+  const pixels = new Uint8ClampedArray(sourceWidth * sourceHeight * 4)
+  for (let y = 0; y < sourceHeight; y++) {
+    const sourceStart = ((sourceY + y) * image.width + sourceX) * 4
+    pixels.set(image.data.subarray(sourceStart, sourceStart + sourceWidth * 4), y * sourceWidth * 4)
+  }
+  const scratch = document.createElement('canvas')
+  scratch.width = sourceWidth
+  scratch.height = sourceHeight
+  const scratchContext = scratch.getContext('2d')
+  if (!scratchContext) throw new Error('Canvas image conversion is unavailable in this environment.')
+  scratchContext.putImageData(new ImageData(pixels, sourceWidth, sourceHeight), 0, 0)
+  context.drawImage(scratch, 0, 0, sourceWidth, sourceHeight, targetX, targetY, targetWidth, targetHeight)
 }
 
 function parseIni(content: string): IniSection[] {
@@ -1027,17 +1130,50 @@ async function receptorFromOsuKey(entry: JSZipObject): Promise<RasterAsset> {
   image.close()
 
   const pixels = sourceContext.getImageData(0, 0, key.width, key.height).data
+  // Key images sometimes contain a separate key-light or indicator far away
+  // from the receptor itself. Cropping all non-transparent pixels together
+  // crushes the receptor when that image is adapted to Etterna. Keep the
+  // largest connected piece of artwork instead.
+  const visited = new Uint8Array(key.width * key.height)
+  const queue = new Int32Array(key.width * key.height)
   let minX = key.width
   let minY = key.height
   let maxX = -1
   let maxY = -1
-  for (let y = 0; y < key.height; y++) {
-    for (let x = 0; x < key.width; x++) {
-      if (pixels[(y * key.width + x) * 4 + 3] === 0) continue
-      minX = Math.min(minX, x)
-      minY = Math.min(minY, y)
-      maxX = Math.max(maxX, x)
-      maxY = Math.max(maxY, y)
+  let largest = 0
+  for (let start = 0; start < visited.length; start++) {
+    if (visited[start] || pixels[start * 4 + 3] <= 4) continue
+    let head = 0
+    let tail = 0
+    let componentMinX = key.width
+    let componentMinY = key.height
+    let componentMaxX = -1
+    let componentMaxY = -1
+    queue[tail++] = start
+    visited[start] = 1
+    while (head < tail) {
+      const position = queue[head++]
+      const x = position % key.width
+      const y = Math.floor(position / key.width)
+      componentMinX = Math.min(componentMinX, x)
+      componentMinY = Math.min(componentMinY, y)
+      componentMaxX = Math.max(componentMaxX, x)
+      componentMaxY = Math.max(componentMaxY, y)
+      for (let adjacentY = Math.max(0, y - 1); adjacentY <= Math.min(key.height - 1, y + 1); adjacentY++) {
+        for (let adjacentX = Math.max(0, x - 1); adjacentX <= Math.min(key.width - 1, x + 1); adjacentX++) {
+          const adjacent = adjacentY * key.width + adjacentX
+          if (visited[adjacent] || pixels[adjacent * 4 + 3] <= 4) continue
+          visited[adjacent] = 1
+          queue[tail++] = adjacent
+        }
+      }
+    }
+    if (tail > largest) {
+      largest = tail
+      minX = componentMinX
+      minY = componentMinY
+      maxX = componentMaxX
+      maxY = componentMaxY
     }
   }
   if (maxX < minX || maxY < minY) return transparentRaster(128, 128)
@@ -1052,12 +1188,12 @@ async function receptorFromOsuKey(entry: JSZipObject): Promise<RasterAsset> {
   context.drawImage(
     sourceCanvas,
     minX, minY, sourceWidth, sourceHeight,
-    0, 0, 128, 128,
+    0, 0, canvas.width, canvas.height,
   )
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((value) => value ? resolve(value) : reject(new Error(`Could not crop ${entry.name}.`)), 'image/png')
   })
-  return { blob, width: 128, height: 128 }
+  return { blob, width: canvas.width, height: canvas.height }
 }
 
 async function transparentRaster(width: number, height: number): Promise<RasterAsset> {
@@ -1110,19 +1246,33 @@ function clearConnectedEdgeBackground(context: CanvasRenderingContext2D, width: 
 
 async function noteFromOsuImage(entry: JSZipObject, kind: 'note' | 'body' | 'tail', bodyStyle = 0): Promise<RasterAsset> {
   const source = await entry.async('blob')
-  const image = await decodeImage(source)
-  if (image.width * image.height > MAX_IMAGE_PIXELS) {
-    image.close()
+  let image: DecodedImage | null = null
+  let pixels: DecodedPixels | null = null
+  try {
+    image = await decodeImage(source)
+  } catch {
+    pixels = await decodeImagePixels(source)
+  }
+  const imageWidth = image?.width ?? pixels!.width
+  const imageHeight = image?.height ?? pixels!.height
+  if (imageWidth * imageHeight > MAX_IMAGE_PIXELS) {
+    image?.close()
     throw new Error(`${entry.name} exceeds the 50-megapixel image safety limit.`)
   }
   const grid = kind === 'note' ? spriteGrid(entry.name) : { columns: 1, rows: 1 }
-  const sourceWidth = Math.max(1, Math.floor(image.width / grid.columns))
-  const sourceHeight = Math.max(1, Math.floor(image.height / grid.rows))
+  const sourceWidth = Math.max(1, Math.floor(imageWidth / grid.columns))
+  const sourceHeight = Math.max(1, Math.floor(imageHeight / grid.rows))
   const cropTallTexture = kind === 'body' || (kind === 'tail' && sourceHeight > sourceWidth * 4)
   // Etterna repeats hold bodies.  A short strip avoids a visible join where
   // Etterna switches from the cap mesh to the body mesh, and also avoids
   // resampling absurdly tall osu!mania LN textures on every hold.
   const cascadingBody = kind === 'body' && bodyStyle !== 0 && sourceHeight > sourceWidth * 4
+  // Browsers reject otherwise valid PNGs whose dimensions exceed their
+  // canvas limit. Etterna accepts these cascade textures, so preserve the
+  // source bytes when no browser-sized transformation is required.
+  if (cascadingBody && pixels && sourceWidth <= 512) {
+    return { blob: source.slice(0, source.size, 'image/png'), width: sourceWidth, height: sourceHeight }
+  }
   const cropHeight = cascadingBody
     ? sourceHeight
     : kind === 'body' && sourceHeight > sourceWidth * 4
@@ -1143,9 +1293,13 @@ async function noteFromOsuImage(entry: JSZipObject, kind: 'note' | 'body' | 'tai
   canvas.height = targetHeight
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Canvas image conversion is unavailable in this environment.')
-  context.drawImage(image.source, 0, cropY, sourceWidth, effectiveCropHeight, 0, 0, targetWidth, targetHeight)
+  if (image) {
+    context.drawImage(image.source, 0, cropY, sourceWidth, effectiveCropHeight, 0, 0, targetWidth, targetHeight)
+  } else {
+    drawPixelRegion(context, pixels!, 0, cropY, sourceWidth, effectiveCropHeight, 0, 0, targetWidth, targetHeight)
+  }
   if (kind === 'body') clearConnectedEdgeBackground(context, targetWidth, targetHeight)
-  image.close()
+  image?.close()
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((value) => value ? resolve(value) : reject(new Error(`Could not resize ${entry.name} for Etterna.`)), 'image/png')
   })
@@ -1179,10 +1333,18 @@ async function tailFromOsuImages(tailEntry: JSZipObject, bodyEntry: JSZipObject,
   if (bodyStyle !== 0) return noteFromOsuImage(tailEntry, 'tail', bodyStyle)
 
   const bodySource = await bodyEntry.async('blob')
-  const bodyImage = await decodeImage(bodySource)
-  const capSize = Math.min(bodyImage.width, bodyImage.height)
-  if (bodyImage.height < capSize * 2) {
-    bodyImage.close()
+  let bodyImage: DecodedImage | null = null
+  let bodyPixels: DecodedPixels | null = null
+  try {
+    bodyImage = await decodeImage(bodySource)
+  } catch {
+    bodyPixels = await decodeImagePixels(bodySource)
+  }
+  const bodyWidth = bodyImage?.width ?? bodyPixels!.width
+  const bodyHeight = bodyImage?.height ?? bodyPixels!.height
+  const capSize = Math.min(bodyWidth, bodyHeight)
+  if (bodyHeight < capSize * 2) {
+    bodyImage?.close()
     return noteFromOsuImage(tailEntry, 'tail', bodyStyle)
   }
 
@@ -1190,23 +1352,31 @@ async function tailFromOsuImages(tailEntry: JSZipObject, bodyEntry: JSZipObject,
   // tall body texture and leave NoteImageT as a one-pixel seam. Preserve that
   // endpoint instead of flattening the hold when creating Etterna's cap.
   const canvas = document.createElement('canvas')
-  const targetSize = Math.max(1, Math.min(512, bodyImage.width))
+  const targetSize = Math.max(1, Math.min(512, bodyWidth))
   canvas.width = targetSize
   canvas.height = targetSize
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Canvas image conversion is unavailable in this environment.')
-  context.drawImage(bodyImage.source, 0, 0, bodyImage.width, capSize, 0, 0, targetSize, targetSize)
+  if (bodyImage) {
+    context.drawImage(bodyImage.source, 0, 0, bodyWidth, capSize, 0, 0, targetSize, targetSize)
+  } else {
+    drawPixelRegion(context, bodyPixels!, 0, 0, bodyWidth, capSize, 0, 0, targetSize, targetSize)
+  }
   const joinRows = Math.min(4, capSize)
   const bodySliceY = bodyStyle === 0
-    ? Math.max(0, Math.floor((bodyImage.height - capSize) / 2))
-    : Math.min(bodyImage.height - joinRows, capSize)
-  context.drawImage(
-    bodyImage.source,
-    0, bodySliceY, bodyImage.width, joinRows,
-    0, targetSize - joinRows, targetSize, joinRows,
-  )
+    ? Math.max(0, Math.floor((bodyHeight - capSize) / 2))
+    : Math.min(bodyHeight - joinRows, capSize)
+  if (bodyImage) {
+    context.drawImage(
+      bodyImage.source,
+      0, bodySliceY, bodyWidth, joinRows,
+      0, targetSize - joinRows, targetSize, joinRows,
+    )
+  } else {
+    drawPixelRegion(context, bodyPixels!, 0, bodySliceY, bodyWidth, joinRows, 0, targetSize - joinRows, targetSize, joinRows)
+  }
   clearConnectedEdgeBackground(context, targetSize, targetSize)
-  bodyImage.close()
+  bodyImage?.close()
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((value) => value ? resolve(value) : reject(new Error(`Could not extract the long-note cap from ${bodyEntry.name}.`)), 'image/png')
   })
@@ -1502,15 +1672,6 @@ async function previewAsset(
 ): Promise<RasterAsset> {
   const selected = asset.entry ? asset : fallback
   if (!selected.entry) throw new Error('The skin does not contain enough artwork to build a preview.')
-  const grid = cropSheet ? spriteGrid(selected.entry.name) : { columns: 1, rows: 1 }
-  if (rotation === 0 && grid.columns === 1 && grid.rows === 1 && !selected.renderWidth && !selected.renderHeight) {
-    const source = await selected.entry.async('blob')
-    return {
-      blob: source.slice(0, source.size, 'image/png'),
-      width: 1,
-      height: 1,
-    }
-  }
   try {
     const raster = await rasteriseResolved(selected, cropSheet)
     return rotation ? rotateRaster(raster, rotation) : raster
@@ -1519,19 +1680,22 @@ async function previewAsset(
       try {
         const raster = await rasteriseResolved(fallback, cropSheet)
         return rotation ? rotateRaster(raster, rotation) : raster
-      } catch {
-        // The original bytes are still useful to <img> when the browser's
-        // canvas encoder rejects an optional preview sprite.
-      }
+      } catch { /* use a valid transparent preview pixel below */ }
     }
-    const entry = fallback.entry || selected.entry
-    const source = await entry.async('blob')
-    return {
-      blob: source.slice(0, source.size, 'image/png'),
-      width: 1,
-      height: 1,
-    }
+    return transparentRaster(1, 1)
   }
+}
+
+async function firstUsableOsuPreview(entries: Array<JSZipObject | null>): Promise<RasterAsset> {
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    if (!entry || seen.has(entry.name.toLowerCase())) continue
+    seen.add(entry.name.toLowerCase())
+    try {
+      return await noteFromOsuImage(entry, 'note')
+    } catch { /* try the next mapped gameplay image */ }
+  }
+  return transparentRaster(64, 64)
 }
 
 export async function buildSkinPreview(
@@ -1540,16 +1704,42 @@ export async function buildSkinPreview(
 ): Promise<SkinPreview> {
   const archive = await loadArchive(input)
   if (direction === 'osu-to-etterna') {
-    const { assets } = await inspectOsu(archive)
-    const fallback = assets.flatMap((lane) => lane).find((asset) => asset.entry)
-    if (!fallback) throw new Error('The skin does not contain enough artwork to build a preview.')
+    const { assets, bodyStyle, mania } = await inspectOsu(archive)
+    const fallback = await firstUsableOsuPreview(assets.flatMap((lane) => lane).map((asset) => asset.entry))
+    const cache = new Map<string, Promise<RasterAsset>>()
+    const note = (entry: JSZipObject | null, kind: 'note' | 'body' | 'tail', style = bodyStyle) => {
+      if (!entry) return Promise.resolve(fallback)
+      const key = `${entry.name.toLowerCase()}|${kind}|${style}`
+      if (!cache.has(key)) cache.set(key, noteFromOsuImage(entry, kind, style).catch(() => fallback))
+      return cache.get(key)!
+    }
+    const receptor = (entry: JSZipObject | null) => {
+      if (!entry) return Promise.resolve(fallback)
+      const key = `${entry.name.toLowerCase()}|receptor`
+      if (!cache.has(key)) cache.set(key, receptorFromOsuKey(entry).catch(() => fallback))
+      return cache.get(key)!
+    }
+    const tail = (tailEntry: JSZipObject | null, bodyEntry: JSZipObject | null) => {
+      if (!tailEntry) return Promise.resolve(fallback)
+      const key = `${tailEntry.name.toLowerCase()}|tail-preview|${bodyEntry?.name.toLowerCase() || ''}|${bodyStyle}`
+      if (!cache.has(key)) {
+        cache.set(key, bodyEntry
+          ? tailFromOsuImages(tailEntry, bodyEntry, bodyStyle).catch(() => note(tailEntry, 'tail'))
+          : note(tailEntry, 'tail'))
+      }
+      return cache.get(key)!
+    }
     return {
+      hitPosition: Number(mania.values.get('hitposition')) || DEFAULT_OSU_HIT_POSITION,
+      columnWidth: Number(mania.values.get('columnwidth')?.split(',')[0]) || DEFAULT_OSU_COLUMN_WIDTH,
       lanes: await Promise.all(assets.map(async (lane) => ({
-        note: await previewAsset(lane[0], fallback),
-        holdHead: await previewAsset(lane[1], lane[0].entry ? lane[0] : fallback),
-        holdBody: await previewAsset(lane[2], lane[0].entry ? lane[0] : fallback, 0, false),
-        holdTail: await previewAsset(lane[3], lane[1].entry ? lane[1] : fallback),
-        receptor: await previewAsset(lane[4], lane[0].entry ? lane[0] : fallback, 0, false),
+        note: await note(lane[0].entry, 'note'),
+        holdHead: await note(lane[1].entry || lane[0].entry, 'note'),
+        // A short repeating strip previews the same Etterna body without
+        // asking Chromium to display a 40,000px source image.
+        holdBody: await note(lane[2].entry || lane[0].entry, 'body', 0),
+        holdTail: await tail(lane[3].entry || lane[1].entry, lane[2].entry),
+        receptor: await receptor(lane[4].entry || lane[0].entry),
       }))),
     }
   }
