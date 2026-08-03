@@ -369,9 +369,8 @@ body::-webkit-scrollbar { display: none; }
   position: absolute;
   z-index: 3;
   left: 50%;
-  width: min(76%, 4rem);
+  width: 80%;
   height: auto;
-  max-height: 4rem;
   object-fit: contain;
   pointer-events: none;
   user-select: none;
@@ -390,30 +389,40 @@ body::-webkit-scrollbar { display: none; }
 .skin-preview__hold {
   position: absolute;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
   top: 12%;
-  right: 12%;
+  right: 0;
   bottom: calc(100% - var(--hit-y));
-  left: 12%;
+  left: 0;
   min-height: 3rem;
   pointer-events: none;
 }
 
 .skin-preview__hold-body {
-  position: absolute;
-  inset: 1.25rem 10% 1.25rem;
+  position: relative;
+  inset: auto;
+  flex: 1 1 auto;
   width: 80%;
-  height: calc(100% - 2.5rem);
+  min-height: 0;
   object-fit: fill;
 }
 
 .skin-preview__hold-tail {
-  top: 0;
-  transform: translate(-50%, -8%);
+  position: relative;
+  top: auto;
+  left: auto;
+  flex: 0 0 auto;
+  transform: none;
 }
 
 .skin-preview__hold-head {
-  bottom: 0;
-  transform: translate(-50%, 8%);
+  position: relative;
+  bottom: auto;
+  left: auto;
+  flex: 0 0 auto;
+  transform: none;
 }
 
 .skin-hit-slider {

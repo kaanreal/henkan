@@ -37,6 +37,8 @@ export interface SkinPreviewLane {
 
 export interface SkinPreview {
   lanes: SkinPreviewLane[]
+  hitPosition?: number
+  columnWidth?: number
 }
 
 export interface SkinConversionOptions {

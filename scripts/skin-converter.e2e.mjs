@@ -18,6 +18,7 @@ const realMyukaPath = join(workspace, 'RealMyuka.zip')
 const realHamsterPath = join(workspace, '--] hamster kombat edition.osk')
 const realColorChangingPath = join(workspace, 'idk color changing.osk')
 const realSheepPath = join(workspace, "sheepex_'s gay girls skin.osk")
+const realTekkitoPath = join(workspace, '# - tekkito2 ft jb the voice tu perfume a chanel.osk')
 const realOsuSource = 'C:\\STUFF\\osu!\\Skins\\f8wq pro gamer catgirl skin'
 const realEtternaSource = "C:\\STUFF\\Etterna\\NoteSkins\\dance\\Kori'sPick"
 const realClairSource = 'C:\\STUFF\\Etterna\\NoteSkins\\dance\\clairpis'
@@ -25,6 +26,7 @@ const realMyukaSource = 'C:\\STUFF\\Etterna\\NoteSkins\\dance\\myuka'
 const realHamsterSource = 'C:\\STUFF\\osu!\\Skins\\--] hamster kombat edition'
 const realColorChangingSource = 'C:\\STUFF\\osu!\\Skins\\idk color changing'
 const realSheepSource = "C:\\STUFF\\osu!\\Skins\\sheepex_'s gay girls skin"
+const realTekkitoSource = 'C:\\Users\\Kaan\\Downloads\\# - tekkito2 ft jb the voice tu perfume a chanel'
 const appUrl = 'http://127.0.0.1:4178/skin-converter'
 const debugPort = 9338
 
@@ -66,6 +68,7 @@ return ret
   if (existsSync(realHamsterSource)) await zipDirectory(realHamsterSource, realHamsterPath)
   if (existsSync(realColorChangingSource)) await zipDirectory(realColorChangingSource, realColorChangingPath)
   if (existsSync(realSheepSource)) await zipDirectory(realSheepSource, realSheepPath)
+  if (existsSync(realTekkitoSource)) await zipDirectory(realTekkitoSource, realTekkitoPath)
 }
 
 async function zipDirectory(source, destination) {
@@ -106,9 +109,9 @@ async function connectCdp() {
   const pages = await waitFor(async () => {
     const response = await fetch(`http://127.0.0.1:${debugPort}/json`)
     const entries = await response.json()
-    return entries.find((entry) => entry.type === 'page') ? entries : null
+    return entries.find((entry) => entry.type === 'page' && entry.url === appUrl) ? entries : null
   }, 'browser debugging endpoint')
-  const page = pages.find((entry) => entry.type === 'page')
+  const page = pages.find((entry) => entry.type === 'page' && entry.url === appUrl)
   const socket = new WebSocket(page.webSocketDebuggerUrl)
   await new Promise((resolve, reject) => {
     socket.addEventListener('open', resolve, { once: true })
@@ -217,10 +220,20 @@ async function assertPreview(cdp, expectedHitPosition = 420) {
       hitPosition: Number(stage.dataset.hitPosition),
       lanes: stage.querySelectorAll('.skin-preview__lane').length,
       images: stage.querySelectorAll('img').length,
+      brokenImages: [...stage.querySelectorAll('img')].filter((node) => !node.complete || node.naturalWidth < 1).length,
       receptorTops: [...stage.querySelectorAll('.skin-preview__receptor')].map((node) => Math.round(node.getBoundingClientRect().top)),
+      holdParts: ['tail', 'body', 'head'].map((part) => {
+        const rect = stage.querySelector('.skin-preview__hold-' + part).getBoundingClientRect()
+        return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), width: Math.round(rect.width) }
+      }),
     }
   })()`), 'skin gameplay preview')
-  if (preview.hitPosition !== expectedHitPosition || preview.lanes !== 4 || preview.images < 7 || new Set(preview.receptorTops).size !== 1) {
+  const receptorSpread = Math.max(...preview.receptorTops) - Math.min(...preview.receptorTops)
+  const holdWidthSpread = Math.max(...preview.holdParts.map((part) => part.width)) - Math.min(...preview.holdParts.map((part) => part.width))
+  const holdHasGapOrOverlap = Math.abs(preview.holdParts[0].bottom - preview.holdParts[1].top) > 1
+    || Math.abs(preview.holdParts[1].bottom - preview.holdParts[2].top) > 1
+  if (preview.hitPosition !== expectedHitPosition || preview.lanes !== 4 || preview.images < 7 || preview.brokenImages
+    || receptorSpread > 1 || holdWidthSpread > 1 || holdHasGapOrOverlap) {
     throw new Error(`Skin preview is incomplete: ${JSON.stringify(preview)}`)
   }
 }
@@ -555,6 +568,26 @@ async function assertEtternaArchive(filePath) {
   }
 }
 
+async function assertTekkitoReceptors(cdp, filePath) {
+  const archive = await JSZip.loadAsync(await readFile(filePath), { checkCRC32: true })
+  const noteSkinPath = Object.keys(archive.files).find((name) => /^[^/]+\/NoteSkin\.lua$/i.test(name))
+  const base = noteSkinPath?.slice(0, -'NoteSkin.lua'.length)
+  if (!base) throw new Error('Tekkito conversion has no installable noteskin folder.')
+  const idle = await archive.file(`${base}_down receptor idle (doubleres).png`)?.async('uint8array')
+  const pressed = await archive.file(`${base}_down receptor pressed (doubleres).png`)?.async('uint8array')
+  if (!idle || !pressed) throw new Error('Tekkito conversion is missing receptor states.')
+  const idleSize = pngSize(idle)
+  const pressedSize = pngSize(pressed)
+  if (idleSize.width !== 128 || idleSize.height !== 128
+    || idleSize.width !== pressedSize.width || idleSize.height !== pressedSize.height) {
+    throw new Error(`Tekkito pressed receptor geometry changed: idle=${JSON.stringify(idleSize)}, pressed=${JSON.stringify(pressedSize)}`)
+  }
+  const [idleBounds, pressedBounds] = await Promise.all([alphaBounds(cdp, idle), alphaBounds(cdp, pressed)])
+  if (JSON.stringify(idleBounds) !== JSON.stringify(pressedBounds)) {
+    throw new Error(`Tekkito pressed receptor includes stray key artwork: idle=${JSON.stringify(idleBounds)}, pressed=${JSON.stringify(pressedBounds)}`)
+  }
+}
+
 async function assertHamsterEtterna(cdp, filePath) {
   const archive = await JSZip.loadAsync(await readFile(filePath), { checkCRC32: true })
   const noteSkinPath = Object.keys(archive.files).find((name) => /^[^/]+\/NoteSkin\.lua$/i.test(name))
@@ -651,13 +684,30 @@ try {
     appUrl,
   ], { stdio: 'ignore', windowsHide: true })
   cdp = await connectCdp()
+  await cdp.call('Page.navigate', { url: appUrl })
   await cdp.call('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads, eventsEnabled: true })
-  await waitFor(async () => evaluate(cdp, `document.readyState === 'complete' && Boolean(document.querySelector('.skin-page'))`), 'skin converter page')
+  try {
+    await waitFor(async () => evaluate(cdp, `document.readyState === 'complete' && Boolean(document.querySelector('.skin-page'))`), 'skin converter page')
+  } catch (error) {
+    const diagnostic = await evaluate(cdp, `({ href: location.href, readyState: document.readyState, text: document.body?.innerText?.slice(0, 500), html: document.body?.innerHTML?.slice(0, 500) })`)
+    throw new Error(`${error.message}: ${JSON.stringify(diagnostic)}`)
+  }
   await assertResponsive(cdp)
   if (await evaluate(cdp, `Boolean(document.querySelector('.header-direction'))`)) {
     throw new Error('Skin converter must not expose a manual direction switch.')
   }
 
+  if (process.env.HENKAN_ONLY_TEKKITO) {
+    if (!existsSync(realTekkitoPath)) throw new Error('The tekkito regression skin is unavailable.')
+    await setFile(cdp, realTekkitoPath)
+    await waitForReport(cdp, '# - tekkito2 ft jb the voice tu perfume a chanel')
+    await assertPreview(cdp, 412)
+    await clickConvert(cdp)
+    const convertedTekkito = await newestDownload('.zip', '# - tekkito2 ft jb the voice tu perfume a chanel')
+    await assertEtternaArchive(convertedTekkito)
+    await assertTekkitoReceptors(cdp, convertedTekkito)
+    if (process.env.HENKAN_TEKKITO_OUTPUT) await copyFile(convertedTekkito, process.env.HENKAN_TEKKITO_OUTPUT)
+  } else {
   await setFile(cdp, osuPath)
   await waitForReport(cdp, 'Fixture')
   await assertPreview(cdp)
@@ -716,6 +766,16 @@ try {
       if (process.env.HENKAN_SHEEP_OUTPUT) await copyFile(convertedSheep, process.env.HENKAN_SHEEP_OUTPUT)
     }
 
+    if (existsSync(realTekkitoPath)) {
+      await setFile(cdp, realTekkitoPath)
+      await waitForReport(cdp, '# - tekkito2 ft jb the voice tu perfume a chanel')
+      await assertPreview(cdp)
+      await clickConvert(cdp)
+      const convertedTekkito = await newestDownload('.zip', '# - tekkito2 ft jb the voice tu perfume a chanel')
+      await assertEtternaArchive(convertedTekkito)
+      if (process.env.HENKAN_TEKKITO_OUTPUT) await copyFile(convertedTekkito, process.env.HENKAN_TEKKITO_OUTPUT)
+    }
+
     await setFile(cdp, realEtternaPath)
     await waitForReport(cdp, "Kori'sPick")
     await assertMappingSource(cdp, ' note', '_down tap note 1x8 (doubleres).png')
@@ -764,8 +824,11 @@ try {
   await dropEtternaFolder(cdp)
   await waitFor(async () => evaluate(cdp, `location.pathname === '/skin-converter'`), 'automatic skin folder routing')
   await waitForReport(cdp, 'DroppedEtterna')
+  }
 
-  console.log(process.env.HENKAN_SKIP_INSTALLED
+  console.log(process.env.HENKAN_ONLY_TEKKITO
+    ? 'Skin converter tekkito regression passed: tall PNG decode, preview, and osu!mania to Etterna conversion'
+    : process.env.HENKAN_SKIP_INSTALLED
     ? 'Skin converter E2E passed: synthetic fixtures, auto-routing, preview, HitPosition, naming, and responsive layouts'
     : 'Skin converter E2E passed: synthetic and installed osu!mania/Etterna skins, including hamster, clairpis, and myuka')
 } finally {
