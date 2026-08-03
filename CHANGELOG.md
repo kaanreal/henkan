@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/kaanreal/henkan/compare/v1.5.0...v1.5.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **skins:** improve image compatibility and preview accuracy 🐛 ([81c5ade](https://github.com/kaanreal/henkan/commit/81c5adecf1892849de842172e7134fa201aa9918))
+
 ## [1.5.0](https://github.com/kaanreal/henkan/compare/v1.4.0...v1.5.0) (2026-07-26)
 
 
