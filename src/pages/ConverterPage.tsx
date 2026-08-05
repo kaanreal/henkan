@@ -43,6 +43,22 @@ import { detectSkinArchive } from '../services/skinConverter'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
+// The updater manifest stores the GitHub release URL in `notes`, which the
+// plugin surfaces as `body`. Fetch the real markdown notes from the API.
+async function resolveUpdateBody(version: string, body: string | null): Promise<string | null> {
+  if (body && !/^https?:\/\//.test(body)) return body
+  try {
+    const resp = await fetch(`https://api.github.com/repos/kaanreal/henkan/releases/tags/v${version}`, {
+      headers: { Accept: 'application/vnd.github+json' },
+    })
+    if (!resp.ok) return body
+    const release = await resp.json()
+    return release?.body ?? body
+  } catch {
+    return body
+  }
+}
+
 function configFromEntry(entry: PackEntry): ExportConfig {
   const fallback = entry.source_file.split(/[/\\]+/).filter(Boolean).pop()?.replace(/\.[^.]+$/, '') || 'Untitled'
   return {
@@ -271,7 +287,7 @@ export default function ConverterPage() {
         if (localStorage.getItem(storageKey)) return
         setPendingUpdate({
           version: update.version,
-          body: update.body ?? null,
+          body: await resolveUpdateBody(update.version, update.body ?? null),
           date: update.date ?? null,
         })
         setShowUpdateDialog(true)
@@ -295,14 +311,15 @@ export default function ConverterPage() {
       const { check } = await import('@tauri-apps/plugin-updater')
       const update = await check()
       if (!update) return null
+      const body = await resolveUpdateBody(update.version, update.body ?? null)
       setPendingUpdate({
         version: update.version,
-        body: update.body ?? null,
+        body,
         date: update.date ?? null,
       })
       return {
         version: update.version,
-        body: update.body ?? null,
+        body,
         date: update.date ?? null,
       }
     } catch {
