@@ -39,6 +39,42 @@ const LOOK_AHEAD_MAX = 600
 const LOOK_AHEAD_DEFAULT = 380
 const TIMING_OFFSET = 0 // Web Audio API's decodeAudioData handles LAME padding natively; no manual shift needed
 
+// Playable preview — mania-style judging
+const WINDOW_PERFECT = 49
+const WINDOW_GREAT = 99
+const WINDOW_GOOD = 151
+const WINDOW_MEH = 188
+const PRESS_FLASH_DURATION = 90
+
+const JUDGEMENTS = {
+  PERFECT: { color: '#ffffff' },
+  GREAT: { color: '#7de0ff' },
+  GOOD: { color: '#ffe066' },
+  MEH: { color: '#ff9c66' },
+  MISS: { color: '#ff5f7e' },
+} as const
+type Judgement = keyof typeof JUDGEMENTS
+
+const MANIA_KEY_MAP: Record<number, string[]> = {
+  1: ['KeyD'],
+  2: ['KeyD', 'KeyK'],
+  3: ['KeyD', 'KeyF', 'KeyK'],
+  4: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'],
+  5: ['KeyD', 'KeyF', 'KeyG', 'KeyJ', 'KeyK'],
+  6: ['KeyS', 'KeyD', 'KeyF', 'KeyJ', 'KeyK', 'KeyL'],
+  7: ['KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyJ', 'KeyK', 'KeyL'],
+  8: ['KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL'],
+}
+const ALT_MANIA_ROW = ['KeyC', 'KeyV', 'KeyN', 'KeyM']
+
+function playColumnFor(code: string, cols: number): number {
+  const row = MANIA_KEY_MAP[cols] ?? MANIA_KEY_MAP[4]
+  const direct = row.indexOf(code)
+  if (direct !== -1) return direct
+  const altIdx = ALT_MANIA_ROW.indexOf(code)
+  return altIdx !== -1 && altIdx < row.length ? altIdx : -1
+}
+
 // Persist settings across preview open/close
 let _scrollSpeed = LOOK_AHEAD_DEFAULT
 let _rate = useConverterStore.getState().config.conversion_rate
@@ -58,12 +94,23 @@ export function PreviewOverlay({
   const hitsoundRef = useRef(_hitsound)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const compressorRef = useRef<DynamicsCompressorNode | null>(null)
-  const firedKeys = useRef(new Set<string>())
-  const groups = useRef(new Map<number, number>())
+  const judgedRef = useRef(new Set<number>())
+  const hitFlashRef = useRef(new Map<number, number>())
+  const pressedRef = useRef(new Map<number, number>())
+  const nowRef = useRef(0)
   const prevNowMs = useRef(0)
   const useOffsetRef = useRef(sourceFormat === 'Etterna')
   const [toast, setToast] = useState<{ msg: string; leaving?: boolean } | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
+  const [combo, setCombo] = useState(0)
+  const [maxCombo, setMaxCombo] = useState(0)
+  const [accuracy, setAccuracy] = useState(100)
+  const [judgePop, setJudgePop] = useState<{ text: string; color: string; n: number } | null>(null)
+  const comboRef = useRef(0)
+  const maxComboRef = useRef(0)
+  const hitsRef = useRef(0)
+  const accSumRef = useRef(0)
+  const popNRef = useRef(0)
 
   const smoothTimeRef = useRef(0)
   const warmupFrames = useRef(2)
@@ -133,13 +180,6 @@ export function PreviewOverlay({
     } catch { /* ignore */ }
   }, [])
 
-  const gainForCount = (n: number) => {
-    if (n >= 4) return 0.25
-    if (n === 3) return 0.20
-    if (n === 2) return 0.14
-    return 0.08
-  }
-
   const playHit = useCallback((gain: number = 0.08) => {
     try {
       const ctx = audioCtxRef.current
@@ -154,6 +194,52 @@ export function PreviewOverlay({
       src.start()
     } catch { /* ignore */ }
   }, [])
+
+  const recordJudge = useCallback((grade: Judgement) => {
+    if (grade === 'MISS') {
+      comboRef.current = 0
+      setCombo(0)
+    } else {
+      comboRef.current += 1
+      maxComboRef.current = Math.max(maxComboRef.current, comboRef.current)
+      setCombo(comboRef.current)
+      setMaxCombo(maxComboRef.current)
+      const value = grade === 'PERFECT' ? 320 : grade === 'GREAT' ? 300 : grade === 'GOOD' ? 200 : 100
+      hitsRef.current += 1
+      accSumRef.current += value
+      setAccuracy((accSumRef.current / (hitsRef.current * 320)) * 100)
+    }
+    setJudgePop({ text: grade, color: JUDGEMENTS[grade].color, n: ++popNRef.current })
+  }, [])
+
+  const judgeColumn = useCallback((col: number) => {
+    const now = nowRef.current
+    const notes = notesRef.current
+    let best = -1
+    let bestDiff = Infinity
+    for (let i = 0; i < notes.length; i++) {
+      const n = notes[i]
+      if (n.column !== col || judgedRef.current.has(i)) continue
+      const diff = Math.abs(n.time_ms - now)
+      if (diff <= WINDOW_MEH && diff < bestDiff) {
+        bestDiff = diff
+        best = i
+      }
+    }
+    pressedRef.current.set(col, now)
+    const el = audioPlayerRefRef.current.current
+    if (el && el.paused) el.play().catch(() => {})
+    if (best === -1) return
+    const grade: Judgement =
+      bestDiff <= WINDOW_PERFECT ? 'PERFECT'
+      : bestDiff <= WINDOW_GREAT ? 'GREAT'
+      : bestDiff <= WINDOW_GOOD ? 'GOOD'
+      : 'MEH'
+    judgedRef.current.add(best)
+    hitFlashRef.current.set(col, now)
+    recordJudge(grade)
+    if (hitsoundRef.current) playHit(0.16)
+  }, [playHit, recordJudge])
 
   // ── Init hitsound AudioContext ──
   useEffect(() => {
@@ -185,6 +271,12 @@ export function PreviewOverlay({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'F12') { e.preventDefault(); return }
+      const playCol = playColumnFor(e.code, keysRef.current)
+      if (playCol !== -1) {
+        e.preventDefault()
+        if (!e.repeat) judgeColumn(playCol)
+        return
+      }
       const tag = (e.target as HTMLElement)?.tagName
       if (e.key === 'Escape' || (e.code === 'Space' && tag !== 'INPUT' && tag !== 'TEXTAREA')) {
         e.preventDefault()
@@ -210,7 +302,23 @@ export function PreviewOverlay({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [close, ensureClap, showToast, t])
+  }, [close, ensureClap, showToast, t, judgeColumn])
+
+  useEffect(() => {
+    const up = (e: KeyboardEvent) => {
+      const col = playColumnFor(e.code, keysRef.current)
+      if (col === -1) return
+      e.preventDefault()
+      pressedRef.current.delete(col)
+    }
+    window.addEventListener('keyup', up)
+    const onBlur = () => pressedRef.current.clear()
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keyup', up)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.altKey) return
@@ -275,7 +383,19 @@ export function PreviewOverlay({
       smoothTimeRef.current += (audioTimeMs - smoothTimeRef.current) * 0.3
       const nowMs = smoothTimeRef.current
 
-      if (nowMs < prevNowMs.current - 200) firedKeys.current.clear()
+      nowRef.current = nowMs
+      if (Math.abs(nowMs - prevNowMs.current) > 200) {
+        judgedRef.current.clear()
+        hitFlashRef.current.clear()
+        pressedRef.current.clear()
+        comboRef.current = 0
+        maxComboRef.current = 0
+        hitsRef.current = 0
+        accSumRef.current = 0
+        setCombo(0)
+        setMaxCombo(0)
+        setAccuracy(100)
+      }
       prevNowMs.current = nowMs
       const cols = keysRef.current
       const lookAhead = scrollRef.current * (rateRef.current || 1)
@@ -316,40 +436,24 @@ export function PreviewOverlay({
 
       const drawNotes = warmupFrames.current <= 0
       if (drawNotes) {
-        // Hit flashes + hitsounds
-        const flashes = new Array(cols).fill(0)
-        const hsOn = hitsoundRef.current
+        // Misses: notes whose hit window has fully passed without being judged
         for (let i = 0; i < allNotes.length; i++) {
-          const nt = allNotes[i]
-          const t = nt.time_ms
-          if (t > nowMs + FLASH_DURATION) continue
-          if (t + 200 < nowMs) continue
-
-          if (t >= nowMs - FLASH_DURATION && t <= nowMs) {
-            const age = (nowMs - t) / FLASH_DURATION
-            flashes[nt.column] = Math.max(flashes[nt.column], 1 - age)
-          }
-
-          if (hsOn && el && !el.paused) {
-            const diff = Math.abs(t - nowMs)
-            if (diff < 30) {
-              const bucket = Math.round(t / 10) * 10
-              const key = `b:${bucket}`
-              if (!firedKeys.current.has(key)) {
-                firedKeys.current.add(key)
-                const bucketCount = (groups.current.get(bucket) ?? 0) + 1
-                groups.current.set(bucket, bucketCount)
-              }
-            }
+          if (judgedRef.current.has(i)) continue
+          if (allNotes[i].time_ms + WINDOW_MEH < nowMs) {
+            judgedRef.current.add(i)
+            recordJudge('MISS')
           }
         }
 
-        // Fire batched hitsounds
-        if (groups.current.size > 0) {
-          for (const count of groups.current.values()) {
-            playHit(gainForCount(count))
-          }
-          groups.current.clear()
+        // Receptor flashes from player hits + key presses
+        const flashes = new Array(cols).fill(0)
+        for (const [col, t] of hitFlashRef.current) {
+          const age = 1 - (nowMs - t) / FLASH_DURATION
+          if (age > 0) flashes[col] = Math.max(flashes[col], age)
+        }
+        for (const [col, t] of pressedRef.current) {
+          const age = 1 - (nowMs - t) / PRESS_FLASH_DURATION
+          if (age > 0) flashes[col] = Math.max(flashes[col], age * 0.4)
         }
 
         // Receptor - dark by default, bright flash on hit
@@ -423,7 +527,7 @@ export function PreviewOverlay({
       cancelAnimationFrame(rafId.current)
       window.removeEventListener('resize', resize)
     }
-  }, [playHit, duration])
+  }, [playHit, recordJudge, duration])
 
   const prvPct = duration > 0 ? (previewTime / 1000 / duration) * 100 : 0
 
@@ -494,6 +598,12 @@ export function PreviewOverlay({
               <span className="text-white/30">{t(descKey)}</span>
             </div>
           ))}
+          <div className="flex items-center gap-2 text-[11px]">
+            <span className="text-white/60 font-mono tracking-wide bg-emerald-400/10 text-emerald-300/80 px-1.5 py-0.5 rounded leading-none">
+              {(MANIA_KEY_MAP[keys] ?? MANIA_KEY_MAP[4]).map(c => c.slice(3)).join(' ')}
+            </span>
+            <span className="text-white/30">Play</span>
+          </div>
         </div>
 
         {/* Toast notification */}
@@ -511,6 +621,30 @@ export function PreviewOverlay({
           <div className="w-full max-w-sm lg:max-w-xl h-full relative">
             <canvas ref={canvasRef} className="w-full h-full" />
           </div>
+        </div>
+
+        {/* Judgment popup */}
+        {judgePop && (
+          <div
+            key={judgePop.n}
+            className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-none font-extrabold tracking-[0.3em] text-2xl animate-[judgePop_0.35s_ease-out_forwards]"
+            style={{ bottom: '17%', color: judgePop.color, textShadow: '0 0 14px currentColor' }}
+          >
+            {judgePop.text}
+          </div>
+        )}
+
+        {/* Play HUD */}
+        <div className="absolute right-4 top-16 z-10 text-right pointer-events-none">
+          {combo > 1 && (
+            <div key={combo} className="text-white font-bold text-3xl animate-[comboPop_0.15s_ease-out] tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">
+              {combo}
+            </div>
+          )}
+          <div className="text-white/60 text-xs font-mono tabular-nums mt-0.5">{accuracy.toFixed(2)}%</div>
+          {maxCombo > 1 && (
+            <div className="text-white/35 text-[10px] font-mono tabular-nums mt-0.5">MAX {maxCombo}</div>
+          )}
         </div>
 
         {!playing && (

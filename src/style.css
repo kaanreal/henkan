@@ -199,6 +199,19 @@ body::-webkit-scrollbar { display: none; }
   to { opacity: 0; transform: translateY(-8px) scale(0.95); }
 }
 
+@keyframes judgePop {
+  0% { opacity: 0; transform: translate(-50%, 10px) scale(0.7); }
+  15% { opacity: 1; transform: translate(-50%, 0) scale(1.15); }
+  30% { transform: translate(-50%, 0) scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -14px) scale(1); }
+}
+
+@keyframes comboPop {
+  0% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
 @keyframes loading-bar {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(350%); }
