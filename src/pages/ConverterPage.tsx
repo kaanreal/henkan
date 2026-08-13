@@ -1,6 +1,7 @@
 ﻿import type { Beatmap, ExportConfig, PackEntry } from '../types/beatmap'
 import { useCallback, useState, useEffect, useRef, startTransition } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { useConverterStore } from '../stores/useConverterStore'
 import { useQueueStore, type QueueItem, buildConfig, emptyConfig, generateId, detectDirection } from '../stores/useQueueStore'
 import { ErrorBoundary } from '../components/ErrorBoundary'
@@ -40,6 +41,7 @@ import {
   type SkinInput,
 } from '../services/skinInput'
 import { detectSkinArchive } from '../services/skinConverter'
+import i18n from '../i18n'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
@@ -142,6 +144,7 @@ async function resolveMediaName(sourceDir: string, filename: string | null | und
 
 export default function ConverterPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const {
     beatmap, config, direction, mediaUrls,
     isConverting, exportPath, error, dragging,
@@ -252,7 +255,7 @@ export default function ConverterPage() {
       const newVol = Math.round(Math.max(0, Math.min(1, player.volume + step)) * 100)
       player.volume = newVol / 100
       if (volumeToastTimer.current) clearTimeout(volumeToastTimer.current)
-      setVolumeToast({ msg: `Volume ${newVol}%` })
+      setVolumeToast({ msg: i18n.t('converter.volume', { value: newVol }) })
       volumeToastTimer.current = window.setTimeout(() => {
         setVolumeToast(v => v ? { ...v, leaving: true } : null)
         volumeToastTimer.current = window.setTimeout(() => setVolumeToast(null), 220)
@@ -354,7 +357,7 @@ export default function ConverterPage() {
   const handleMirrorDownload = async (setId: number, filename: string) => {
     const { downloadBeatmapPath } = await import('../services/beatmapMirror')
     const { path, error } = await downloadBeatmapPath(setId, filename)
-    if (error || !path) throw new Error(error ?? 'Download failed')
+    if (error || !path) throw new Error(error ?? i18n.t('beatmapMirror.downloadFailed'))
     handleFilesSelected([path])
   }
 
@@ -467,7 +470,7 @@ export default function ConverterPage() {
           }
         }
       } catch (e: unknown) {
-        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to parse file'
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.failedToParseFile')
         console.error('ParseFile error:', e)
         queueUpdateItem(id, { status: 'error', error: msg })
       }
@@ -479,11 +482,11 @@ export default function ConverterPage() {
     if (skinPath) {
       const input = getCachedFile(skinPath) || skinPath
       if (await routeSkinInput(input)) return
-      setError('That archive is not a readable osu!mania or Etterna skin.')
+      setError(t('converter.notReadableSkin'))
       return
     }
     await handleFilesSelected(paths)
-  }, [handleFilesSelected, routeSkinInput, setError])
+  }, [handleFilesSelected, routeSkinInput, setError, t])
 
   const handleQueueSelect = useCallback(async (item: QueueItem) => {
     if (item.id === queueActiveId || !item.beatmap) return
@@ -527,7 +530,7 @@ export default function ConverterPage() {
       setBeatmap(item.beatmap, item.direction)
       useConverterStore.getState().updateConfig(item.config)
     } catch {
-      setError('Failed to load media')
+      setError(i18n.t('converter.failedToLoadMedia'))
     } finally {
       setQueueLoading(false)
     }
@@ -536,12 +539,12 @@ export default function ConverterPage() {
   const handleQueueAddFiles = useCallback(async () => {
     const selected = await dialogOpenFiles({
       multiple: true,
-      filters: [{ name: 'Beatmap Files', extensions: ['osu', 'osz', 'sm'] }],
+      filters: [{ name: t('dialogs.filterBeatmapFiles'), extensions: ['osu', 'osz', 'sm'] }],
     })
     if (selected) {
       handleFilesSelected(selected)
     }
-  }, [handleFilesSelected])
+  }, [handleFilesSelected, t])
 
   const handleQueueRemove = useCallback((id: string) => {
     const idx = queueItems.findIndex(i => i.id === id)
@@ -615,7 +618,7 @@ export default function ConverterPage() {
     setError(null)
     setLastExportPath(null)
 
-    const baseDir = isTauri() ? await dialogOpenDirectory({ title: 'Export all to folder' }) : ''
+    const baseDir = isTauri() ? await dialogOpenDirectory({ title: t('dialogs.titleExportAllFolder') }) : ''
     if (baseDir === null) { setConverting(false); return }
 
     const allPaths: string[] = []
@@ -716,7 +719,7 @@ export default function ConverterPage() {
         }
         queueUpdateItem(item.id, { status: 'completed', exportPath: allPaths[allPaths.length - 1], config: cfg })
       } catch (e: unknown) {
-        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Conversion failed'
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.conversionFailed')
         queueUpdateItem(item.id, { status: 'error', error: msg, config: cfg })
       }
     }
@@ -727,7 +730,7 @@ export default function ConverterPage() {
       trackEvent('batch_conversion_completed', { count: String(readyItems.length) })
     }
     setConverting(false)
-  }, [queueItems, queueActiveId, isConverting, queueUpdateItem, setConverting, setError, setExportPath])
+  }, [queueItems, queueActiveId, isConverting, queueUpdateItem, setConverting, setError, setExportPath, t])
 
   const handleConvert = useCallback(() => {
     if (!beatmap) return
@@ -747,13 +750,13 @@ export default function ConverterPage() {
       if (isTauri()) {
         if (cur.output_format === 'osz') {
           exportDir = await dialogSaveFile({
-            title: 'Export as .osz',
+            title: t('dialogs.titleExportOsz'),
             defaultPath: `${cur.artist} - ${cur.title} (${cur.creator}).osz`,
-            filters: [{ name: 'osu! beatmap package', extensions: ['osz'] }],
+            filters: [{ name: t('dialogs.filterOsuPackage'), extensions: ['osz'] }],
           })
         } else {
           exportDir = await dialogOpenDirectory({
-            title: 'Choose export folder',
+            title: t('dialogs.titleExportFolder'),
           })
         }
       } else {
@@ -884,16 +887,16 @@ export default function ConverterPage() {
       trackEvent('conversion_completed', { count: String(indices.length), format: cur.output_format })
     } catch (e: unknown) {
       if (queueActiveId) {
-        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Conversion failed'
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.conversionFailed')
         queueUpdateItem(queueActiveId, { status: 'error', error: msg, config: cur })
       }
-      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Conversion failed'
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.conversionFailed')
       setError(msg)
       trackEvent('conversion_failed', { error: msg })
     } finally {
       setConverting(false)
     }
-  }, [beatmap, direction, diffNameTemplate, queueActiveId, queueUpdateItem, setConverting, setError, setExportPath])
+  }, [beatmap, direction, diffNameTemplate, queueActiveId, queueUpdateItem, setConverting, setError, setExportPath, t])
 
   const handleConvertDialogConfirm = useCallback(async (indices: number[]) => {
     if (!beatmap?.source_file || indices.length === 0) return
@@ -936,7 +939,7 @@ export default function ConverterPage() {
   const handleOpenPack = useCallback(async (folder?: string) => {
     if (!folder) {
       clearFileCache()
-      const picked = await dialogOpenDirectory({ title: 'Select pack folder' })
+      const picked = await dialogOpenDirectory({ title: t('dialogs.titleSelectPackFolder') })
       if (!picked) return
       folder = picked
     }
@@ -960,7 +963,7 @@ export default function ConverterPage() {
         console.log('[handleOpenPack] scanSongsFolder returned', entries.length, 'entries')
         detectedType = 'osu'
       } catch (e: unknown) {
-        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to scan folder'
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.failedToScanFolder')
         console.error('[handleOpenPack] scanSongsFolder error:', msg)
         setError(msg)
         setPackFolder(null)
@@ -970,7 +973,7 @@ export default function ConverterPage() {
     }
 
     if (entries.length === 0) {
-      const msg = 'No .sm or .osu files found in the selected folder (scanned: ' + folder + ')'
+      const msg = i18n.t('converter.noBeatmapsFound', { folder })
       console.error('[handleOpenPack]', msg)
       setError(msg)
       setPackFolder(null)
@@ -1014,7 +1017,7 @@ export default function ConverterPage() {
     } finally {
       setPackLoading(false)
     }
-  }, [handleFilesSelected, setDirection, setError])
+  }, [handleFilesSelected, setDirection, setError, t])
 
   const handlePackEditSong = useCallback(async (index: number) => {
     const entry = packEntries[index]
@@ -1071,7 +1074,7 @@ export default function ConverterPage() {
         useConverterStore.getState().updateConfig({ background_filename: bgName })
       }
     } catch (e: unknown) {
-      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to load song')
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.failedToLoadSong'))
       setPackEditing(null)
     }
   }, [packEntries, packEditing, setAudioPlaying, setError])
@@ -1293,7 +1296,7 @@ export default function ConverterPage() {
       } else {
         // Tauri path
         const exportDir = await dialogOpenDirectory({
-          title: useOsz ? 'Choose where to save the .osz' : 'Choose export folder',
+          title: useOsz ? t('dialogs.titleChooseOszFolder') : t('dialogs.titleExportFolder'),
         })
         if (!exportDir) { setConverting(false); return }
 
@@ -1350,13 +1353,13 @@ export default function ConverterPage() {
         trackEvent('pack_conversion_completed', { count: String(indices.length), mode: settings.mode })
       }
     } catch (e: unknown) {
-      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Pack conversion failed'
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.packConversionFailed')
       setError(msg)
       trackEvent('pack_conversion_failed', { error: msg })
     } finally {
       setConverting(false)
     }
-  }, [packEntries, packSelected, packConvertAllMode, packFolder, packBannerPath, packType, setConverting, setError, setExportPath])
+  }, [packEntries, packSelected, packConvertAllMode, packFolder, packBannerPath, packType, setConverting, setError, setExportPath, t])
 
   const handlePackSettingsCancel = useCallback(() => {
     setShowPackSettings(false)
@@ -1390,11 +1393,11 @@ export default function ConverterPage() {
         loadCdtitleAsDataUrl(bm.source_dir, cfg.cdtitle_filename || bm.cdtitle_filename, cfg.creator || bm.creator),
       ])
       useConverterStore.getState().setMediaUrls({ audio, background: bg, banner, cdtitle })
-    } catch (e: unknown) {
-      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to select difficulty')
-    } finally {
-      setSwitchingDifficulty(false)
-    }
+      } catch (e: unknown) {
+        setError(typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.failedToSelectDifficulty'))
+      } finally {
+        setSwitchingDifficulty(false)
+      }
   }, [beatmap, setError, queueActiveId, queueUpdateItem])
 
   const handleChangeFile = useCallback(async (field: string, _current: string | null): Promise<void> => {
@@ -1402,7 +1405,7 @@ export default function ConverterPage() {
       const selected = await dialogOpenFiles({
         multiple: false,
         filters: [
-          { name: 'Media files', extensions: ['mp3', 'ogg', 'wav', 'jpg', 'jpeg', 'png', 'gif'] },
+          { name: t('dialogs.filterMediaFiles'), extensions: ['mp3', 'ogg', 'wav', 'jpg', 'jpeg', 'png', 'gif'] },
         ],
       })
       if (selected && selected.length > 0) {
@@ -1416,7 +1419,7 @@ export default function ConverterPage() {
         }
       }
     } catch { /* ignore */ }
-  }, [])
+  }, [t])
 
   const handleOpenInOsu = useCallback(async () => {
     const path = exportPath || lastExportPath
@@ -1538,7 +1541,7 @@ export default function ConverterPage() {
           const skinArchive = files.find((file) => isSkinArchiveName(file.name))
           if (skinArchive) {
             if (await routeSkinInput(skinArchive)) return
-            setError('That archive is not a readable osu!mania or Etterna skin.')
+            setError(t('converter.notReadableSkin'))
             return
           }
 
@@ -1646,7 +1649,7 @@ export default function ConverterPage() {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
                   </svg>
-                  Back to pack
+                  {t('converter.backToPack')}
                 </button>
                 <MetadataPanel
                   beatmap={beatmap}
@@ -1676,7 +1679,7 @@ export default function ConverterPage() {
                 <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
                 <div className="flex items-center gap-3 w-full max-w-md">
                   <div className="flex-1 h-px bg-white/5" />
-                  <span className="text-[11px] text-surface-500 tracking-widest uppercase">or</span>
+                  <span className="text-[11px] text-surface-500 tracking-widest uppercase">{t('common.or')}</span>
                   <div className="flex-1 h-px bg-white/5" />
                 </div>
                 <button
@@ -1689,7 +1692,7 @@ export default function ConverterPage() {
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  Search beatmaps
+                  {t('converter.searchBeatmaps')}
                 </button>
                 <button
                   onClick={() => handleOpenPack()}
@@ -1698,13 +1701,13 @@ export default function ConverterPage() {
                     hover:bg-white/[0.07] hover:text-surface-200
                     transition-all duration-75"
                 >
-                  Open pack folder
+                  {t('converter.openPackFolder')}
                 </button>
                 <Link
                   to="/skin-converter"
                   className="text-xs text-surface-500 hover:text-surface-300 transition-colors duration-75"
                 >
-                  Convert a skin instead →
+                  {t('converter.convertSkinInstead')} →
                 </Link>
               </div>
               </>
@@ -1713,7 +1716,7 @@ export default function ConverterPage() {
             {!packFolder && packLoading && (
               <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
                 <div className="w-10 h-10 rounded-xl border-2 border-accent/30 border-t-accent animate-spin" />
-                <p className="text-sm text-surface-400">Scanning pack...</p>
+                <p className="text-sm text-surface-400">{t('converter.scanningPack')}</p>
               </div>
             )}
 
@@ -1725,7 +1728,7 @@ export default function ConverterPage() {
                     return (
                       <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
                         <div className="w-8 h-8 rounded-xl border-2 border-accent/30 border-t-accent animate-spin" />
-                        <p className="text-sm text-surface-400">Loading...</p>
+                        <p className="text-sm text-surface-400">{t('common.loading')}</p>
                       </div>
                     )
                   }
@@ -1733,7 +1736,7 @@ export default function ConverterPage() {
                     return (
                       <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
                         <div className="w-8 h-8 rounded-xl border-2 border-accent/30 border-t-accent animate-spin" />
-                        <p className="text-sm text-surface-400">Parsing {activeItem.fileName}...</p>
+                        <p className="text-sm text-surface-400">{t('converter.parsingFile', { fileName: activeItem.fileName })}</p>
                       </div>
                     )
                   }
@@ -1741,7 +1744,7 @@ export default function ConverterPage() {
                     return (
                       <div className="flex flex-col items-center gap-6 animate-fade-in my-auto">
                         <div className="text-center">
-                          <p className="text-sm text-red-400 mb-1">Failed to load {activeItem.fileName}</p>
+                          <p className="text-sm text-red-400 mb-1">{t('converter.failedToLoadFile', { fileName: activeItem.fileName })}</p>
                           <p className="text-xs text-surface-500">{activeItem.error}</p>
                         </div>
                         <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
@@ -1772,7 +1775,7 @@ export default function ConverterPage() {
                   }
                   return (
                     <div className="flex flex-col items-center gap-6 animate-fade-in my-auto">
-                      <p className="text-sm text-surface-500">Select a file from the queue above</p>
+                      <p className="text-sm text-surface-500">{t('converter.selectFileFromQueue')}</p>
                       <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
                     </div>
                   )
@@ -1829,7 +1832,7 @@ export default function ConverterPage() {
 
           {!beatmap && !packFolder && (
             <footer className="px-4 sm:px-6 py-2 sm:py-3 border-t border-surface-800/50 text-center text-[10px] sm:text-xs text-surface-500">
-              © {new Date().getFullYear()} made by <a href="https://github.com/kaanreal" target="_blank" rel="noopener noreferrer" className="text-accent-muted hover:text-accent transition-colors">Kaan</a> &#x2764;
+              © {new Date().getFullYear()} {t('converter.madeBy')} <a href="https://github.com/kaanreal" target="_blank" rel="noopener noreferrer" className="text-accent-muted hover:text-accent transition-colors">Kaan</a> &#x2764;
             </footer>
           )}
         </div>
@@ -1935,14 +1938,14 @@ export default function ConverterPage() {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                         </svg>
-                        Checking...
+                        {t('converter.checking')}
                       </>
                     ) : (
                       <>
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
-                        Check for updates
+                        {t('converter.checkForUpdates')}
                       </>
                     )}
                   </button>
@@ -1953,7 +1956,7 @@ export default function ConverterPage() {
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
-                    You're up to date
+                    {t('converter.upToDate')}
                   </div>
                 )}
 
@@ -1962,7 +1965,7 @@ export default function ConverterPage() {
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Could not check for updates
+                    {t('converter.updateCheckFailed')}
                   </div>
                 )}
 
@@ -1971,7 +1974,7 @@ export default function ConverterPage() {
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
-                    A new version is available!
+                    {t('converter.newVersionAvailable')}
                   </div>
                 )}
               </div>
@@ -1980,7 +1983,7 @@ export default function ConverterPage() {
                 onClick={() => setShowVersionDialog(false)}
                 className="w-full px-4 py-2 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-400 font-medium text-sm hover:bg-surface-700 hover:text-surface-200 transition-all duration-75"
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </div>
@@ -2011,7 +2014,7 @@ export default function ConverterPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-semibold text-surface-100 mb-1">Export complete</h2>
+                <h2 className="text-xl font-semibold text-surface-100 mb-1">{t('converter.exportComplete')}</h2>
                 <div className="text-xs text-surface-400 mb-6 space-y-1 max-h-24 overflow-y-auto custom-scrollbar">
                   {lastExportPath.split('\n').map((p, i) => (
                     <p key={i} className="break-all">{p}</p>
@@ -2024,7 +2027,7 @@ export default function ConverterPage() {
                       className="px-6 py-2.5 rounded-xl bg-accent text-white font-medium text-sm
                                  hover:bg-accent-hover active:scale-[0.97] transition-all duration-75 shadow-lg shadow-accent/25"
                     >
-                      {direction === 'etterna-to-osu' ? 'Open in osu!' : 'Show in explorer'}
+                      {direction === 'etterna-to-osu' ? t('converter.openInOsu') : t('converter.showInExplorer')}
                     </button>
                   )}
                   <button
@@ -2032,7 +2035,7 @@ export default function ConverterPage() {
                     className="px-6 py-2.5 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-400 font-medium text-sm
                                hover:bg-surface-700 hover:text-surface-200 transition-all duration-75"
                   >
-                    Done
+                    {t('common.done')}
                   </button>
                 </div>
               </div>

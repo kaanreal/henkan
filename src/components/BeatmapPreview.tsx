@@ -1,4 +1,5 @@
 import { useRef, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Note } from '../types/beatmap'
 
 interface Props {
@@ -21,6 +22,7 @@ function getNoteY(noteTimeMs: number, currentMs: number): number {
 }
 
 export function BeatmapPreview({ notes, keys, currentTime, duration, previewTime, onSetPreviewTime }: Props) {
+  const { t } = useTranslation()
   const currentMs = currentTime * 1000
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -53,12 +55,12 @@ export function BeatmapPreview({ notes, keys, currentTime, duration, previewTime
     <div className="shrink-0 px-6 py-1.5 border-t border-white/5 bg-black/20">
       <div className="max-w-2xl mx-auto">
         <div className="text-[10px] text-surface-500 mb-1 flex items-center gap-2 select-none">
-          <span>Preview</span>
+          <span>{t('preview.timelineLabel')}</span>
           <span className="text-surface-600">·</span>
-          <span className="text-surface-600">click timeline to set preview point</span>
+          <span className="text-surface-600">{t('preview.timelineHint')}</span>
           <span className="text-surface-600">·</span>
           <kbd className="px-1 py-0.5 rounded bg-surface-800 text-surface-400 text-[9px] font-mono border border-white/10">Space</kbd>
-          <span className="text-surface-600">play/pause</span>
+          <span className="text-surface-600">{t('preview.timelinePlayPause')}</span>
         </div>
         <div
           ref={containerRef}

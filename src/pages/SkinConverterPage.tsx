@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Helmet } from 'react-helmet-async'
+import { useTranslation } from 'react-i18next'
 import { Header } from '../components/Header'
 import { trackEvent } from '../services/analytics'
 import { openFiles, saveFile } from '../services/dialogs'
 import { isTauri } from '../services/environment'
 import { fileInputCache } from '../services/fileCache'
 import { saveBlobToFile } from '../services/files'
+import i18n from '../i18n'
 import {
   archiveSkinFolderFiles,
   archiveSkinFolderPath,
@@ -73,9 +75,9 @@ async function persistArchive(blob: Blob, filename: string): Promise<boolean> {
     return true
   }
   const path = await saveFile({
-    title: 'Save converted skin',
+    title: i18n.t('skinConverter.saveConvertedSkin'),
     defaultPath: filename,
-    filters: [{ name: filename.endsWith('.osk') ? 'osu! skin' : 'Etterna noteskin', extensions: [filename.endsWith('.osk') ? 'osk' : 'zip'] }],
+    filters: [{ name: filename.endsWith('.osk') ? i18n.t('skinConverter.filterOsuSkin') : i18n.t('skinConverter.filterEtternaSkin'), extensions: [filename.endsWith('.osk') ? 'osk' : 'zip'] }],
   })
   if (!path) return false
   const { invoke } = await import('@tauri-apps/api/core')
@@ -84,6 +86,7 @@ async function persistArchive(blob: Blob, filename: string): Promise<boolean> {
 }
 
 export function SkinConverterPage() {
+  const { t } = useTranslation()
   const [direction, setDirection] = useState<SkinDirection | null>(null)
   const [input, setInput] = useState<SkinInput | null>(null)
   const [inspection, setInspection] = useState<SkinInspection | null>(null)
@@ -122,7 +125,7 @@ export function SkinConverterPage() {
       const nextPreview = await buildSkinPreview(nextInput, detected.direction).catch(() => null)
       if (selectedInputRef.current === nextInput) replacePreview(nextPreview)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Henkan could not inspect this archive.')
+      setError(reason instanceof Error ? reason.message : i18n.t('skinConverter.inspectFailed'))
     } finally {
       setStatus('idle')
     }
@@ -130,7 +133,7 @@ export function SkinConverterPage() {
 
   const chooseArchive = useCallback(async () => {
     try {
-      const selected = await openFiles({ filters: [{ name: 'Skin archives', extensions: ['osk', 'zip'] }] })
+      const selected = await openFiles({ filters: [{ name: i18n.t('skinConverter.filterSkinArchives'), extensions: ['osk', 'zip'] }] })
       if (!selected?.[0]) return
       const selectedName = selected[0].split(/[/\\]+/).pop()
       const cached = [...fileInputCache].reverse().find((file) => file.name === selectedName || file.webkitRelativePath === selected[0])
@@ -142,7 +145,7 @@ export function SkinConverterPage() {
 
   const loadFolderFiles = useCallback(async (files: File[], folderName: string) => {
     if (!containsSkinMarker(files)) {
-      setError('That folder does not contain skin.ini, NoteSkin.lua, or metrics.ini.')
+      setError(i18n.t('skinConverter.notSkinFolder'))
       return
     }
     fileInputCache.length = 0
@@ -183,7 +186,7 @@ export function SkinConverterPage() {
         }).catch(() => {})
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'The skin could not be converted.')
+      setError(reason instanceof Error ? reason.message : i18n.t('skinConverter.convertFailed'))
       setStatus('idle')
       void trackEvent('skin_conversion_failed', { direction })
     }
@@ -232,7 +235,7 @@ export function SkinConverterPage() {
   const mapped = inspection?.mappings.filter((item) => item.status === 'mapped').length || 0
   const fallbacks = inspection?.mappings.filter((item) => item.status === 'fallback').length || 0
   const missing = inspection?.mappings.filter((item) => item.status === 'missing').length || 0
-  const outputLabel = direction === 'osu-to-etterna' ? 'Etterna dance noteskin' : 'complete osu!mania 4K skin'
+  const outputLabel = direction === 'osu-to-etterna' ? t('skinConverter.outputEtterna') : t('skinConverter.outputOsu')
   const previewHitPosition = direction === 'etterna-to-osu'
     ? hitPosition
     : previewUrls?.hitPosition || DEFAULT_OSU_HIT_POSITION
@@ -241,8 +244,8 @@ export function SkinConverterPage() {
   return (
     <div className="skin-page h-full flex flex-col bg-surface-950 text-surface-100 overflow-hidden">
       <Helmet>
-        <title>Skin Converter - Henkan</title>
-        <meta name="description" content="Convert 4K osu!mania gameplay skins and Etterna dance noteskins in either direction." />
+        <title>{t('skinConverter.seoTitle')}</title>
+        <meta name="description" content={t('skinConverter.seoDescription')} />
       </Helmet>
       <Header
         appVersion={import.meta.env.VITE_APP_VERSION || null}
@@ -251,8 +254,8 @@ export function SkinConverterPage() {
       <main className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 py-6 sm:py-8">
         <section className="w-full max-w-xl mx-auto animate-fade-in" aria-labelledby="skin-converter-title">
           <div className="mb-5">
-            <h1 id="skin-converter-title" className="text-lg font-semibold tracking-tight">Skin converter</h1>
-            <p className="mt-1 text-sm text-surface-500">osu!mania ↔ Etterna · Format detected on import.</p>
+            <h1 id="skin-converter-title" className="text-lg font-semibold tracking-tight">{t('skinConverter.title')}</h1>
+            <p className="mt-1 text-sm text-surface-500">{t('skinConverter.subtitle')}</p>
           </div>
 
           <button
@@ -278,8 +281,8 @@ export function SkinConverterPage() {
           >
             <span className="w-12 h-12 rounded-xl bg-white/[0.05] text-surface-400 grid place-items-center shrink-0"><ArchiveIcon /></span>
             <span className="min-w-0 flex flex-col gap-1">
-              <strong className="text-sm text-surface-200 break-all">{status === 'inspecting' ? 'Reading archive…' : input ? fileLabel(input) : 'Drop a skin archive'}</strong>
-              <span className="text-xs text-surface-500">{input ? 'Choose another archive' : 'or browse for an .osk or .zip · folders can be dropped'}</span>
+              <strong className="text-sm text-surface-200 break-all">{status === 'inspecting' ? t('skinConverter.readingArchive') : input ? fileLabel(input) : t('skinConverter.dropArchive')}</strong>
+              <span className="text-xs text-surface-500">{input ? t('skinConverter.chooseAnother') : t('skinConverter.dropHint')}</span>
             </span>
           </button>
           <input
@@ -295,15 +298,15 @@ export function SkinConverterPage() {
 
           <p className="mt-3 text-xs leading-5 text-surface-600">
             {!direction
-              ? 'Drop either format. Henkan will identify it and prepare the opposite format.'
+              ? t('skinConverter.formatHint')
               : direction === 'osu-to-etterna'
-              ? 'Menus, ranking screens, sounds, and non-mania assets are not part of an Etterna noteskin.'
-              : 'Etterna Lua behaviour and theme-level effects cannot be represented by osu!mania and are not copied.'}
+              ? t('skinConverter.osuHint')
+              : t('skinConverter.etternaHint')}
           </p>
 
           {error && (
             <div className="skin-error mt-5 rounded-xl border border-red-800/50 bg-red-900/30 px-4 py-3" role="alert">
-              <strong className="text-sm text-red-300">Archive not ready</strong>
+              <strong className="text-sm text-red-300">{t('skinConverter.errorTitle')}</strong>
               <p className="mt-1 text-xs leading-5 text-red-300/80">{error}</p>
             </div>
           )}
@@ -313,22 +316,22 @@ export function SkinConverterPage() {
               <div className="px-4 py-3 flex items-center justify-between gap-4 border-b border-white/5">
                 <div className="min-w-0">
                   <h2 className="text-sm font-medium text-surface-200 truncate">{inspection.name}</h2>
-                  <p className="mt-0.5 text-[11px] text-surface-500">{inspection.fileCount.toLocaleString()} files · {outputLabel}</p>
+                  <p className="mt-0.5 text-[11px] text-surface-500">{t('skinConverter.fileCount', { count: inspection.fileCount.toLocaleString() })} · {outputLabel}</p>
                 </div>
-                <button type="button" onClick={reset} className="text-xs text-surface-500 hover:text-surface-300">Remove</button>
+                <button type="button" onClick={reset} className="text-xs text-surface-500 hover:text-surface-300">{t('skinConverter.remove')}</button>
               </div>
 
               {previewUrls && (
                 <div className="skin-preview px-4 py-4 border-b border-white/5">
                   <div className="skin-preview__header">
                     <div>
-                      <h3 className="text-xs font-medium text-surface-300">Gameplay preview</h3>
-                      <p className="mt-0.5 text-[11px] text-surface-600">Notes fall toward the receptor row.</p>
+                      <h3 className="text-xs font-medium text-surface-300">{t('skinConverter.gameplayPreview')}</h3>
+                      <p className="mt-0.5 text-[11px] text-surface-600">{t('skinConverter.notesFall')}</p>
                     </div>
                     {direction === 'etterna-to-osu' && (
                       <div className="flex items-center gap-2">
                         <label className="skin-hit-position">
-                          <span>Hit position</span>
+                          <span>{t('skinConverter.hitPosition')}</span>
                           <input
                             type="number"
                               min={MIN_OSU_HIT_POSITION}
@@ -338,11 +341,11 @@ export function SkinConverterPage() {
                               const value = Number(event.target.value)
                               if (Number.isFinite(value)) setHitPosition(Math.max(MIN_OSU_HIT_POSITION, Math.min(MAX_OSU_HIT_POSITION, Math.round(value))))
                             }}
-                            aria-label="Hit position value"
+                            aria-label={t('skinConverter.hitPositionValueAria')}
                           />
                         </label>
                         <label className="skin-hit-position">
-                          <span>Column width</span>
+                          <span>{t('skinConverter.columnWidth')}</span>
                           <input
                             type="number"
                             min={MIN_OSU_COLUMN_WIDTH}
@@ -352,7 +355,7 @@ export function SkinConverterPage() {
                               const value = Number(event.target.value)
                               if (Number.isFinite(value)) setColumnWidth(Math.max(MIN_OSU_COLUMN_WIDTH, Math.min(MAX_OSU_COLUMN_WIDTH, Math.round(value))))
                             }}
-                            aria-label="Column width value"
+                            aria-label={t('skinConverter.columnWidthValueAria')}
                           />
                         </label>
                       </div>
@@ -363,7 +366,7 @@ export function SkinConverterPage() {
                     className="skin-preview__stage"
                     style={previewStyle}
                     data-hit-position={previewHitPosition}
-                    aria-label={`Four-lane skin preview with receptors at hit position ${previewHitPosition}`}
+                    aria-label={t('skinConverter.previewAria', { position: previewHitPosition })}
                   >
                     {previewUrls.lanes.map((lane, index) => (
                       <div className="skin-preview__lane" key={index}>
@@ -399,12 +402,12 @@ export function SkinConverterPage() {
                           step="1"
                           value={hitPosition}
                           onChange={(event) => setHitPosition(Number(event.target.value))}
-                          aria-label="Adjust osu!mania hit position"
+                          aria-label={t('skinConverter.adjustHitPositionAria')}
                           data-hit-position-input
                         />
                         <span aria-hidden="true">{MAX_OSU_HIT_POSITION}</span>
                         {hitPosition !== DEFAULT_OSU_HIT_POSITION && (
-                          <button type="button" onClick={() => setHitPosition(DEFAULT_OSU_HIT_POSITION)}>Reset to 420</button>
+                          <button type="button" onClick={() => setHitPosition(DEFAULT_OSU_HIT_POSITION)}>{t('skinConverter.resetTo', { value: 420 })}</button>
                         )}
                       </div>
                       <div className="skin-hit-slider">
@@ -416,11 +419,11 @@ export function SkinConverterPage() {
                           step="1"
                           value={columnWidth}
                           onChange={(event) => setColumnWidth(Number(event.target.value))}
-                          aria-label="Adjust osu!mania column width"
+                          aria-label={t('skinConverter.adjustColumnWidthAria')}
                         />
                         <span aria-hidden="true">{MAX_OSU_COLUMN_WIDTH}</span>
                         {columnWidth !== DEFAULT_OSU_COLUMN_WIDTH && (
-                          <button type="button" onClick={() => setColumnWidth(DEFAULT_OSU_COLUMN_WIDTH)}>Reset to 70</button>
+                          <button type="button" onClick={() => setColumnWidth(DEFAULT_OSU_COLUMN_WIDTH)}>{t('skinConverter.resetTo', { value: 70 })}</button>
                         )}
                       </div>
                     </div>
@@ -429,9 +432,9 @@ export function SkinConverterPage() {
               )}
 
               <div className="skin-report__summary px-4 py-2.5 flex items-center gap-4 text-[11px] text-surface-500 border-b border-white/5">
-                <span><strong className="text-emerald-400 font-medium">{mapped}</strong> mapped</span>
-                <span><strong className="text-amber-400 font-medium">{fallbacks}</strong> fallback</span>
-                <span><strong className={missing ? 'text-red-400 font-medium' : 'text-surface-400 font-medium'}>{missing}</strong> missing</span>
+                <span><strong className="text-emerald-400 font-medium">{mapped}</strong> {t('skinConverter.mapped')}</span>
+                <span><strong className="text-amber-400 font-medium">{fallbacks}</strong> {t('skinConverter.fallback')}</span>
+                <span><strong className={missing ? 'text-red-400 font-medium' : 'text-surface-400 font-medium'}>{missing}</strong> {t('skinConverter.missing')}</span>
               </div>
 
               <div className="max-h-56 overflow-y-auto custom-scrollbar">
@@ -439,7 +442,7 @@ export function SkinConverterPage() {
                   <div key={item.target} className="grid grid-cols-[8px_minmax(7rem,1fr)_minmax(5rem,.8fr)] items-center gap-2 min-h-9 px-4 border-b border-white/5 text-xs">
                     <span className={`w-1.5 h-1.5 rounded-full ${item.status === 'mapped' ? 'bg-emerald-400' : item.status === 'fallback' ? 'bg-amber-400' : 'bg-red-400'}`} aria-label={item.status} />
                     <span className="text-surface-300 truncate">{item.target}</span>
-                    <span className="text-surface-600 truncate text-right" title={item.source || 'Generated fallback'}>{item.source?.split('/').pop() || 'generated'}</span>
+                    <span className="text-surface-600 truncate text-right" title={item.source || t('skinConverter.generatedFallback')}>{item.source?.split('/').pop() || t('skinConverter.generated')}</span>
                   </div>
                 ))}
               </div>
@@ -459,12 +462,12 @@ export function SkinConverterPage() {
             data-state={status}
             onClick={convert}
           >
-            {status === 'converting' ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" /> Converting…</> : status === 'complete' ? 'Convert again' : direction === 'osu-to-etterna' ? 'Convert to Etterna' : direction === 'etterna-to-osu' ? 'Convert to osu!' : 'Convert skin'}
+            {status === 'converting' ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" /> {t('common.converting')}</> : status === 'complete' ? t('skinConverter.convertAgain') : direction === 'osu-to-etterna' ? t('skinConverter.convertToEtterna') : direction === 'etterna-to-osu' ? t('skinConverter.convertToOsu') : t('skinConverter.convert')}
           </button>
           <p className="mt-2 text-center text-[11px] text-surface-600">{
             status === 'complete'
-              ? direction === 'osu-to-etterna' ? 'Archive saved. Remove the old converted folder, then extract into NoteSkins/dance.' : 'Archive saved.'
-              : direction === 'osu-to-etterna' ? 'The ZIP contains one ready-to-install noteskin folder.' : 'The .osk combines converted gameplay with the bundled osu! interface skin.'
+              ? direction === 'osu-to-etterna' ? t('skinConverter.savedEtterna') : t('skinConverter.saved')
+              : direction === 'osu-to-etterna' ? t('skinConverter.zipReady') : t('skinConverter.oskCombines')
           }</p>
         </section>
       </main>

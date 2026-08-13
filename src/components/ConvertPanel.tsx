@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { Beatmap } from '../types/beatmap'
 import { BeatmapInfo } from './BeatmapInfo'
 import { ResultPanel } from './ResultPanel'
@@ -17,13 +18,14 @@ export function ConvertPanel({
   onConvert,
   onReset,
 }: ConvertPanelProps) {
+  const { t } = useTranslation()
   const targetFormat = beatmap.source_format === 'OsuMania' ? '.sm' : '.osu'
 
   return (
     <div className="w-full max-w-2xl space-y-6 animate-slide-up">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-surface-200">
-          {beatmap.source_format === 'OsuMania' ? 'osu!mania' : 'Etterna'} Beatmap
+          {t('convertPanel.title', { format: beatmap.source_format === 'OsuMania' ? 'osu!mania' : 'Etterna' })}
         </h2>
         <div className="flex items-center gap-2">
           <span className="px-2.5 py-1 rounded-md bg-surface-800 text-xs text-surface-400 font-mono">
@@ -53,10 +55,10 @@ export function ConvertPanel({
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Converting...
+              {t('common.converting')}
             </span>
           ) : (
-            `Convert to ${targetFormat}`
+            t('convertPanel.convertTo', { format: targetFormat })
           )}
         </button>
 
@@ -64,7 +66,7 @@ export function ConvertPanel({
           onClick={onReset}
           className="px-4 py-3 rounded-xl text-surface-400 hover:text-surface-200 hover:bg-surface-800 transition-all text-sm"
         >
-          New file
+          {t('convertPanel.newFile')}
         </button>
       </div>
 

@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 interface Props {
   label: string
   value: string | null
@@ -7,9 +9,10 @@ interface Props {
 }
 
 export function FilePicker({ label, value, hasPreview, onPick, onClear }: Props) {
+  const { t } = useTranslation()
   const short = value
     ? value.split('/').pop()?.split('\\').pop() || value
-    : 'auto'
+    : t('filePicker.auto')
 
   return (
     <div className="flex items-center gap-2 text-sm">

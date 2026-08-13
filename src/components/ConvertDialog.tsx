@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface Difficulty {
   name: string
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onCancel }: Props) {
+  const { t } = useTranslation()
   const [selected, setSelected] = useState<Set<number>>(new Set([currentIndex]))
   const [leaving, setLeaving] = useState(false)
 
@@ -81,8 +83,8 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
                 </svg>
               </div>
               <div>
-                <h2 className="text-base font-semibold text-surface-100 tracking-tight">Convert</h2>
-                <p className="text-[11px] text-surface-500 mt-px">{difficulties.length} difficulty{difficulties.length > 1 ? 'ies' : 'y'} · select which to convert</p>
+                <h2 className="text-base font-semibold text-surface-100 tracking-tight">{t('convertDialog.title')}</h2>
+                <p className="text-[11px] text-surface-500 mt-px">{t('convertDialog.difficultyCount', { count: difficulties.length })}</p>
               </div>
             </div>
           </div>
@@ -121,10 +123,10 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate leading-tight">{d.name}</div>
-                    <div className="text-[11px] text-surface-500 mt-px">{d.keys}K · {d.note_count.toLocaleString()} notes</div>
+                    <div className="text-[11px] text-surface-500 mt-px">{t('convertDialog.notes', { keys: d.keys, count: d.note_count })}</div>
                   </div>
                   {i === currentIndex && (
-                    <span className="text-[10px] font-medium text-accent-muted/50">current</span>
+                    <span className="text-[10px] font-medium text-accent-muted/50">{t('convertDialog.current')}</span>
                   )}
                 </button>
               )
@@ -139,7 +141,7 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
             >
               <div className="flex-1 h-px bg-white/[0.04] group-hover:bg-white/[0.08] transition-colors" />
               <span className="shrink-0 tracking-wide">
-                {allSelected ? 'Deselect all' : 'Select all'}
+                {allSelected ? t('common.deselectAll') : t('common.selectAll')}
               </span>
               <div className="flex-1 h-px bg-white/[0.04] group-hover:bg-white/[0.08] transition-colors" />
             </button>
@@ -154,7 +156,7 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
                 hover:bg-white/[0.07] hover:text-surface-200
                 transition-all duration-75"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleConfirm}
@@ -166,7 +168,9 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
                 disabled:opacity-40 disabled:cursor-not-allowed
                 shadow-lg shadow-accent/25"
             >
-              Convert {selected.size === difficulties.length ? 'all' : `(${selected.size})`}
+              {selected.size === difficulties.length
+                ? t('convertDialog.convertAll')
+                : t('convertDialog.convertWithCount', { count: selected.size })}
             </button>
           </div>
         </div>

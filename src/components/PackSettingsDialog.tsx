@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useDiffPresetsStore } from '../stores/useDiffPresetsStore'
+import { presetDisplayName } from '../lib/diffTemplate'
 
 interface PackSettings {
   mode: 'osz' | 'folder'
@@ -20,6 +22,7 @@ interface Props {
 }
 
 export function PackSettingsDialog({ open, packName, defaultSettings, isConverting, onConfirm, onCancel, onOpenPresetManager }: Props) {
+  const { t } = useTranslation()
   const [settings, setSettings] = useState<PackSettings>(defaultSettings)
   const [leaving, setLeaving] = useState(false)
   const { presets } = useDiffPresetsStore()
@@ -78,7 +81,7 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
           <div className="h-0.5 bg-gradient-to-r from-accent via-accent-muted to-accent/40" />
           <div className="px-5 pt-5 pb-4 space-y-4">
             <div>
-              <h2 className="text-base font-semibold text-surface-100 tracking-tight">Pack settings</h2>
+              <h2 className="text-base font-semibold text-surface-100 tracking-tight">{t('packSettings.title')}</h2>
               <p className="text-[11px] text-surface-500 mt-px">{packName}</p>
             </div>
 
@@ -88,38 +91,38 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
                 onClick={() => update('mode', 'folder')}
                 className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'folder' ? 'bg-accent text-white shadow-sm shadow-accent/20' : 'text-surface-400 hover:text-surface-200'}`}
               >
-                Folder
+                {t('packSettings.folder')}
               </button>
               <button
                 onClick={() => update('mode', 'osz')}
                 className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'osz' ? 'bg-accent text-white shadow-sm shadow-accent/20' : 'text-surface-400 hover:text-surface-200'}`}
               >
-                .osz archive
+                {t('packSettings.oszArchive')}
               </button>
             </div>
 
             {/* Mapper */}
             <div className="flex flex-col gap-1">
-              <span className="text-[11px] text-surface-500 ml-1 font-medium">Mapper</span>
+              <span className="text-[11px] text-surface-500 ml-1 font-medium">{t('packSettings.mapper')}</span>
               <input
                 type="text"
                 value={settings.creator}
                 onChange={e => update('creator', e.target.value)}
                 className="w-full h-9 px-3 rounded-lg bg-white/[0.04] border border-white/[0.06] text-sm text-surface-200 placeholder-surface-600 outline-none focus:border-accent/40 focus:bg-white/[0.06] transition-colors"
-                placeholder="Creator name"
+                placeholder={t('packSettings.creatorPlaceholder')}
               />
             </div>
 
             {/* Diff Name */}
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-surface-500 ml-1 font-medium">Difficulty Name</span>
+                <span className="text-[11px] text-surface-500 ml-1 font-medium">{t('packSettings.difficultyName')}</span>
                 <button
                   onClick={onOpenPresetManager}
                   className="text-[10px] text-surface-500 hover:text-accent-muted transition-colors"
-                  title="Manage presets"
+                  title={t('packSettings.managePresets')}
                 >
-                  Manage presets
+                  {t('packSettings.managePresets')}
                 </button>
               </div>
               <div className="flex gap-1.5">
@@ -148,14 +151,14 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
                   className="h-9 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2 text-xs text-surface-200
                     outline-none transition-all duration-75 appearance-none cursor-pointer w-8 shrink-0
                     focus:border-accent/40 focus:bg-accent/[0.03]"
-                  title="Template presets"
+                  title={t('packSettings.templatePresets')}
                 >
                   <option value="__none" className="bg-surface-900">···</option>
                   {presets.map(p => (
-                    <option key={p.id} value={p.id} className="bg-surface-900">{p.name}</option>
+                    <option key={p.id} value={p.id} className="bg-surface-900">{presetDisplayName(p)}</option>
                   ))}
                   {hasTemplate && !presets.some(p => p.template === settings.diff_name_template) && (
-                    <option value="__custom" className="bg-surface-900">Custom</option>
+                    <option value="__custom" className="bg-surface-900">{t('packSettings.custom')}</option>
                   )}
                 </select>
               </div>
@@ -163,8 +166,8 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
 
             <div className="h-px bg-white/[0.04]" />
 
-            {slider('HP Drain', 'hp_drain')}
-            {slider('Overall Diff', 'overall_difficulty')}
+            {slider(t('packSettings.hpDrain'), 'hp_drain')}
+            {slider(t('packSettings.overallDiff'), 'overall_difficulty')}
           </div>
 
           <div className="flex items-center gap-2 px-5 pb-5 pt-1">
@@ -177,7 +180,7 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
                 transition-all duration-75
                 disabled:opacity-40"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleConfirm}
@@ -189,7 +192,7 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
                 disabled:opacity-40 disabled:cursor-not-allowed
                 shadow-lg shadow-accent/25"
             >
-              {isConverting ? 'Converting…' : 'Convert'}
+              {isConverting ? t('common.converting') : t('convertDialog.title')}
             </button>
           </div>
         </div>

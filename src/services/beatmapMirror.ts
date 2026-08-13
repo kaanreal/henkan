@@ -1,4 +1,5 @@
-﻿import { isTauri } from './environment'
+﻿import i18n from '../i18n'
+import { isTauri } from './environment'
 import { fileInputCache } from './fileCache'
 
 const MIRROR_PROXY = '/api/mirror'
@@ -136,7 +137,7 @@ export async function searchBeatmaps(
       const url = buildSearchUrl(q, status, offset)
       const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': UA } })
       clearTimeout(timeout)
-      if (!res.ok) return { results: [], error: `Search failed (${res.status})` }
+      if (!res.ok) return { results: [], error: i18n.t('services.mirrorUnreachable') }
       raw = await res.text()
     }
     clearTimeout(timeout)
@@ -147,9 +148,9 @@ export async function searchBeatmaps(
     return { results, error: null }
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
-      return { results: [], error: 'Search timed out - mirror may be down' }
+      return { results: [], error: i18n.t('services.searchTimedOut') }
     }
-    return { results: [], error: 'Could not reach the beatmap mirror' }
+    return { results: [], error: i18n.t('services.mirrorUnreachable') }
   }
 }
 
@@ -167,7 +168,7 @@ export async function downloadBeatmapPath(setId: number, filename: string): Prom
     const url = buildDownloadUrl(setId)
     const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': UA } })
     clearTimeout(timeout)
-    if (!res.ok) return { path: null, error: `Download failed (${res.status})` }
+    if (!res.ok) return { path: null, error: i18n.t('services.downloadFailed') }
 
     const blob = await res.blob()
     const file = new File([blob], filename, { type: 'application/octet-stream' })
@@ -175,8 +176,8 @@ export async function downloadBeatmapPath(setId: number, filename: string): Prom
     return { path: filename, error: null }
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
-      return { path: null, error: 'Download timed out' }
+      return { path: null, error: i18n.t('services.downloadTimedOut') }
     }
-    return { path: null, error: 'Download failed' }
+    return { path: null, error: i18n.t('services.downloadFailed') }
   }
 }

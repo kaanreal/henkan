@@ -1,4 +1,5 @@
 import { useRef, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ConvertDirection } from '../types/beatmap'
 import { openFiles } from '../services/dialogs'
 import { fileInputCache } from '../services/fileCache'
@@ -10,13 +11,14 @@ interface DropZoneProps {
 }
 
 export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
+  const { t } = useTranslation()
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleClick = useCallback(async () => {
     try {
       const selected = await openFiles({
         multiple: true,
-        filters: [{ name: 'Beatmaps and skins', extensions: ['osu', 'osz', 'sm', 'osk', 'zip'] }],
+        filters: [{ name: t('dropZone.filterName'), extensions: ['osu', 'osz', 'sm', 'osk', 'zip'] }],
       })
       if (selected) {
         onFilesSelected(selected)
@@ -24,7 +26,7 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
     } catch {
       inputRef.current?.click()
     }
-  }, [onFilesSelected])
+  }, [onFilesSelected, t])
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -76,10 +78,10 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
 
         <div className="text-center space-y-1 sm:space-y-1.5">
           <p className="text-lg sm:text-xl font-semibold text-surface-200">
-            {dragging ? 'Release to detect' : 'Drop a beatmap or skin'}
+            {dragging ? t('dropZone.releaseToDetect') : t('dropZone.dropBeatmapOrSkin')}
           </p>
           <p className="text-sm text-surface-500">
-            or click to browse &mdash; files and folders supported
+            {t('dropZone.clickToBrowse')}
           </p>
         </div>
       </div>

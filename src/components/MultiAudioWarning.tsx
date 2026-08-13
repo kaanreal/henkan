@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   onSeparateSongs: () => void
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }: Props) {
+  const { t } = useTranslation()
   const [leaving, setLeaving] = useState(false)
   const [choice, setChoice] = useState<'separate' | 'combine' | null>(null)
 
@@ -47,17 +49,15 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
               <div>
-                <h2 className="text-base font-semibold text-surface-100 tracking-tight">Multiple audio files</h2>
-                <p className="text-[11px] text-surface-500 mt-px">The selected difficulties use different audio files</p>
+                <h2 className="text-base font-semibold text-surface-100 tracking-tight">{t('multiAudio.title')}</h2>
+                <p className="text-[11px] text-surface-500 mt-px">{t('multiAudio.subtitle')}</p>
               </div>
             </div>
           </div>
 
           <div className="px-5 py-2">
             <p className="text-xs text-surface-400 leading-relaxed">
-              When converting to Etterna, each .sm file can only reference one audio file. 
-              Combining difficulties with different audio files into a single .sm is possible 
-              but they will all use the same audio.
+              {t('multiAudio.description')}
             </p>
             <div className="mt-4 space-y-2">
               <button
@@ -78,14 +78,12 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
                   )}
                 </div>
                 <div>
-                  <div className="font-medium">Convert as separate songs</div>
+                  <div className="font-medium">{t('multiAudio.separateTitle')}</div>
                   <div className="text-[11px] text-surface-500 mt-px leading-relaxed">
-                    Each difficulty becomes its own song folder with its own audio, background, 
-                    and the difficulty name appended to the title - so they appear as 
-                    separate entries in Etterna song select
+                    {t('multiAudio.separateDescription')}
                   </div>
                   <div className="mt-1">
-                    <span className="inline-block text-[10px] font-medium text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">recommended</span>
+                    <span className="inline-block text-[10px] font-medium text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded">{t('multiAudio.recommended')}</span>
                   </div>
                 </div>
               </button>
@@ -107,14 +105,12 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
                   )}
                 </div>
                 <div>
-                  <div className="font-medium">Combine into one .sm</div>
+                  <div className="font-medium">{t('multiAudio.combineTitle')}</div>
                   <div className="text-[11px] text-surface-500 mt-px leading-relaxed">
-                    All difficulties go into a single .sm file sharing one audio - 
-                    not recommended when diffs have different audio files since 
-                    only one audio can be referenced
+                    {t('multiAudio.combineDescription')}
                   </div>
                   <div className="mt-1">
-                    <span className="inline-block text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">not recommended</span>
+                    <span className="inline-block text-[10px] font-medium text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">{t('multiAudio.notRecommended')}</span>
                   </div>
                 </div>
               </button>
@@ -129,7 +125,7 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
                 hover:bg-white/[0.07] hover:text-surface-200
                 active:scale-[0.97] transition-all duration-75"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleConfirm}
@@ -140,7 +136,7 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
                 transition-all duration-75
                 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {choice === 'separate' ? 'Convert separate' : choice === 'combine' ? 'Combine anyway' : 'Choose an option'}
+              {choice === 'separate' ? t('multiAudio.convertSeparate') : choice === 'combine' ? t('multiAudio.combineAnyway') : t('multiAudio.chooseOption')}
             </button>
           </div>
         </div>
