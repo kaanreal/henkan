@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Helmet } from 'react-helmet-async'
-import { useTranslation } from 'react-i18next'
+import { t, useT } from '../i18n'
 import { Header } from '../components/Header'
 import { trackEvent } from '../services/analytics'
 import { openFiles, saveFile } from '../services/dialogs'
 import { isTauri } from '../services/environment'
 import { fileInputCache } from '../services/fileCache'
 import { saveBlobToFile } from '../services/files'
-import i18n from '../i18n'
 import {
   archiveSkinFolderFiles,
   archiveSkinFolderPath,
@@ -75,9 +74,9 @@ async function persistArchive(blob: Blob, filename: string): Promise<boolean> {
     return true
   }
   const path = await saveFile({
-    title: i18n.t('skinConverter.saveConvertedSkin'),
+    title: t('skinConverter.saveConvertedSkin'),
     defaultPath: filename,
-    filters: [{ name: filename.endsWith('.osk') ? i18n.t('skinConverter.filterOsuSkin') : i18n.t('skinConverter.filterEtternaSkin'), extensions: [filename.endsWith('.osk') ? 'osk' : 'zip'] }],
+    filters: [{ name: filename.endsWith('.osk') ? t('skinConverter.filterOsuSkin') : t('skinConverter.filterEtternaSkin'), extensions: [filename.endsWith('.osk') ? 'osk' : 'zip'] }],
   })
   if (!path) return false
   const { invoke } = await import('@tauri-apps/api/core')
@@ -86,7 +85,7 @@ async function persistArchive(blob: Blob, filename: string): Promise<boolean> {
 }
 
 export function SkinConverterPage() {
-  const { t } = useTranslation()
+  const t = useT()
   const [direction, setDirection] = useState<SkinDirection | null>(null)
   const [input, setInput] = useState<SkinInput | null>(null)
   const [inspection, setInspection] = useState<SkinInspection | null>(null)
@@ -125,15 +124,15 @@ export function SkinConverterPage() {
       const nextPreview = await buildSkinPreview(nextInput, detected.direction).catch(() => null)
       if (selectedInputRef.current === nextInput) replacePreview(nextPreview)
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : i18n.t('skinConverter.inspectFailed'))
+      setError(reason instanceof Error ? reason.message : t('skinConverter.inspectFailed'))
     } finally {
       setStatus('idle')
     }
-  }, [replacePreview])
+  }, [replacePreview, t])
 
   const chooseArchive = useCallback(async () => {
     try {
-      const selected = await openFiles({ filters: [{ name: i18n.t('skinConverter.filterSkinArchives'), extensions: ['osk', 'zip'] }] })
+      const selected = await openFiles({ filters: [{ name: t('skinConverter.filterSkinArchives'), extensions: ['osk', 'zip'] }] })
       if (!selected?.[0]) return
       const selectedName = selected[0].split(/[/\\]+/).pop()
       const cached = [...fileInputCache].reverse().find((file) => file.name === selectedName || file.webkitRelativePath === selected[0])
@@ -141,17 +140,17 @@ export function SkinConverterPage() {
     } catch {
       inputRef.current?.click()
     }
-  }, [loadInput])
+  }, [loadInput, t])
 
   const loadFolderFiles = useCallback(async (files: File[], folderName: string) => {
     if (!containsSkinMarker(files)) {
-      setError(i18n.t('skinConverter.notSkinFolder'))
+      setError(t('skinConverter.notSkinFolder'))
       return
     }
     fileInputCache.length = 0
     fileInputCache.push(...files)
     await loadInput(await archiveSkinFolderFiles(files, folderName))
-  }, [loadInput])
+  }, [loadInput, t])
 
   const reset = useCallback(() => {
     selectedInputRef.current = null
@@ -186,11 +185,11 @@ export function SkinConverterPage() {
         }).catch(() => {})
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : i18n.t('skinConverter.convertFailed'))
+      setError(reason instanceof Error ? reason.message : t('skinConverter.convertFailed'))
       setStatus('idle')
       void trackEvent('skin_conversion_failed', { direction })
     }
-  }, [columnWidth, direction, hitPosition, input, inspection, replacePreview, status])
+  }, [columnWidth, direction, hitPosition, input, inspection, replacePreview, status, t])
 
   useEffect(() => {
     return () => revokePreviewObjectUrls(previewUrlsRef.current)
@@ -199,7 +198,7 @@ export function SkinConverterPage() {
   useEffect(() => {
     const pending = consumePendingSkinInput()
     if (pending) queueMicrotask(() => void loadInput(pending))
-  }, [loadInput])
+  }, [loadInput, t])
 
   useEffect(() => {
     if (!isTauri()) return
@@ -230,7 +229,7 @@ export function SkinConverterPage() {
       cancelled = true
       unlisten?.()
     }
-  }, [loadInput])
+  }, [loadInput, t])
 
   const mapped = inspection?.mappings.filter((item) => item.status === 'mapped').length || 0
   const fallbacks = inspection?.mappings.filter((item) => item.status === 'fallback').length || 0

@@ -1,4 +1,4 @@
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import type { Beatmap } from '../types/beatmap'
 import { BeatmapInfo } from './BeatmapInfo'
 import { ResultPanel } from './ResultPanel'
@@ -18,7 +18,7 @@ export function ConvertPanel({
   onConvert,
   onReset,
 }: ConvertPanelProps) {
-  const { t } = useTranslation()
+  const t = useT()
   const targetFormat = beatmap.source_format === 'OsuMania' ? '.sm' : '.osu'
 
   return (

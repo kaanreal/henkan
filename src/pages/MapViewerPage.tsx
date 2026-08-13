@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { Trans, useTranslation } from 'react-i18next'
+import { Trans, useT } from '../i18n'
 import { SEO } from '../components/SEO'
 import { SiteHeader, SiteFooter } from '../components/SiteLayout'
 
@@ -10,7 +10,7 @@ const code = (key: string) => (
 const kbd = (key: string) => <td className="px-4 py-2 font-mono text-xs">{key}</td>
 
 export function MapViewerPage() {
-  const { t } = useTranslation()
+  const t = useT()
   return (
     <div className="min-h-screen bg-surface-950 text-surface-200 flex flex-col">
       <SEO

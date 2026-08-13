@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import type { Beatmap, ConvertDirection, ExportConfig } from '../types/beatmap'
 import { FilePicker } from './FilePicker'
 import { useDiffPresetsStore } from '../stores/useDiffPresetsStore'
@@ -44,7 +44,7 @@ export function MetadataPanel({
   onUpdateConfig, onChangeFile, onConvert, onReset, onSelectDifficulty,
   onUpdateDiffNameTemplate, onOpenPresetManager,
 }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const isOsu = beatmap.source_format === 'OsuMania'
   const targetExt = isOsu ? '.sm' : '.osu'
   const totalNotes = tapCount + holdCount

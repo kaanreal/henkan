@@ -1,4 +1,4 @@
-﻿import i18n from '../i18n'
+﻿import { t } from '../i18n'
 import { isTauri } from './environment'
 import { fileInputCache } from './fileCache'
 
@@ -137,7 +137,7 @@ export async function searchBeatmaps(
       const url = buildSearchUrl(q, status, offset)
       const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': UA } })
       clearTimeout(timeout)
-      if (!res.ok) return { results: [], error: i18n.t('services.mirrorUnreachable') }
+      if (!res.ok) return { results: [], error: t('services.mirrorUnreachable') }
       raw = await res.text()
     }
     clearTimeout(timeout)
@@ -148,9 +148,9 @@ export async function searchBeatmaps(
     return { results, error: null }
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
-      return { results: [], error: i18n.t('services.searchTimedOut') }
+      return { results: [], error: t('services.searchTimedOut') }
     }
-    return { results: [], error: i18n.t('services.mirrorUnreachable') }
+    return { results: [], error: t('services.mirrorUnreachable') }
   }
 }
 
@@ -168,7 +168,7 @@ export async function downloadBeatmapPath(setId: number, filename: string): Prom
     const url = buildDownloadUrl(setId)
     const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': UA } })
     clearTimeout(timeout)
-    if (!res.ok) return { path: null, error: i18n.t('services.downloadFailed') }
+    if (!res.ok) return { path: null, error: t('services.downloadFailed') }
 
     const blob = await res.blob()
     const file = new File([blob], filename, { type: 'application/octet-stream' })
@@ -176,8 +176,8 @@ export async function downloadBeatmapPath(setId: number, filename: string): Prom
     return { path: filename, error: null }
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
-      return { path: null, error: i18n.t('services.downloadTimedOut') }
+      return { path: null, error: t('services.downloadTimedOut') }
     }
-    return { path: null, error: i18n.t('services.downloadFailed') }
+    return { path: null, error: t('services.downloadFailed') }
   }
 }

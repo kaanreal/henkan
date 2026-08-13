@@ -1,5 +1,5 @@
 ﻿import { useRef } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import type { QueueItem } from '../stores/useQueueStore'
 
 interface Props {
@@ -60,7 +60,7 @@ function truncateName(name: string, max: number): string {
 export function ConversionQueue({
   items, activeId, isConverting, onSelect, onRemove, onAddFiles, onConvertAll, onResetAll, onClearCompleted, onClearAll,
 }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   if (items.length === 0) return null
 
   const scrollRef = useRef<HTMLDivElement>(null)

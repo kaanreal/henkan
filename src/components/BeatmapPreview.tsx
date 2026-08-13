@@ -1,5 +1,5 @@
 import { useRef, useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import type { Note } from '../types/beatmap'
 
 interface Props {
@@ -22,7 +22,7 @@ function getNoteY(noteTimeMs: number, currentMs: number): number {
 }
 
 export function BeatmapPreview({ notes, keys, currentTime, duration, previewTime, onSetPreviewTime }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const currentMs = currentTime * 1000
   const containerRef = useRef<HTMLDivElement>(null)
 

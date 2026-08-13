@@ -1,9 +1,9 @@
 import { Link } from 'react-router'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import { LanguageSwitcher } from './LanguageSwitcher'
 
 export function SiteHeader() {
-  const { t } = useTranslation()
+  const t = useT()
   return (
     <header className="border-b border-surface-800/50 bg-surface-950/80 backdrop-blur-md sticky top-0 z-40">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
@@ -25,7 +25,7 @@ export function SiteHeader() {
 }
 
 export function SiteFooter() {
-  const { t } = useTranslation()
+  const t = useT()
   return (
     <footer className="border-t border-surface-800/50 bg-surface-950">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">

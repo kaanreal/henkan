@@ -1,5 +1,5 @@
 ﻿import { useState, useCallback } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import type { PackEntry } from '../types/beatmap'
 import { openDirectory } from '../services/dialogs'
 import { scanPack } from '../services/pack'
@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function BulkConvertDialog({ open, onCancel }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const [folder, setFolder] = useState<string | null>(null)
   const [entries, setEntries] = useState<(PackEntry & { expanded: boolean })[]>([])
   const [scanning, setScanning] = useState(false)

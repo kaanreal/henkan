@@ -1,4 +1,4 @@
-﻿import { useTranslation } from 'react-i18next'
+﻿import { useT } from '../i18n'
 import { saveContentToFile } from '../services/files'
 import { saveFile } from '../services/dialogs'
 
@@ -8,7 +8,7 @@ interface ResultPanelProps {
 }
 
 export function ResultPanel({ content, filename }: ResultPanelProps) {
-  const { t } = useTranslation()
+  const t = useT()
   const handleSave = async () => {
     try {
       const path = await saveFile({

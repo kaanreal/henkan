@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import type { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { useConverterStore } from '../stores/useConverterStore'
 
@@ -21,7 +21,7 @@ export function AudioPlayer({
   audioPlayerRef, audioPlaying, audioDuration,
   previewTime, onOpenPreview,
 }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const conversionRate = useConverterStore(s => s.config.conversion_rate)
   const preservePitch = useConverterStore(s => s.config.preserve_pitch)
   const [showVolume, setShowVolume] = useState(false)

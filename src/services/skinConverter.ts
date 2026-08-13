@@ -1,7 +1,7 @@
 import type { JSZipObject } from 'jszip'
 import { decode as decodePng } from 'fast-png'
 import * as UTIF from 'utif'
-import i18n from '../i18n'
+import { t } from '../i18n'
 import { readFileArrayBuffer } from './files'
 import type {
   SkinAssetMapping,
@@ -119,7 +119,7 @@ function stem(value: string): string {
 async function readArchive(input: File | string): Promise<LoadedArchive> {
   const data = await readFileArrayBuffer(input)
   if (data.byteLength > MAX_ARCHIVE_BYTES) {
-    throw new Error(i18n.t('services.skin.archiveTooLarge'))
+    throw new Error(t('services.skin.archiveTooLarge'))
   }
 
   const JSZip = (await import('jszip')).default
@@ -127,13 +127,13 @@ async function readArchive(input: File | string): Promise<LoadedArchive> {
   try {
     zip = await JSZip.loadAsync(data)
   } catch {
-    throw new Error(i18n.t('services.skin.archiveNotReadable'))
+    throw new Error(t('services.skin.archiveNotReadable'))
   }
 
   const files = Object.values(zip.files).filter((entry) => !entry.dir && !entry.name.includes('__MACOSX/'))
-  if (files.length === 0) throw new Error(i18n.t('services.skin.archiveEmpty'))
+  if (files.length === 0) throw new Error(t('services.skin.archiveEmpty'))
   if (files.length > MAX_ARCHIVE_FILES) {
-    throw new Error(i18n.t('services.skin.archiveTooManyFiles', {
+    throw new Error(t('services.skin.archiveTooManyFiles', {
       count: files.length.toLocaleString(),
       limit: MAX_ARCHIVE_FILES.toLocaleString(),
     }))
@@ -141,7 +141,7 @@ async function readArchive(input: File | string): Promise<LoadedArchive> {
   const expandedBytes = files.reduce((total, entry) =>
     total + ((entry as SizedZipObject)._data?.uncompressedSize || 0), 0)
   if (expandedBytes > MAX_EXPANDED_BYTES) {
-    throw new Error(i18n.t('services.skin.archiveExpandsTooLarge'))
+    throw new Error(t('services.skin.archiveExpandsTooLarge'))
   }
 
   return { files, name: archiveName(input) }
@@ -241,7 +241,7 @@ async function decodeImage(blob: Blob): Promise<DecodedImage> {
     }
     image.onerror = () => {
       URL.revokeObjectURL(url)
-      reject(new Error(i18n.t('services.skin.imageDecodeFailed')))
+      reject(new Error(t('services.skin.imageDecodeFailed')))
     }
     image.src = url
   })
@@ -262,7 +262,7 @@ function isTiff(bytes: Uint8Array): boolean {
 function checkedPixelCount(width: number, height: number, format: string): void {
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0
     || width * height > MAX_IMAGE_PIXELS) {
-    throw new Error(i18n.t('services.skin.imageTooLarge', {
+    throw new Error(t('services.skin.imageTooLarge', {
       format,
       pixels: MAX_IMAGE_PIXELS.toLocaleString(),
     }))
@@ -279,13 +279,13 @@ async function decodeImagePixels(blob: Blob): Promise<DecodedPixels> {
   const bytes = new Uint8Array(buffer)
   if (isTiff(bytes)) {
     const ifd = UTIF.decode(buffer)[0]
-    if (!ifd) throw new Error(i18n.t('services.skin.tiffNoFrame'))
+    if (!ifd) throw new Error(t('services.skin.tiffNoFrame'))
     checkedPixelCount(tiffDimension(ifd, 't256'), tiffDimension(ifd, 't257'), 'TIFF')
     UTIF.decodeImage(buffer, ifd)
     checkedPixelCount(ifd.width, ifd.height, 'TIFF')
     return { width: ifd.width, height: ifd.height, data: new Uint8ClampedArray(UTIF.toRGBA8(ifd)) }
   }
-  if (!isPng(bytes)) throw new Error(i18n.t('services.skin.imageFormatUnsupported'))
+  if (!isPng(bytes)) throw new Error(t('services.skin.imageFormatUnsupported'))
   const width = ((bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19]) >>> 0
   const height = ((bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23]) >>> 0
   checkedPixelCount(width, height, 'PNG')
@@ -340,7 +340,7 @@ function drawPixelRegion(
   scratch.width = sourceWidth
   scratch.height = sourceHeight
   const scratchContext = scratch.getContext('2d')
-  if (!scratchContext) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!scratchContext) throw new Error(t('services.skin.canvasUnavailable'))
   scratchContext.putImageData(new ImageData(pixels, sourceWidth, sourceHeight), 0, 0)
   context.drawImage(scratch, 0, 0, sourceWidth, sourceHeight, targetX, targetY, targetWidth, targetHeight)
 }
@@ -395,7 +395,7 @@ function mapping(target: string, asset: ResolvedAsset): SkinAssetMapping {
 
 async function inspectOsu(archive: LoadedArchive): Promise<{ inspection: SkinInspection; mania: IniSection; assets: ResolvedAsset[][]; bodyStyle: number }> {
   const skinIni = findFile(archive.files, ['skin.ini'])
-  if (!skinIni) throw new Error(i18n.t('services.skin.noSkinIni'))
+  if (!skinIni) throw new Error(t('services.skin.noSkinIni'))
   const sections = parseIni(await readText(skinIni))
   const maniaSections = sections.filter((section) => section.name.toLowerCase() === 'mania')
   const keyModes = maniaSections
@@ -404,7 +404,7 @@ async function inspectOsu(archive: LoadedArchive): Promise<{ inspection: SkinIns
   const mania = maniaSections.find((section) => Number(section.values.get('keys')) === 4)
   if (!mania) {
     const key = keyModes.length ? 'services.skin.requires4kManiaFound' : 'services.skin.requires4kMania'
-    throw new Error(i18n.t(key, { modes: `${keyModes.join('K, ')}K` }))
+    throw new Error(t(key, { modes: `${keyModes.join('K, ')}K` }))
   }
 
   const assets = DANCE_COLUMNS.map((_, index) => {
@@ -432,7 +432,7 @@ async function inspectOsu(archive: LoadedArchive): Promise<{ inspection: SkinIns
     mapping(`${DANCE_COLUMNS[index]} pressed receptor`, lane[5]),
   ])
   const missingTapCount = assets.filter((lane) => !lane[0].entry).length
-  if (missingTapCount === 4) throw new Error(i18n.t('services.skin.noManiaNotes'))
+  if (missingTapCount === 4) throw new Error(t('services.skin.noManiaNotes'))
 
   const warnings = [
     'Only osu!mania gameplay assets are converted. Menu, ranking, audio, and other osu! modes stay out of the output.',
@@ -670,7 +670,7 @@ async function inspectEtterna(archive: LoadedArchive): Promise<{
   const noteSkinFile = findFile(archive.files, ['NoteSkin.lua'])
   const metricsFile = findFile(archive.files, ['metrics.ini'])
   if (!noteSkinFile && !metricsFile) {
-    throw new Error(i18n.t('services.skin.notEtternaNoteskin'))
+    throw new Error(t('services.skin.notEtternaNoteskin'))
   }
   const noteSkinLua = noteSkinFile ? await readText(noteSkinFile) : ''
   const redirects = parseRedirections(noteSkinLua)
@@ -729,7 +729,7 @@ async function inspectEtterna(archive: LoadedArchive): Promise<{
     mapping(`osu!mania lane ${index + 1} pressed key`, lane[5]),
   ])
   if (assets.every((lane) => !lane[0].entry)) {
-    throw new Error(i18n.t('services.skin.noTapNoteImage'))
+    throw new Error(t('services.skin.noTapNoteImage'))
   }
 
   const warnings = [
@@ -766,11 +766,11 @@ async function rasterise(entry: JSZipObject, cropSheet = true): Promise<RasterAs
   try {
     image = await decodeImage(source)
   } catch {
-    throw new Error(i18n.t('services.skin.assetDecodeFailed', { name: entry.name }))
+    throw new Error(t('services.skin.assetDecodeFailed', { name: entry.name }))
   }
   if (image.width * image.height > MAX_IMAGE_PIXELS) {
     image.close()
-    throw new Error(i18n.t('services.skin.assetTooLarge', { name: entry.name }))
+    throw new Error(t('services.skin.assetTooLarge', { name: entry.name }))
   }
   const grid = cropSheet ? spriteGrid(entry.name) : { columns: 1, rows: 1 }
   const density = /@2x|\(doubleres\)/i.test(entry.name) ? 2 : 1
@@ -785,11 +785,11 @@ async function rasterise(entry: JSZipObject, cropSheet = true): Promise<RasterAs
   canvas.width = width
   canvas.height = height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   context.drawImage(image.source, 0, 0, sourceWidth, sourceHeight, 0, 0, width, height)
   image.close()
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.encodeFailed', { name: entry.name }))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.encodeFailed', { name: entry.name }))), 'image/png')
   })
   return { blob, width, height }
 }
@@ -803,17 +803,17 @@ async function resizeRaster(asset: RasterAsset, width?: number, height?: number)
   canvas.width = targetWidth
   canvas.height = targetHeight
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   context.drawImage(image.source, 0, 0, targetWidth, targetHeight)
   image.close()
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.resizeFailed'))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.resizeFailed'))), 'image/png')
   })
   return { blob, width: targetWidth, height: targetHeight }
 }
 
 async function rasteriseResolved(asset: ResolvedAsset, cropSheet = true): Promise<RasterAsset> {
-  if (!asset.entry) throw new Error(i18n.t('services.skin.rasteriseMissing'))
+  if (!asset.entry) throw new Error(t('services.skin.rasteriseMissing'))
   return resizeRaster(
     await rasterise(asset.entry, cropSheet),
     asset.renderWidth ? asset.renderWidth * 2 : undefined,
@@ -829,11 +829,11 @@ async function bodyFromTap(tap: RasterAsset): Promise<RasterAsset> {
   canvas.width = tap.width
   canvas.height = height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   context.drawImage(image.source, 0, sourceY, tap.width, height, 0, 0, tap.width, height)
   image.close()
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.deriveBodyFailed'))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.deriveBodyFailed'))), 'image/png')
   })
   return { blob, width: tap.width, height }
 }
@@ -844,11 +844,11 @@ async function joinTapHeadToBody(head: RasterAsset, body: RasterAsset): Promise<
   canvas.width = head.width
   canvas.height = head.height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
 
   context.drawImage(headImage.source, 0, 0, head.width, head.height)
   const pattern = context.createPattern(bodyImage.source, 'repeat')
-  if (!pattern) throw new Error(i18n.t('services.skin.joinHeadFailed'))
+  if (!pattern) throw new Error(t('services.skin.joinHeadFailed'))
   context.fillStyle = pattern
   // Etterna draws the body through the upper half of tap-based hold heads.
   // Bake that overlap into one osu! sprite so independently dimmed,
@@ -858,7 +858,7 @@ async function joinTapHeadToBody(head: RasterAsset, body: RasterAsset): Promise<
   bodyImage.close()
 
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.seamlessHeadFailed'))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.seamlessHeadFailed'))), 'image/png')
   })
   return { blob, width: canvas.width, height: canvas.height }
 }
@@ -869,10 +869,10 @@ async function joinTailToBody(tail: RasterAsset, body: RasterAsset): Promise<Ras
   canvas.width = tail.width
   canvas.height = tail.height * 2
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
 
   const pattern = context.createPattern(bodyImage.source, 'repeat')
-  if (!pattern) throw new Error(i18n.t('services.skin.joinTailFailed'))
+  if (!pattern) throw new Error(t('services.skin.joinTailFailed'))
   context.fillStyle = pattern
   // osu! overlaps the inner half of a tail sprite with the body. Give it a
   // body-matching inner half so the rectangle begins only after the rounded
@@ -883,7 +883,7 @@ async function joinTailToBody(tail: RasterAsset, body: RasterAsset): Promise<Ras
   bodyImage.close()
 
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.seamlessTailFailed'))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.seamlessTailFailed'))), 'image/png')
   })
   return { blob, width: canvas.width, height: canvas.height }
 }
@@ -901,13 +901,13 @@ async function rotateRaster(asset: RasterAsset, degrees: number): Promise<Raster
   canvas.width = width
   canvas.height = height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   context.translate(width / 2, height / 2)
   context.rotate(radians)
   context.drawImage(image.source, -asset.width / 2, -asset.height / 2)
   image.close()
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.rotateFailed'))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.rotateFailed'))), 'image/png')
   })
   return { blob, width, height }
 }
@@ -918,7 +918,7 @@ async function visibleBounds(asset: RasterAsset): Promise<{ minX: number; minY: 
   canvas.width = asset.width
   canvas.height = asset.height
   const context = canvas.getContext('2d', { willReadFrequently: true })
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   context.drawImage(image.source, 0, 0, asset.width, asset.height)
   image.close()
   const pixels = context.getImageData(0, 0, asset.width, asset.height).data
@@ -946,7 +946,7 @@ async function isTwoAxisSymmetric(asset: RasterAsset): Promise<boolean> {
   canvas.width = asset.width
   canvas.height = asset.height
   const context = canvas.getContext('2d', { willReadFrequently: true })
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   context.drawImage(image.source, 0, 0, asset.width, asset.height)
   image.close()
   const pixels = context.getImageData(0, 0, asset.width, asset.height).data
@@ -977,7 +977,7 @@ async function cascadeHoldBody(body: RasterAsset, cap: RasterAsset | null): Prom
   // scroll speeds; in SD coordinates this provides an 8192px cascade.
   canvas.height = OSU_CASCADE_HEIGHT
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
 
   // The separate tail disappears as soon as a hold is released. Put the same
   // rounded end at the start of the body atlas so the remaining clipped body
@@ -991,7 +991,7 @@ async function cascadeHoldBody(body: RasterAsset, cap: RasterAsset | null): Prom
   }
 
   const pattern = context.createPattern(bodyImage.source, 'repeat')
-  if (!pattern) throw new Error(i18n.t('services.skin.repeatBodyFailed'))
+  if (!pattern) throw new Error(t('services.skin.repeatBodyFailed'))
   context.fillStyle = pattern
   const bodyStart = cap?.height || 0
   context.fillRect(0, bodyStart, canvas.width, canvas.height - bodyStart)
@@ -999,7 +999,7 @@ async function cascadeHoldBody(body: RasterAsset, cap: RasterAsset | null): Prom
   capImage?.close()
 
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.seamlessBodyFailed'))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.seamlessBodyFailed'))), 'image/png')
   })
   return { blob, width: canvas.width, height: canvas.height }
 }
@@ -1015,7 +1015,7 @@ async function keyFromReceptor(
   sourceCanvas.width = receptor.width
   sourceCanvas.height = receptor.height
   const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true })
-  if (!sourceContext) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!sourceContext) throw new Error(t('services.skin.canvasUnavailable'))
   sourceContext.drawImage(image.source, 0, 0, receptor.width, receptor.height)
   image.close()
 
@@ -1053,10 +1053,10 @@ async function keyFromReceptor(
   canvas.width = OSU_RECEPTOR_LAYOUT.width
   canvas.height = OSU_RECEPTOR_LAYOUT.height
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   context.drawImage(sourceCanvas, minX, minY, sourceWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight)
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.receptorPlacementFailed'))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.receptorPlacementFailed'))), 'image/png')
   })
   return { blob, width: OSU_RECEPTOR_LAYOUT.width, height: OSU_RECEPTOR_LAYOUT.height }
 }
@@ -1070,7 +1070,7 @@ async function transparentPng(): Promise<Blob> {
   canvas.width = 1
   canvas.height = 1
   return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.blankStageFailed'))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.blankStageFailed'))), 'image/png')
   })
 }
 
@@ -1096,7 +1096,7 @@ function mergeTemplateSkinIni(
     const end = headers[index + 1]?.index ?? result.length
     return /^\s*Keys\s*:\s*4\s*$/im.test(result.slice(header.index, end))
   })
-  if (maniaIndex < 0) throw new Error(i18n.t('services.skin.templateNoMania'))
+  if (maniaIndex < 0) throw new Error(t('services.skin.templateNoMania'))
 
   const maniaStart = headers[maniaIndex].index
   const maniaEnd = headers[maniaIndex + 1]?.index ?? result.length
@@ -1132,7 +1132,7 @@ async function receptorFromOsuKey(entry: JSZipObject): Promise<RasterAsset> {
   sourceCanvas.width = key.width
   sourceCanvas.height = key.height
   const sourceContext = sourceCanvas.getContext('2d', { willReadFrequently: true })
-  if (!sourceContext) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!sourceContext) throw new Error(t('services.skin.canvasUnavailable'))
   sourceContext.drawImage(image.source, 0, 0, key.width, key.height)
   image.close()
 
@@ -1191,14 +1191,14 @@ async function receptorFromOsuKey(entry: JSZipObject): Promise<RasterAsset> {
   canvas.width = 128
   canvas.height = 128
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   context.drawImage(
     sourceCanvas,
     minX, minY, sourceWidth, sourceHeight,
     0, 0, canvas.width, canvas.height,
   )
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.cropFailed', { name: entry.name }))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.cropFailed', { name: entry.name }))), 'image/png')
   })
   return { blob, width: canvas.width, height: canvas.height }
 }
@@ -1208,7 +1208,7 @@ async function transparentRaster(width: number, height: number): Promise<RasterA
   canvas.width = width
   canvas.height = height
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.transparentTextureFailed'))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.transparentTextureFailed'))), 'image/png')
   })
   return { blob, width, height }
 }
@@ -1264,7 +1264,7 @@ async function noteFromOsuImage(entry: JSZipObject, kind: 'note' | 'body' | 'tai
   const imageHeight = image?.height ?? pixels!.height
   if (imageWidth * imageHeight > MAX_IMAGE_PIXELS) {
     image?.close()
-    throw new Error(i18n.t('services.skin.assetTooLarge', { name: entry.name }))
+    throw new Error(t('services.skin.assetTooLarge', { name: entry.name }))
   }
   const grid = kind === 'note' ? spriteGrid(entry.name) : { columns: 1, rows: 1 }
   const sourceWidth = Math.max(1, Math.floor(imageWidth / grid.columns))
@@ -1299,7 +1299,7 @@ async function noteFromOsuImage(entry: JSZipObject, kind: 'note' | 'body' | 'tai
   canvas.width = targetWidth
   canvas.height = targetHeight
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   if (image) {
     context.drawImage(image.source, 0, cropY, sourceWidth, effectiveCropHeight, 0, 0, targetWidth, targetHeight)
   } else {
@@ -1308,7 +1308,7 @@ async function noteFromOsuImage(entry: JSZipObject, kind: 'note' | 'body' | 'tai
   if (kind === 'body') clearConnectedEdgeBackground(context, targetWidth, targetHeight)
   image?.close()
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.resizeAssetFailed', { name: entry.name }))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.resizeAssetFailed', { name: entry.name }))), 'image/png')
   })
   return { blob, width: targetWidth, height: targetHeight }
 }
@@ -1320,7 +1320,7 @@ async function tailFromOsuImages(tailEntry: JSZipObject, bodyEntry: JSZipObject,
   tailCanvas.width = tailImage.width
   tailCanvas.height = tailImage.height
   const tailContext = tailCanvas.getContext('2d', { willReadFrequently: true })
-  if (!tailContext) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!tailContext) throw new Error(t('services.skin.canvasUnavailable'))
   tailContext.drawImage(tailImage.source, 0, 0)
   const tailPixels = tailContext.getImageData(0, 0, tailImage.width, tailImage.height).data
   let tailHasVisiblePixels = false
@@ -1363,7 +1363,7 @@ async function tailFromOsuImages(tailEntry: JSZipObject, bodyEntry: JSZipObject,
   canvas.width = targetSize
   canvas.height = targetSize
   const context = canvas.getContext('2d')
-  if (!context) throw new Error(i18n.t('services.skin.canvasUnavailable'))
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   if (bodyImage) {
     context.drawImage(bodyImage.source, 0, 0, bodyWidth, capSize, 0, 0, targetSize, targetSize)
   } else {
@@ -1385,7 +1385,7 @@ async function tailFromOsuImages(tailEntry: JSZipObject, bodyEntry: JSZipObject,
   clearConnectedEdgeBackground(context, targetSize, targetSize)
   bodyImage?.close()
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(i18n.t('services.skin.extractCapFailed', { name: bodyEntry.name }))), 'image/png')
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.extractCapFailed', { name: bodyEntry.name }))), 'image/png')
   })
   return { blob, width: targetSize, height: targetSize }
 }
@@ -1445,7 +1445,7 @@ async function convertOsuToEtterna(input: File | string): Promise<SkinConversion
   const output = new JSZip()
   const name = safeEtternaName(inspection.name)
   const noteskin = output.folder(name)
-  if (!noteskin) throw new Error(i18n.t('services.skin.noteskinFolderFailed'))
+  if (!noteskin) throw new Error(t('services.skin.noteskinFolderFailed'))
   noteskin.file('NoteSkin.lua', etternaNoteSkinLua())
   noteskin.file('metrics.ini', etternaMetrics()
     .replace('UseStretchHolds=1', 'UseStretchHolds=0')
@@ -1542,10 +1542,10 @@ async function convertEtternaToOsu(
   const JSZip = (await import('jszip')).default
   const templateUrl = new URL('templates/etterna-osu-base.osk', document.baseURI)
   const templateResponse = await fetch(templateUrl)
-  if (!templateResponse.ok) throw new Error(i18n.t('services.skin.baseSkinLoadFailed'))
+  if (!templateResponse.ok) throw new Error(t('services.skin.baseSkinLoadFailed'))
   const output = await JSZip.loadAsync(await templateResponse.arrayBuffer())
   const firstTapAsset = assets.map((lane) => lane[0]).find((asset) => asset.entry) || null
-  if (!firstTapAsset) throw new Error(i18n.t('services.skin.noTapNoteFound'))
+  if (!firstTapAsset) throw new Error(t('services.skin.noTapNoteFound'))
   const firstTap = await rasteriseResolved(firstTapAsset)
   const rendered: {
     tap: RasterAsset
@@ -1659,7 +1659,7 @@ async function convertEtternaToOsu(
 
   const skinName = safeName(inspection.name)
   const templateIni = output.file('skin.ini')
-  if (!templateIni) throw new Error(i18n.t('services.skin.baseSkinMissingIni'))
+  if (!templateIni) throw new Error(t('services.skin.baseSkinMissingIni'))
   const skinIni = mergeTemplateSkinIni(await templateIni.async('string'), skinName, iniLines, hitPosition, columnWidth)
   output.file('skin.ini', skinIni)
   output.file('_blank.png', await transparentPng())
@@ -1678,7 +1678,7 @@ async function previewAsset(
   cropSheet = true,
 ): Promise<RasterAsset> {
   const selected = asset.entry ? asset : fallback
-  if (!selected.entry) throw new Error(i18n.t('services.skin.notEnoughArtwork'))
+  if (!selected.entry) throw new Error(t('services.skin.notEnoughArtwork'))
   try {
     const raster = await rasteriseResolved(selected, cropSheet)
     return rotation ? rotateRaster(raster, rotation) : raster
@@ -1753,7 +1753,7 @@ export async function buildSkinPreview(
 
   const { assets, rotations } = await inspectEtterna(archive)
   const fallback = assets.flatMap((lane) => lane).find((asset) => asset.entry)
-  if (!fallback) throw new Error(i18n.t('services.skin.notEnoughArtwork'))
+  if (!fallback) throw new Error(t('services.skin.notEnoughArtwork'))
   return {
     lanes: await Promise.all(assets.map(async (lane, index) => ({
       note: await previewAsset(lane[0], fallback, rotations[index].tap),
@@ -1796,7 +1796,7 @@ export async function detectSkinArchive(input: File | string): Promise<{
   if (findFile(archive.files, ['metrics.ini'])) {
     return { direction: 'etterna-to-osu', inspection: (await inspectEtterna(archive)).inspection }
   }
-  throw new Error(i18n.t('services.skin.notIdentified'))
+  throw new Error(t('services.skin.notIdentified'))
 }
 
 export async function convertSkinArchive(

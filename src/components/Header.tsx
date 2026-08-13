@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import { openUrl, getGithubStars } from '../services/platform'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import type { ConvertDirection } from '../types/beatmap'
@@ -34,7 +34,7 @@ export function Header({
   directionLabels = ['.osu / .osz', '.sm'],
   directionAriaLabel,
 }: HeaderProps) {
-  const { t } = useTranslation()
+  const t = useT()
   const [stars, setStars] = useState<string | null>(null)
 
   useEffect(() => {

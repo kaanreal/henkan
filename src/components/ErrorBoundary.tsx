@@ -1,7 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { withTranslation, type WithTranslation } from 'react-i18next'
+import { useT, type MessageKey } from '../i18n'
 
-interface Props extends WithTranslation {
+interface Props {
+  t: (key: MessageKey) => string
   children: ReactNode
 }
 
@@ -46,4 +47,7 @@ class ErrorBoundaryClass extends Component<Props, State> {
   }
 }
 
-export const ErrorBoundary = withTranslation()(ErrorBoundaryClass)
+export function ErrorBoundary({ children }: { children: ReactNode }) {
+  const t = useT()
+  return <ErrorBoundaryClass t={t}>{children}</ErrorBoundaryClass>
+}

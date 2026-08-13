@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 
 interface Props {
   onSeparateSongs: () => void
@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const [leaving, setLeaving] = useState(false)
   const [choice, setChoice] = useState<'separate' | 'combine' | null>(null)
 

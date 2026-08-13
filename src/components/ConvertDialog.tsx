@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 
 interface Difficulty {
   name: string
@@ -16,7 +16,7 @@ interface Props {
 }
 
 export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onCancel }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const [selected, setSelected] = useState<Set<number>>(new Set([currentIndex]))
   const [leaving, setLeaving] = useState(false)
 

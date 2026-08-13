@@ -1,9 +1,8 @@
 ﻿import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT, type MessageKey } from '../i18n'
 import type { Note, SourceFormat } from '../types/beatmap'
 import type { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { useConverterStore } from '../stores/useConverterStore'
-import i18n from '../i18n'
 
 interface Props {
   audioPlayerRef: { current: WebAudioPlayer | null }
@@ -19,7 +18,7 @@ interface Props {
   onClose: () => void
 }
 
-const KEYBINDS = [
+const KEYBINDS: { keys: string; descKey: MessageKey }[] = [
   { keys: 'Space / Esc', descKey: 'preview.keybindClose' },
   { keys: 'Right-click', descKey: 'preview.keybindPlayPause' },
   { keys: 'Scroll wheel', descKey: 'preview.keybindScrollSpeed' },
@@ -49,7 +48,7 @@ export function PreviewOverlay({
   audioPlayerRef, playing, duration,
   notes, keys, bpm, backgroundUrl, previewTime, sourceFormat, onSetPreviewTime, onClose,
 }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafId = useRef(0)
   const [closing, setClosing] = useState(false)
@@ -197,7 +196,7 @@ export function PreviewOverlay({
         const el = audioPlayerRefRef.current.current
         if (el) {
           onSetRef.current(el.currentTime * 1000)
-          showToast(i18n.t('preview.previewPointSet'))
+          showToast(t('preview.previewPointSet'))
         }
         return
       }
@@ -205,13 +204,13 @@ export function PreviewOverlay({
         e.preventDefault()
         hitsoundRef.current = !hitsoundRef.current
         _hitsound = hitsoundRef.current
-        showToast(hitsoundRef.current ? i18n.t('preview.hitsoundsOn') : i18n.t('preview.hitsoundsOff'))
+        showToast(hitsoundRef.current ? t('preview.hitsoundsOn') : t('preview.hitsoundsOff'))
         if (hitsoundRef.current) ensureClap()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [close, ensureClap, showToast])
+  }, [close, ensureClap, showToast, t])
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.altKey) return
@@ -448,8 +447,8 @@ export function PreviewOverlay({
         e.preventDefault()
         const el = audioPlayerRef.current
         if (!el) return
-        if (el.paused) { el.play().catch(() => {}); showToast(i18n.t('preview.playing')) }
-        else { el.pause(); showToast(i18n.t('preview.paused')) }
+        if (el.paused) { el.play().catch(() => {}); showToast(t('preview.playing')) }
+        else { el.pause(); showToast(t('preview.paused')) }
       }}
     >
       {/* Header */}

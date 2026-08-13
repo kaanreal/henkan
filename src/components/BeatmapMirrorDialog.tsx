@@ -1,5 +1,5 @@
 ﻿import { useState, useRef, useEffect, useCallback } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import { searchBeatmaps, coverUrl, previewUrl, type MirrorBeatmapSet, type RankStatus } from '../services/beatmapMirror'
 
 interface BeatmapMirrorDialogProps {
@@ -85,7 +85,7 @@ function formatDuration(seconds: number): string {
 type DownloadState = 'idle' | 'downloading' | 'done'
 
 export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: BeatmapMirrorDialogProps) {
-  const { t } = useTranslation()
+  const t = useT()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<MirrorBeatmapSet[]>([])
   const [loading, setLoading] = useState(false)

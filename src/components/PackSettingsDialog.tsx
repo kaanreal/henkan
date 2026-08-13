@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import { useDiffPresetsStore } from '../stores/useDiffPresetsStore'
 import { presetDisplayName } from '../lib/diffTemplate'
 
@@ -22,7 +22,7 @@ interface Props {
 }
 
 export function PackSettingsDialog({ open, packName, defaultSettings, isConverting, onConfirm, onCancel, onOpenPresetManager }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const [settings, setSettings] = useState<PackSettings>(defaultSettings)
   const [leaving, setLeaving] = useState(false)
   const { presets } = useDiffPresetsStore()

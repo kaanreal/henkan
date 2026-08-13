@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { LANGUAGES, setLanguage } from '../i18n'
+import { LANGUAGES, useLocale } from '../i18n'
 
 function GlobeIcon() {
   return (
@@ -12,7 +11,7 @@ function GlobeIcon() {
 }
 
 export function LanguageSwitcher() {
-  const { i18n, t } = useTranslation()
+  const { locale: currentCode, setLocale, t } = useLocale()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -24,9 +23,6 @@ export function LanguageSwitcher() {
     return () => document.removeEventListener('mousedown', onMouseDown)
   }, [])
 
-  const currentCode = LANGUAGES.some(l => l.code === i18n.resolvedLanguage)
-    ? i18n.resolvedLanguage as typeof LANGUAGES[number]['code']
-    : 'en'
   const currentLabel = LANGUAGES.find(l => l.code === currentCode)?.label
 
   return (
@@ -52,7 +48,7 @@ export function LanguageSwitcher() {
               key={l.code}
               role="menuitem"
               onClick={() => {
-                setLanguage(l.code)
+                setLocale(l.code)
                 setOpen(false)
               }}
               className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors duration-75 ${
