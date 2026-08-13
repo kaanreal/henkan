@@ -103,13 +103,12 @@ export function PreviewOverlay({
   const [toast, setToast] = useState<{ msg: string; leaving?: boolean } | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
   const [combo, setCombo] = useState(0)
-  const [maxCombo, setMaxCombo] = useState(0)
-  const [accuracy, setAccuracy] = useState(100)
+  const [playMode, setPlayMode] = useState(false)
+  const playModeRef = useRef(false)
+  const inactiveTimerRef = useRef<number | undefined>(undefined)
+  const autoFiredRef = useRef(new Set<string>())
   const [judgePop, setJudgePop] = useState<{ text: string; color: string; n: number } | null>(null)
   const comboRef = useRef(0)
-  const maxComboRef = useRef(0)
-  const hitsRef = useRef(0)
-  const accSumRef = useRef(0)
   const popNRef = useRef(0)
 
   const smoothTimeRef = useRef(0)
@@ -201,18 +200,31 @@ export function PreviewOverlay({
       setCombo(0)
     } else {
       comboRef.current += 1
-      maxComboRef.current = Math.max(maxComboRef.current, comboRef.current)
       setCombo(comboRef.current)
-      setMaxCombo(maxComboRef.current)
-      const value = grade === 'PERFECT' ? 320 : grade === 'GREAT' ? 300 : grade === 'GOOD' ? 200 : 100
-      hitsRef.current += 1
-      accSumRef.current += value
-      setAccuracy((accSumRef.current / (hitsRef.current * 320)) * 100)
     }
     setJudgePop({ text: grade, color: JUDGEMENTS[grade].color, n: ++popNRef.current })
   }, [])
 
+  const exitPlayMode = useCallback(() => {
+    playModeRef.current = false
+    setPlayMode(false)
+    judgedRef.current.clear()
+    autoFiredRef.current.clear()
+    comboRef.current = 0
+    setCombo(0)
+  }, [])
+
   const judgeColumn = useCallback((col: number) => {
+    if (!playModeRef.current) {
+      playModeRef.current = true
+      setPlayMode(true)
+      judgedRef.current.clear()
+      autoFiredRef.current.clear()
+      comboRef.current = 0
+      setCombo(0)
+    }
+    clearTimeout(inactiveTimerRef.current)
+    inactiveTimerRef.current = window.setTimeout(exitPlayMode, 1000)
     const now = nowRef.current
     const notes = notesRef.current
     let best = -1
@@ -239,7 +251,7 @@ export function PreviewOverlay({
     hitFlashRef.current.set(col, now)
     recordJudge(grade)
     if (hitsoundRef.current) playHit(0.16)
-  }, [playHit, recordJudge])
+  }, [playHit, recordJudge, exitPlayMode])
 
   // ── Init hitsound AudioContext ──
   useEffect(() => {
@@ -320,6 +332,8 @@ export function PreviewOverlay({
     }
   }, [])
 
+  useEffect(() => () => clearTimeout(inactiveTimerRef.current), [])
+
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.altKey) return
     if (e.ctrlKey) {
@@ -388,13 +402,9 @@ export function PreviewOverlay({
         judgedRef.current.clear()
         hitFlashRef.current.clear()
         pressedRef.current.clear()
+        autoFiredRef.current.clear()
         comboRef.current = 0
-        maxComboRef.current = 0
-        hitsRef.current = 0
-        accSumRef.current = 0
         setCombo(0)
-        setMaxCombo(0)
-        setAccuracy(100)
       }
       prevNowMs.current = nowMs
       const cols = keysRef.current
@@ -436,27 +446,92 @@ export function PreviewOverlay({
 
       const drawNotes = warmupFrames.current <= 0
       if (drawNotes) {
-        // Misses: notes whose hit window has fully passed without being judged
-        for (let i = 0; i < allNotes.length; i++) {
-          if (judgedRef.current.has(i)) continue
-          if (allNotes[i].time_ms + WINDOW_MEH < nowMs) {
-            judgedRef.current.add(i)
-            recordJudge('MISS')
+        const flashes = new Array(cols).fill(0)
+        if (playModeRef.current) {
+          // Misses: notes whose hit window has fully passed without being judged
+          for (let i = 0; i < allNotes.length; i++) {
+            if (judgedRef.current.has(i)) continue
+            if (allNotes[i].time_ms + WINDOW_MEH < nowMs) {
+              judgedRef.current.add(i)
+              recordJudge('MISS')
+            }
+          }
+
+          // Receptor flashes from player hits + key presses
+          for (const [col, t] of hitFlashRef.current) {
+            const age = 1 - (nowMs - t) / FLASH_DURATION
+            if (age > 0) flashes[col] = Math.max(flashes[col], age)
+          }
+          for (const [col, t] of pressedRef.current) {
+            const age = 1 - (nowMs - t) / PRESS_FLASH_DURATION
+            if (age > 0) flashes[col] = Math.max(flashes[col], age * 0.4)
+          }
+        } else {
+          // Autoplay: flash + hitsound as each note crosses the line
+          const hsOn = hitsoundRef.current
+          for (let i = 0; i < allNotes.length; i++) {
+            const t = allNotes[i].time_ms
+            if (t >= nowMs - FLASH_DURATION && t <= nowMs) {
+              flashes[allNotes[i].column] = Math.max(flashes[allNotes[i].column], 1 - (nowMs - t) / FLASH_DURATION)
+            }
+            if (hsOn && el && !el.paused) {
+              const diff = Math.abs(t - nowMs)
+              if (diff < 30) {
+                const bucket = `b:${Math.round(t / 10) * 10}`
+                if (!autoFiredRef.current.has(bucket)) {
+                  autoFiredRef.current.add(bucket)
+                  playHit(0.1)
+                }
+              }
+            }
           }
         }
 
-        // Receptor flashes from player hits + key presses
-        const flashes = new Array(cols).fill(0)
-        for (const [col, t] of hitFlashRef.current) {
-          const age = 1 - (nowMs - t) / FLASH_DURATION
-          if (age > 0) flashes[col] = Math.max(flashes[col], age)
-        }
-        for (const [col, t] of pressedRef.current) {
-          const age = 1 - (nowMs - t) / PRESS_FLASH_DURATION
-          if (age > 0) flashes[col] = Math.max(flashes[col], age * 0.4)
-        }
+        // Notes, clipped above the hit line so they slide under the receptor
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(0, 0, w, hitY)
+        ctx.clip()
+        for (let i = 0; i < allNotes.length; i++) {
+          const note = allNotes[i]
+          const t = note.time_ms
+          if (t > nowMs + lookAhead) continue
+          const cx = note.column * colW + colW / 2
 
-        // Receptor - dark by default, bright flash on hit
+          if (note.hold && note.hold_end_ms) {
+            if (note.hold_end_ms < nowMs) continue
+
+            const y = hitY - ((t - nowMs) / lookAhead) * scrollH
+            const endY = hitY - ((note.hold_end_ms - nowMs) / lookAhead) * scrollH
+            const top = Math.min(y, endY)
+            const bot = Math.max(y, endY)
+            const drawTop = Math.max(top, 0)
+            const drawBot = Math.min(bot, hitY)
+
+            if (drawBot - drawTop > 3) {
+              const grad = ctx.createLinearGradient(0, drawTop, 0, drawBot)
+              grad.addColorStop(0, 'rgba(255,255,255,0)')
+              grad.addColorStop(0.35, 'rgba(255,255,255,0.25)')
+              grad.addColorStop(1, 'rgba(255,255,255,0.25)')
+              ctx.fillStyle = grad
+              ctx.fillRect(cx - halfBodyW, drawTop, bodyW, drawBot - drawTop)
+            }
+
+            if (t >= nowMs) {
+              ctx.fillStyle = '#ffffff'
+              roundRect(ctx, cx - halfBarW, y - halfBarH, barW, barH, cornerR)
+            }
+          } else {
+            if (t < nowMs) continue
+
+            const y = hitY - ((t - nowMs) / lookAhead) * scrollH
+            ctx.fillStyle = '#ffffff'
+            roundRect(ctx, cx - halfBarW, y - halfBarH, barW, barH, cornerR)
+          }
+        }
+        ctx.restore()
+
+        // Receptor on top, so notes vanish behind it at the line (hitY = hit position)
         const glowH = colW * 0.5
         const linePad = 4 * dpr
         for (let i = 0; i < cols; i++) {
@@ -479,45 +554,6 @@ export function PreviewOverlay({
         }
       }
       if (warmupFrames.current > 0) warmupFrames.current--
-
-      // Notes
-      if (drawNotes) for (let i = 0; i < allNotes.length; i++) {
-        const note = allNotes[i]
-        const t = note.time_ms
-        if (t > nowMs + lookAhead) continue
-        const cx = note.column * colW + colW / 2
-
-        if (note.hold && note.hold_end_ms) {
-          if (note.hold_end_ms < nowMs) continue
-
-          const y = hitY - ((t - nowMs) / lookAhead) * scrollH
-          const endY = hitY - ((note.hold_end_ms - nowMs) / lookAhead) * scrollH
-          const top = Math.min(y, endY)
-          const bot = Math.max(y, endY)
-          const drawTop = Math.max(top, 0)
-          const drawBot = Math.min(bot, hitY)
-
-          if (drawBot - drawTop > 3) {
-            const grad = ctx.createLinearGradient(0, drawTop, 0, drawBot)
-            grad.addColorStop(0, 'rgba(255,255,255,0)')
-            grad.addColorStop(0.35, 'rgba(255,255,255,0.25)')
-            grad.addColorStop(1, 'rgba(255,255,255,0.25)')
-            ctx.fillStyle = grad
-            ctx.fillRect(cx - halfBodyW, drawTop, bodyW, drawBot - drawTop)
-          }
-
-          if (t >= nowMs) {
-            ctx.fillStyle = '#ffffff'
-            roundRect(ctx, cx - halfBarW, y - halfBarH, barW, barH, cornerR)
-          }
-        } else {
-          if (t < nowMs) continue
-
-          const y = hitY - ((t - nowMs) / lookAhead) * scrollH
-          ctx.fillStyle = '#ffffff'
-          roundRect(ctx, cx - halfBarW, y - halfBarH, barW, barH, cornerR)
-        }
-      }
 
       rafId.current = requestAnimationFrame(loop)
     }
@@ -623,29 +659,25 @@ export function PreviewOverlay({
           </div>
         </div>
 
-        {/* Judgment popup */}
-        {judgePop && (
-          <div
-            key={judgePop.n}
-            className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-none font-extrabold tracking-[0.3em] text-2xl animate-[judgePop_0.35s_ease-out_forwards]"
-            style={{ bottom: '17%', color: judgePop.color, textShadow: '0 0 14px currentColor' }}
-          >
-            {judgePop.text}
+        {/* Play HUD — judgment + combo, centered, only while playing */}
+        {playMode && (
+          <div className="absolute inset-x-0 top-[38%] z-10 flex flex-col items-center gap-1 pointer-events-none">
+            {judgePop && (
+              <div
+                key={judgePop.n}
+                className="font-extrabold tracking-[0.3em] text-2xl animate-[judgePop_0.35s_ease-out_forwards]"
+                style={{ color: judgePop.color, textShadow: '0 0 14px currentColor' }}
+              >
+                {judgePop.text}
+              </div>
+            )}
+            {combo > 1 && (
+              <div key={combo} className="text-white font-bold text-3xl animate-[comboPop_0.15s_ease-out] tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">
+                {combo}
+              </div>
+            )}
           </div>
         )}
-
-        {/* Play HUD */}
-        <div className="absolute right-4 top-16 z-10 text-right pointer-events-none">
-          {combo > 1 && (
-            <div key={combo} className="text-white font-bold text-3xl animate-[comboPop_0.15s_ease-out] tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">
-              {combo}
-            </div>
-          )}
-          <div className="text-white/60 text-xs font-mono tabular-nums mt-0.5">{accuracy.toFixed(2)}%</div>
-          {maxCombo > 1 && (
-            <div className="text-white/35 text-[10px] font-mono tabular-nums mt-0.5">MAX {maxCombo}</div>
-          )}
-        </div>
 
         {!playing && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 cursor-pointer z-10"
