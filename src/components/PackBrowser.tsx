@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { PackEntry } from '../types/beatmap'
 import { resolveMediaFile, readFileAsDataUrl } from '../services/files'
 
@@ -24,6 +25,7 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
   onToggle: () => void
   onEdit: () => void
 }) {
+  const { t } = useTranslation()
   const [bgUrl, setBgUrl] = useState<string | null>(() => {
     const key = `${entry.source_dir}|${entry.background_filename ?? ''}`
     return _bgCache.get(key) ?? null
@@ -90,7 +92,7 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
         {/* Difficulty badge */}
         <div className="absolute bottom-2.5 left-3">
           <span className="text-[10px] font-medium text-white/70 bg-black/40 px-2 py-0.5 rounded-full">
-            {entry.available_difficulties.length} diff{entry.available_difficulties.length > 1 ? 's' : ''}
+            {t('packBrowser.diffCount', { count: entry.available_difficulties.length })}
           </span>
         </div>
       </div>
@@ -105,6 +107,7 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
 }
 
 export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onSelectAll, onConvert, onConvertAll, onBack, bannerUrl, isConverting }: Props) {
+  const { t } = useTranslation()
   const allSelected = selected.size === entries.length
 
   return (
@@ -133,10 +136,10 @@ export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onS
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
-          Back
+          {t('common.back')}
         </button>
         <div className="h-4 w-px bg-white/10" />
-        <span className="text-sm text-surface-400">{entries.length} song{entries.length > 1 ? 's' : ''}</span>
+        <span className="text-sm text-surface-400">{t('packBrowser.songCount', { count: entries.length })}</span>
         <div className="flex-1" />
         {entries.length > 0 && (
           <button
@@ -146,7 +149,7 @@ export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onS
               hover:bg-white/[0.1] hover:text-surface-200
               active:scale-[0.97] transition-all duration-75"
           >
-            {allSelected ? 'Deselect all' : 'Select all'}
+            {allSelected ? t('common.deselectAll') : t('common.selectAll')}
           </button>
         )}
       </div>
@@ -176,7 +179,7 @@ export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onS
                 hover:bg-white/[0.14] hover:text-white
                 active:scale-[0.97] transition-all duration-75"
             >
-              Close
+              {t('common.close')}
             </button>
             <div className="flex-1" />
             <button
@@ -188,7 +191,7 @@ export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onS
                 active:scale-[0.97] transition-all duration-75
                 disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              Convert all
+              {t('packBrowser.convertAll')}
             </button>
             <button
               onClick={onConvert}
@@ -200,7 +203,7 @@ export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onS
                 disabled:opacity-30 disabled:cursor-not-allowed
                 shadow-lg shadow-accent/25"
             >
-              Convert selected{selected.size > 0 ? ` (${selected.size})` : ''}
+              {t('packBrowser.convertSelected')}{selected.size > 0 ? ` (${selected.size})` : ''}
             </button>
           </div>
         </div>

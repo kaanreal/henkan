@@ -1,111 +1,119 @@
 import { Link } from 'react-router'
+import { Trans, useTranslation } from 'react-i18next'
 import { SEO } from '../components/SEO'
 import { SiteHeader, SiteFooter } from '../components/SiteLayout'
 
+const code = (key: string) => (
+  <code className="text-surface-300 bg-surface-800/50 px-1.5 py-0.5 rounded text-xs">{key}</code>
+)
+
+const kbd = (key: string) => <td className="px-4 py-2 font-mono text-xs">{key}</td>
+
 export function MapViewerPage() {
+  const { t } = useTranslation()
   return (
     <div className="min-h-screen bg-surface-950 text-surface-200 flex flex-col">
       <SEO
-        title="osu!mania Map Viewer - Preview and Play Beatmaps"
-        description="Preview osu!mania and Etterna beatmaps with a full canvas-rendered note display, hitsound playback, and adjustable scroll speed."
+        title={t('mapViewer.seoTitle')}
+        description={t('mapViewer.seoDescription')}
         path="/osu-mania-map-viewer"
       />
       <SiteHeader />
 
       <main className="flex-1">
         <section className="max-w-3xl mx-auto px-4 sm:px-6 pt-16 pb-12">
-          <p className="text-xs font-medium text-accent tracking-widest uppercase mb-3">Map Viewer</p>
+          <p className="text-xs font-medium text-accent tracking-widest uppercase mb-3">{t('mapViewer.badge')}</p>
           <h1 className="text-3xl sm:text-4xl font-bold text-surface-100 leading-tight mb-4">
-            osu!mania Map Viewer
+            {t('mapViewer.title')}
           </h1>
           <p className="text-lg text-surface-400 leading-relaxed max-w-2xl">
-            Preview beatmaps before converting. See the notes scroll by with synced audio, hitsounds, and a note density graph.
+            {t('mapViewer.intro')}
           </p>
         </section>
 
         <section className="max-w-3xl mx-auto px-4 sm:px-6 pb-16">
           <div className="rounded-2xl overflow-hidden border border-surface-800/50 mb-12">
-            <img src="/screenshots/preview.png" alt="Henkan preview overlay showing a canvas-rendered note scrolling display with audio playback controls" className="w-full" />
+            <img src="/screenshots/preview.png" alt={t('mapViewer.screenshotAlt')} className="w-full" />
           </div>
 
           <div className="space-y-10">
             <div>
-              <h2 className="text-xl font-semibold text-surface-100 mb-2">Preview features</h2>
+              <h2 className="text-xl font-semibold text-surface-100 mb-2">{t('mapViewer.previewFeatures')}</h2>
               <ul className="space-y-2 text-sm text-surface-400">
                 <li className="flex items-start gap-2">
                   <span className="text-accent mt-0.5">&#10003;</span>
-                  <span><strong className="text-surface-200">Canvas-rendered notes</strong> - Full note scrolling visualization, not just a static image.</span>
+                  <span><Trans i18nKey="mapViewer.featureCanvas" /></span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-accent mt-0.5">&#10003;</span>
-                  <span><strong className="text-surface-200">Hitsound playback</strong> - Plays hit sounds synced to note positions with dynamic gain.</span>
+                  <span><Trans i18nKey="mapViewer.featureHitsound" /></span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-accent mt-0.5">&#10003;</span>
-                  <span><strong className="text-surface-200">Adjustable scroll speed</strong> - Mouse wheel controls look-ahead from 150ms to 600ms.</span>
+                  <span><Trans i18nKey="mapViewer.featureScroll" /></span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-accent mt-0.5">&#10003;</span>
-                  <span><strong className="text-surface-200">Playback rate control</strong> - Ctrl+Scroll to change rate in the preview.</span>
+                  <span><Trans i18nKey="mapViewer.featureRate" /></span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-accent mt-0.5">&#10003;</span>
-                  <span><strong className="text-surface-200">Note density graph</strong> - See note distribution across the chart in the timeline.</span>
+                  <span><Trans i18nKey="mapViewer.featureDensity" /></span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-accent mt-0.5">&#10003;</span>
-                  <span><strong className="text-surface-200">Preview point setter</strong> - Press Tab to set the preview point at the current playback position.</span>
+                  <span><Trans i18nKey="mapViewer.featurePreviewPoint" /></span>
                 </li>
               </ul>
             </div>
 
             <div>
-              <h2 className="text-xl font-semibold text-surface-100 mb-2">Keyboard shortcuts</h2>
+              <h2 className="text-xl font-semibold text-surface-100 mb-2">{t('mapViewer.shortcuts')}</h2>
               <div className="bg-surface-900/50 border border-surface-800/50 rounded-xl overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-surface-800/50">
-                      <th className="text-left px-4 py-2.5 text-surface-400 font-medium">Key</th>
-                      <th className="text-left px-4 py-2.5 text-surface-400 font-medium">Action</th>
+                      <th className="text-left px-4 py-2.5 text-surface-400 font-medium">{t('mapViewer.key')}</th>
+                      <th className="text-left px-4 py-2.5 text-surface-400 font-medium">{t('mapViewer.action')}</th>
                     </tr>
                   </thead>
                   <tbody className="text-surface-300">
-                    <tr className="border-b border-surface-800/30"><td className="px-4 py-2 font-mono text-xs">Space</td><td className="px-4 py-2">Open preview / Play</td></tr>
-                    <tr className="border-b border-surface-800/30"><td className="px-4 py-2 font-mono text-xs">Esc</td><td className="px-4 py-2">Close preview</td></tr>
-                    <tr className="border-b border-surface-800/30"><td className="px-4 py-2 font-mono text-xs">Right-click</td><td className="px-4 py-2">Play / Pause</td></tr>
-                    <tr className="border-b border-surface-800/30"><td className="px-4 py-2 font-mono text-xs">Ctrl+Scroll</td><td className="px-4 py-2">Change playback rate</td></tr>
-                    <tr className="border-b border-surface-800/30"><td className="px-4 py-2 font-mono text-xs">Alt+Scroll</td><td className="px-4 py-2">Volume control</td></tr>
-                    <tr className="border-b border-surface-800/30"><td className="px-4 py-2 font-mono text-xs">Tab</td><td className="px-4 py-2">Set preview point</td></tr>
-                    <tr><td className="px-4 py-2 font-mono text-xs">H</td><td className="px-4 py-2">Toggle hitsounds</td></tr>
+                    <tr className="border-b border-surface-800/30">{kbd('Space')}<td className="px-4 py-2">{t('mapViewer.shortcutOpenPlay')}</td></tr>
+                    <tr className="border-b border-surface-800/30">{kbd('Esc')}<td className="px-4 py-2">{t('mapViewer.shortcutClose')}</td></tr>
+                    <tr className="border-b border-surface-800/30">{kbd('Right-click')}<td className="px-4 py-2">{t('mapViewer.shortcutPlayPause')}</td></tr>
+                    <tr className="border-b border-surface-800/30">{kbd('Ctrl+Scroll')}<td className="px-4 py-2">{t('mapViewer.shortcutRate')}</td></tr>
+                    <tr className="border-b border-surface-800/30">{kbd('Alt+Scroll')}<td className="px-4 py-2">{t('mapViewer.shortcutVolume')}</td></tr>
+                    <tr className="border-b border-surface-800/30">{kbd('Tab')}<td className="px-4 py-2">{t('mapViewer.shortcutPreviewPoint')}</td></tr>
+                    <tr>{kbd('H')}<td className="px-4 py-2">{t('mapViewer.shortcutHitsounds')}</td></tr>
                   </tbody>
                 </table>
               </div>
             </div>
 
             <div>
-              <h2 className="text-xl font-semibold text-surface-100 mb-2">How to use the viewer</h2>
+              <h2 className="text-xl font-semibold text-surface-100 mb-2">{t('mapViewer.howToUse')}</h2>
               <ol className="space-y-3 text-surface-400 text-sm leading-relaxed list-decimal list-inside">
-                <li>Drag a <code className="text-surface-300 bg-surface-800/50 px-1.5 py-0.5 rounded text-xs">.osu</code>, <code className="text-surface-300 bg-surface-800/50 px-1.5 py-0.5 rounded text-xs">.osz</code>, or <code className="text-surface-300 bg-surface-800/50 px-1.5 py-0.5 rounded text-xs">.sm</code> file onto the converter.</li>
-                <li>The audio player appears at the bottom with playback controls.</li>
-                <li>Press Space or click the preview button to open the full-screen note display.</li>
-                <li>Use the mouse wheel to adjust scroll speed, Ctrl+Scroll for playback rate.</li>
+                <li><Trans i18nKey="mapViewer.howToStep1" components={{ osu: code('.osu'), osz: code('.osz'), sm: code('.sm') }} /></li>
+                <li>{t('mapViewer.howToStep2')}</li>
+                <li>{t('mapViewer.howToStep3')}</li>
+                <li>{t('mapViewer.howToStep4')}</li>
               </ol>
             </div>
 
             <div>
-              <h2 className="text-xl font-semibold text-surface-100 mb-2">Why preview before converting</h2>
+              <h2 className="text-xl font-semibold text-surface-100 mb-2">{t('mapViewer.whyPreview')}</h2>
               <p className="text-sm text-surface-400 leading-relaxed">
-                Previewing lets you verify the chart looks right before exporting. Check timing accuracy, note placement, and audio sync. If something looks off, you can adjust the conversion settings and preview again.
+                {t('mapViewer.whyPreviewDesc')}
               </p>
             </div>
           </div>
 
           <div className="mt-12 flex flex-col sm:flex-row gap-3">
             <Link to="/" className="px-6 py-3 rounded-xl bg-accent text-white font-medium text-sm text-center hover:bg-accent-hover transition-colors">
-              Open the Converter
+              {t('landing.openConverter')}
             </Link>
             <Link to="/osu-to-stepmania" className="px-6 py-3 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-300 font-medium text-sm text-center hover:bg-surface-700 hover:text-surface-100 transition-colors">
-              Convert Beatmaps
+              {t('landing.convertBeatmaps')}
             </Link>
           </div>
         </section>

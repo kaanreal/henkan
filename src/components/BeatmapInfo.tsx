@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { Beatmap } from '../types/beatmap'
 
 interface BeatmapInfoProps {
@@ -5,6 +6,7 @@ interface BeatmapInfoProps {
 }
 
 export function BeatmapInfo({ beatmap }: BeatmapInfoProps) {
+  const { t } = useTranslation()
   const tapCount = beatmap.notes.filter(n => !n.hold).length
   const holdCount = beatmap.notes.filter(n => n.hold).length
   const bpmChanges = beatmap.timing_points.filter(tp => tp.uninherited && tp.beat_length > 0).length
@@ -12,15 +14,18 @@ export function BeatmapInfo({ beatmap }: BeatmapInfoProps) {
   return (
     <div className="grid grid-cols-3 gap-3">
       {[
-        { label: 'Title', value: beatmap.title || '-' },
-        { label: 'Artist', value: beatmap.artist || '-' },
-        { label: 'Mapper', value: beatmap.creator || '-' },
-        { label: 'Difficulty', value: beatmap.difficulty_name || '-' },
-        { label: 'Keys', value: `${beatmap.keys}K` },
-        { label: 'Notes', value: `${tapCount + holdCount} (${tapCount} taps, ${holdCount} holds)` },
-        { label: 'BPM Changes', value: `${bpmChanges}` },
-        { label: 'Timing Points', value: `${beatmap.timing_points.length}` },
-        { label: 'Duration', value: `${(beatmap.duration_ms / 1000).toFixed(1)}s` },
+        { label: t('beatmapInfo.title'), value: beatmap.title || '-' },
+        { label: t('beatmapInfo.artist'), value: beatmap.artist || '-' },
+        { label: t('beatmapInfo.mapper'), value: beatmap.creator || '-' },
+        { label: t('beatmapInfo.difficulty'), value: beatmap.difficulty_name || '-' },
+        { label: t('beatmapInfo.keys'), value: `${beatmap.keys}K` },
+        {
+          label: t('beatmapInfo.notes'),
+          value: t('beatmapInfo.notesValue', { total: tapCount + holdCount, taps: tapCount, holds: holdCount }),
+        },
+        { label: t('beatmapInfo.bpmChanges'), value: `${bpmChanges}` },
+        { label: t('beatmapInfo.timingPoints'), value: `${beatmap.timing_points.length}` },
+        { label: t('beatmapInfo.duration'), value: t('beatmapInfo.durationValue', { seconds: (beatmap.duration_ms / 1000).toFixed(1) }) },
       ].map((item, i) => (
         <div
           key={item.label}

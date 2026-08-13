@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { withTranslation, type WithTranslation } from 'react-i18next'
 
-interface Props {
+interface Props extends WithTranslation {
   children: ReactNode
 }
 
@@ -8,7 +9,7 @@ interface State {
   error: Error | null
 }
 
-export class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundaryClass extends Component<Props, State> {
   state: State = { error: null }
 
   static getDerivedStateFromError(error: Error): State {
@@ -20,6 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   render() {
+    const { t } = this.props
     if (this.state.error) {
       return (
         <div className="h-full flex flex-col items-center justify-center p-8 text-center">
@@ -28,13 +30,13 @@ export class ErrorBoundary extends Component<Props, State> {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
             </svg>
           </div>
-          <p className="text-lg font-medium text-surface-200 mb-1">Something went wrong</p>
+          <p className="text-lg font-medium text-surface-200 mb-1">{t('errorBoundary.title')}</p>
           <p className="text-sm text-surface-500 max-w-md mb-4">{this.state.error.message}</p>
           <button
             onClick={() => { this.setState({ error: null }); window.location.reload() }}
             className="px-4 py-2 rounded-lg bg-accent text-white text-sm hover:bg-accent-hover transition-colors"
           >
-            Reload
+            {t('errorBoundary.reload')}
           </button>
         </div>
       )
@@ -43,3 +45,5 @@ export class ErrorBoundary extends Component<Props, State> {
     return this.props.children
   }
 }
+
+export const ErrorBoundary = withTranslation()(ErrorBoundaryClass)

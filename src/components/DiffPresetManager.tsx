@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useDiffPresetsStore } from '../stores/useDiffPresetsStore'
-import { PLACEHOLDERS, DEFAULT_PRESETS } from '../lib/diffTemplate'
+import { PLACEHOLDERS, DEFAULT_PRESETS, placeholderDescription, presetDisplayName } from '../lib/diffTemplate'
 import type { Beatmap, ExportConfig } from '../types/beatmap'
 import { expandDiffTemplate } from '../lib/diffTemplate'
 
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
+  const { t } = useTranslation()
   const { presets, addPreset, updatePreset, deletePreset, resetToDefaults } = useDiffPresetsStore()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
@@ -54,18 +56,18 @@ export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
           <div className="h-0.5 bg-gradient-to-r from-accent via-accent-muted to-accent/40 shrink-0" />
           <div className="px-5 pt-5 pb-4 space-y-4 overflow-y-auto custom-scrollbar min-h-0">
             <div>
-              <h2 className="text-base font-semibold text-surface-100 tracking-tight">Difficulty Name Presets</h2>
-              <p className="text-[11px] text-surface-500 mt-px">Create templates using placeholders to auto-name difficulties</p>
+              <h2 className="text-base font-semibold text-surface-100 tracking-tight">{t('diffPreset.title')}</h2>
+              <p className="text-[11px] text-surface-500 mt-px">{t('diffPreset.subtitle')}</p>
             </div>
 
             {/* Placeholder reference */}
             <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3">
-              <p className="text-[10px] font-semibold text-surface-500 tracking-widest uppercase mb-2">Available Placeholders</p>
+              <p className="text-[10px] font-semibold text-surface-500 tracking-widest uppercase mb-2">{t('diffPreset.availablePlaceholders')}</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {PLACEHOLDERS.map(p => (
                   <div key={p.tag} className="flex items-baseline gap-2">
                     <code className="text-[11px] text-accent-muted font-mono shrink-0">{p.tag}</code>
-                    <span className="text-[10px] text-surface-500 truncate">{p.description}</span>
+                    <span className="text-[10px] text-surface-500 truncate">{placeholderDescription(p.key)}</span>
                   </div>
                 ))}
               </div>
@@ -91,11 +93,11 @@ export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
                           hover:bg-white/[0.06] hover:border-white/10 transition-all duration-75"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-surface-200">{p.name}</span>
+                          <span className="text-xs font-medium text-surface-200">{presetDisplayName(p)}</span>
                           <span className="text-[10px] text-surface-500 font-mono">{p.template}</span>
                         </div>
                         <div className="text-[10px] text-surface-500 mt-0.5">
-                          Result: <span className="text-surface-400">{preview(p.template) || '(empty)'}</span>
+                          {t('diffPreset.result')}: <span className="text-surface-400">{preview(p.template) || t('diffPreset.empty')}</span>
                         </div>
                       </button>
                       {!DEFAULT_PRESETS.some(d => d.id === p.id) && (
@@ -104,7 +106,7 @@ export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
                           className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center
                             text-surface-600 hover:text-red-400 hover:bg-red-400/10
                             opacity-0 group-hover:opacity-100 transition-all duration-75"
-                          title="Delete preset"
+                          title={t('diffPreset.deletePreset')}
                         >
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -121,13 +123,13 @@ export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
 
             {/* Add new preset */}
             <div className="space-y-2">
-              <p className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">New Preset</p>
+              <p className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">{t('diffPreset.newPreset')}</p>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={newName}
                   onChange={e => setNewName(e.target.value)}
-                  placeholder="Preset name"
+                  placeholder={t('diffPreset.presetName')}
                   className="flex-1 h-9 bg-white/[0.04] border border-white/[0.06] rounded-lg px-3 text-xs text-surface-200 placeholder-surface-600 outline-none focus:border-accent/40 focus:bg-accent/[0.03] transition-colors"
                 />
                 <button
@@ -138,7 +140,7 @@ export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
                     disabled:opacity-40 disabled:cursor-not-allowed
                     shadow-sm shadow-accent/20"
                 >
-                  Add
+                  {t('queue.add')}
                 </button>
               </div>
               <input
@@ -150,7 +152,7 @@ export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
               />
               {newTemplate && (
                 <div className="text-[10px] text-surface-500 px-1">
-                  Preview: <span className="text-surface-400">{preview(newTemplate) || '(empty)'}</span>
+                  {t('diffPreset.preview')}: <span className="text-surface-400">{preview(newTemplate) || t('diffPreset.empty')}</span>
                 </div>
               )}
             </div>
@@ -164,7 +166,7 @@ export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
                 hover:bg-white/[0.07] hover:text-surface-200
                 transition-all duration-75"
             >
-              Reset defaults
+              {t('diffPreset.resetDefaults')}
             </button>
             <div className="flex-1" />
             <button
@@ -174,7 +176,7 @@ export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
                 hover:bg-white/[0.07] hover:text-surface-200
                 transition-all duration-75"
             >
-              Done
+              {t('common.done')}
             </button>
           </div>
         </div>
@@ -190,6 +192,7 @@ function PresetEditor({ name, template, preview, onSave, onCancel }: {
   onSave: (name: string, template: string) => void
   onCancel: () => void
 }) {
+  const { t } = useTranslation()
   const [editName, setEditName] = useState(name)
   const [editTemplate, setEditTemplate] = useState(template)
 
@@ -210,17 +213,17 @@ function PresetEditor({ name, template, preview, onSave, onCancel }: {
         className="w-full h-8 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 text-xs text-surface-200 font-mono outline-none focus:border-accent/40"
       />
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-surface-500">Preview: <span className="text-surface-400">{preview || '(empty)'}</span></span>
+        <span className="text-[10px] text-surface-500">{t('diffPreset.preview')}: <span className="text-surface-400">{preview || t('diffPreset.empty')}</span></span>
         <div className="flex gap-1.5">
           <button onClick={onCancel} className="px-3 py-1 rounded-lg text-[10px] font-medium text-surface-400 hover:text-surface-200 transition-colors">
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={() => onSave(editName, editTemplate)}
             disabled={!editName.trim() || !editTemplate.trim()}
             className="px-3 py-1 rounded-lg text-[10px] font-medium bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-40"
           >
-            Save
+            {t('common.save')}
           </button>
         </div>
       </div>

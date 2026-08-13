@@ -1,7 +1,9 @@
 ﻿import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Note, SourceFormat } from '../types/beatmap'
 import type { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { useConverterStore } from '../stores/useConverterStore'
+import i18n from '../i18n'
 
 interface Props {
   audioPlayerRef: { current: WebAudioPlayer | null }
@@ -18,13 +20,13 @@ interface Props {
 }
 
 const KEYBINDS = [
-  ['Space / Esc', 'Close preview'],
-  ['Right-click', 'Pause / Play'],
-  ['Scroll wheel', 'Scroll speed'],
-  ['Ctrl+Scroll', 'Playback rate'],
-  ['Alt+Scroll', 'Volume'],
-  ['Tab', 'Set preview point'],
-  ['H', 'Toggle hitsounds'],
+  { keys: 'Space / Esc', descKey: 'preview.keybindClose' },
+  { keys: 'Right-click', descKey: 'preview.keybindPlayPause' },
+  { keys: 'Scroll wheel', descKey: 'preview.keybindScrollSpeed' },
+  { keys: 'Ctrl+Scroll', descKey: 'preview.keybindPlaybackRate' },
+  { keys: 'Alt+Scroll', descKey: 'preview.keybindVolume' },
+  { keys: 'Tab', descKey: 'preview.keybindSetPreview' },
+  { keys: 'H', descKey: 'preview.keybindHitsounds' },
 ]
 
 const BAR_W = 0.85
@@ -47,6 +49,7 @@ export function PreviewOverlay({
   audioPlayerRef, playing, duration,
   notes, keys, bpm, backgroundUrl, previewTime, sourceFormat, onSetPreviewTime, onClose,
 }: Props) {
+  const { t } = useTranslation()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafId = useRef(0)
   const [closing, setClosing] = useState(false)
@@ -194,7 +197,7 @@ export function PreviewOverlay({
         const el = audioPlayerRefRef.current.current
         if (el) {
           onSetRef.current(el.currentTime * 1000)
-          showToast('Preview point set')
+          showToast(i18n.t('preview.previewPointSet'))
         }
         return
       }
@@ -202,7 +205,7 @@ export function PreviewOverlay({
         e.preventDefault()
         hitsoundRef.current = !hitsoundRef.current
         _hitsound = hitsoundRef.current
-        showToast(hitsoundRef.current ? 'Hitsounds on' : 'Hitsounds off')
+        showToast(hitsoundRef.current ? i18n.t('preview.hitsoundsOn') : i18n.t('preview.hitsoundsOff'))
         if (hitsoundRef.current) ensureClap()
       }
     }
@@ -445,8 +448,8 @@ export function PreviewOverlay({
         e.preventDefault()
         const el = audioPlayerRef.current
         if (!el) return
-        if (el.paused) { el.play().catch(() => {}); showToast('Playing') }
-        else { el.pause(); showToast('Paused') }
+        if (el.paused) { el.play().catch(() => {}); showToast(i18n.t('preview.playing')) }
+        else { el.pause(); showToast(i18n.t('preview.paused')) }
       }}
     >
       {/* Header */}
@@ -455,9 +458,9 @@ export function PreviewOverlay({
           <span className="text-white/80 font-semibold text-sm tracking-widest">PREVIEW</span>
           <span className="h-3 w-px bg-white/8" />
           <div className="flex items-center gap-2.5 text-[11px] text-white/35 tracking-wide">
-            <span>{notes.length} notes</span>
+            <span>{t('preview.notesCount', { count: notes.length })}</span>
             <span className="text-white/15">·</span>
-            <span>{bpm} BPM</span>
+            <span>{t('preview.bpm', { bpm })}</span>
             <span className="text-white/15">·</span>
             <span className="tabular-nums">{rate.toFixed(2)}x</span>
           </div>
@@ -486,10 +489,10 @@ export function PreviewOverlay({
 
         {/* Keybinds */}
         <div className="absolute left-4 top-4 z-10 flex flex-col gap-1.5 pointer-events-none">
-          {KEYBINDS.map(([key, desc]) => (
-            <div key={key} className="flex items-center gap-2 text-[11px]">
-              <span className="text-white/50 font-mono tracking-wide bg-white/5 px-1.5 py-0.5 rounded leading-none">{key}</span>
-              <span className="text-white/30">{desc}</span>
+          {KEYBINDS.map(({ keys, descKey }) => (
+            <div key={keys} className="flex items-center gap-2 text-[11px]">
+              <span className="text-white/50 font-mono tracking-wide bg-white/5 px-1.5 py-0.5 rounded leading-none">{keys}</span>
+              <span className="text-white/30">{t(descKey)}</span>
             </div>
           ))}
         </div>
@@ -524,7 +527,7 @@ export function PreviewOverlay({
                 <path d="M8 5v14l11-7z" />
               </svg>
             </div>
-            <span className="text-white/60 text-sm">Click to play</span>
+            <span className="text-white/60 text-sm">{t('preview.clickToPlay')}</span>
           </div>
         )}
       </div>
@@ -602,7 +605,7 @@ export function PreviewOverlay({
                 <div className="bg-black/80 backdrop-blur-sm text-white/80 text-[10px] px-2 py-1 rounded tracking-wide font-mono flex flex-col items-center gap-0.5 whitespace-nowrap">
                   <span className="text-white/90">{fmt((graphHover.pct / 100) * duration)}</span>
                   <span className="text-white/40 text-[9px]">
-                    {buckets[Math.min(NUM_BUCKETS - 1, Math.floor((graphHover.pct / 100) * NUM_BUCKETS))] || 0} notes
+                    {t('preview.notesCount', { count: buckets[Math.min(NUM_BUCKETS - 1, Math.floor((graphHover.pct / 100) * NUM_BUCKETS))] || 0 })}
                   </span>
                 </div>
               </div>
@@ -646,7 +649,7 @@ export function PreviewOverlay({
                 <div className="w-[5px] h-[5px] rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 opacity-0 group-hover/preview:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap">
                   <div className="bg-black/80 backdrop-blur-sm text-white/80 text-[10px] px-2 py-0.5 rounded tracking-wide font-mono">
-                    preview · {fmt(previewTime / 1000)}
+                    {t('preview.previewPoint', { time: fmt(previewTime / 1000) })}
                   </div>
                 </div>
               </div>

@@ -1,6 +1,8 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { openUrl, getGithubStars } from '../services/platform'
+import { LanguageSwitcher } from './LanguageSwitcher'
 import type { ConvertDirection } from '../types/beatmap'
 
 const REPO = 'kaanreal/henkan'
@@ -30,8 +32,9 @@ export function Header({
   appVersion,
   onShowVersionDialog,
   directionLabels = ['.osu / .osz', '.sm'],
-  directionAriaLabel = 'Beatmap conversion direction',
+  directionAriaLabel,
 }: HeaderProps) {
+  const { t } = useTranslation()
   const [stars, setStars] = useState<string | null>(null)
 
   useEffect(() => {
@@ -47,7 +50,7 @@ export function Header({
   return (
     <header className="app-header px-3 sm:px-6 py-3 border-b border-white/5 bg-black/20 backdrop-blur-md grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-3 items-center shrink-0 animate-fade-in gap-3">
       <div className="flex items-center gap-2.5 min-w-0">
-        <Link to="/" className="flex items-center gap-2.5 min-w-0" title="Back to map converter">
+        <Link to="/" className="flex items-center gap-2.5 min-w-0" title={t('header.backToConverter')}>
           <img src="/logo32.png" alt="Henkan" className="w-8 h-8 rounded-lg shrink-0" />
           <span className="hidden sm:inline text-base font-semibold tracking-tight text-surface-100">Henkan</span>
         </Link>
@@ -56,7 +59,7 @@ export function Header({
           <button
             onClick={onShowVersionDialog}
             className={`${versionClass} hover:bg-white/[0.08] hover:text-surface-300 transition-all duration-75`}
-            title="Click for version info"
+            title={t('header.versionInfo')}
           >
             v{appVersion || '-'}
           </button>
@@ -71,10 +74,12 @@ export function Header({
           <GithubIcon />
           {stars !== null ? stars : '-'}
         </button>
+
+        <LanguageSwitcher />
       </div>
 
       <div className="flex justify-end md:justify-center">
-        {direction && onSetDirection && <div className="header-direction flex bg-white/[0.04] rounded-lg border border-white/5 p-0.5 gap-0.5" role="group" aria-label={directionAriaLabel}>
+        {direction && onSetDirection && <div className="header-direction flex bg-white/[0.04] rounded-lg border border-white/5 p-0.5 gap-0.5" role="group" aria-label={directionAriaLabel ?? t('header.directionAria')}>
           <button
             onClick={() => onSetDirection('osu-to-etterna')}
             aria-pressed={direction === 'osu-to-etterna'}
@@ -102,7 +107,7 @@ export function Header({
           onClick={() => openUrl(SUPPORTER_URL)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#FFDD00]/40 hover:border-[#FFDD00] bg-[#FFDD00]/[0.06] hover:bg-[#FFDD00]/[0.12] text-surface-300 hover:text-white text-xs font-medium transition-all duration-75 shrink-0"
         >
-          ☕ Buy me a coffee
+          ☕ {t('header.buyMeACoffee')}
         </button>
       </div>
     </header>

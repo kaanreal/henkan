@@ -1,4 +1,5 @@
 import type { Beatmap, ExportConfig } from '../types/beatmap'
+import i18n from '../i18n'
 
 export interface DiffPreset {
   id: string
@@ -12,14 +13,30 @@ export interface TemplateContext {
 }
 
 export const PLACEHOLDERS = [
-  { tag: '<diff>', description: 'Original difficulty name' },
-  { tag: '<creator>', description: 'Mapper / charter' },
-  { tag: '<title>', description: 'Song title' },
-  { tag: '<artist>', description: 'Song artist' },
-  { tag: '<msd>', description: 'Difficulty rating (MSD / Minacalc)' },
-  { tag: '<bpm>', description: 'Song BPM' },
-  { tag: '<rate>', description: 'Conversion rate (e.g. 1.5x)' },
-]
+  { tag: '<diff>', key: 'diff' },
+  { tag: '<creator>', key: 'creator' },
+  { tag: '<title>', key: 'title' },
+  { tag: '<artist>', key: 'artist' },
+  { tag: '<msd>', key: 'msd' },
+  { tag: '<bpm>', key: 'bpm' },
+  { tag: '<rate>', key: 'rate' },
+] as const
+
+const DEFAULT_PRESET_LABEL_KEYS: Record<string, string> = {
+  keep: 'diffTemplate.presetKeep',
+  'diff-creator': 'diffTemplate.presetDiffCreator',
+  'diff-rate': 'diffTemplate.presetDiffRate',
+  'diff-msd': 'diffTemplate.presetMsd',
+}
+
+export function placeholderDescription(key: string): string {
+  return i18n.t(`diffTemplate.${key}`)
+}
+
+export function presetDisplayName(preset: DiffPreset): string {
+  const key = DEFAULT_PRESET_LABEL_KEYS[preset.id]
+  return key ? i18n.t(key) : preset.name
+}
 
 export const DEFAULT_PRESETS: DiffPreset[] = [
   { id: 'keep', name: 'Keep Original', template: '<diff>' },

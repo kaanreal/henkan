@@ -1,4 +1,5 @@
 ﻿import { useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { PackEntry } from '../types/beatmap'
 import { openDirectory } from '../services/dialogs'
 import { scanPack } from '../services/pack'
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function BulkConvertDialog({ open, onCancel }: Props) {
+  const { t } = useTranslation()
   const [folder, setFolder] = useState<string | null>(null)
   const [entries, setEntries] = useState<(PackEntry & { expanded: boolean })[]>([])
   const [scanning, setScanning] = useState(false)
@@ -25,7 +27,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
   }
 
   const pickFolder = useCallback(async () => {
-    const picked = await openDirectory({ title: 'Select pack folder' })
+    const picked = await openDirectory({ title: t('dialogs.titleSelectPackFolder') })
     if (!picked) return
     setFolder(picked)
     setScanning(true)
@@ -39,7 +41,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
     } finally {
       setScanning(false)
     }
-  }, [])
+  }, [t])
 
   const allSelected = entries.length > 0 && selected.size === totalDiffs()
 
@@ -100,7 +102,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
     setProgress(null)
 
     try {
-      const exportDir = await openDirectory({ title: 'Choose export folder' })
+      const exportDir = await openDirectory({ title: t('dialogs.titleExportFolder') })
       if (!exportDir) { setConverting(false); return }
 
       const sel = [...selected]
@@ -147,10 +149,10 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
         converted++
       }
 
-      setProgress(`Done - ${converted} file${converted > 1 ? 's' : ''} converted`)
+      setProgress(t('bulkConvert.done', { count: converted }))
     } catch (e) {
       console.error('Bulk convert failed', e)
-      setProgress('Conversion failed')
+      setProgress(t('converter.conversionFailed'))
     } finally {
       setConverting(false)
     }
@@ -179,8 +181,8 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
                 </svg>
               </div>
               <div>
-                <h2 className="text-base font-semibold text-surface-100 tracking-tight">Bulk convert</h2>
-                <p className="text-[11px] text-surface-500 mt-px">Convert an entire pack folder</p>
+                <h2 className="text-base font-semibold text-surface-100 tracking-tight">{t('bulkConvert.title')}</h2>
+                <p className="text-[11px] text-surface-500 mt-px">{t('bulkConvert.subtitle')}</p>
               </div>
             </div>
           </div>
@@ -197,10 +199,10 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
                   transition-all duration-75 shrink-0
                   disabled:opacity-40 disabled:cursor-wait"
               >
-                {scanning ? 'Scanning…' : 'Pick folder'}
+                {scanning ? t('bulkConvert.scanning') : t('bulkConvert.pickFolder')}
               </button>
               <span className="text-xs text-surface-500 truncate">
-                {folder || 'No folder selected'}
+                {folder || t('bulkConvert.noFolder')}
               </span>
             </div>
           </div>
@@ -281,7 +283,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
                 >
                   <div className="flex-1 h-px bg-white/[0.04] group-hover:bg-white/[0.08] transition-colors" />
                   <span className="shrink-0 tracking-wide">
-                    {allSelected ? 'Deselect all' : `Select all (${totalDiffs()})`}
+                    {allSelected ? t('common.deselectAll') : t('bulkConvert.selectAllCount', { count: totalDiffs() })}
                   </span>
                   <div className="flex-1 h-px bg-white/[0.04] group-hover:bg-white/[0.08] transition-colors" />
                 </button>
@@ -291,7 +293,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
 
           {scanning && (
             <div className="px-5 py-8 text-center text-xs text-surface-500">
-              <div className="animate-pulse-soft mb-2">Scanning folder…</div>
+              <div className="animate-pulse-soft mb-2">{t('bulkConvert.scanningFolder')}</div>
               <div className="h-0.5 w-full bg-white/[0.04] rounded-full overflow-hidden">
                 <div className="h-full w-1/3 bg-accent/40 rounded-full animate-pulse" />
               </div>
@@ -300,7 +302,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
 
           {entries.length === 0 && !scanning && folder && (
             <div className="px-5 py-8 text-center text-xs text-surface-500">
-              No .sm files found in this folder
+              {t('bulkConvert.noSmFiles')}
             </div>
           )}
 
@@ -325,7 +327,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
                 transition-all duration-75
                 disabled:opacity-40"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleConvert}
@@ -337,7 +339,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
                 disabled:opacity-40 disabled:cursor-not-allowed
                 shadow-lg shadow-accent/25"
             >
-              {converting ? 'Converting…' : `Convert (${selected.size})`}
+              {converting ? t('common.converting') : t('bulkConvert.convertWithCount', { count: selected.size })}
             </button>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { useConverterStore } from '../stores/useConverterStore'
 
@@ -20,6 +21,7 @@ export function AudioPlayer({
   audioPlayerRef, audioPlaying, audioDuration,
   previewTime, onOpenPreview,
 }: Props) {
+  const { t } = useTranslation()
   const conversionRate = useConverterStore(s => s.config.conversion_rate)
   const preservePitch = useConverterStore(s => s.config.preserve_pitch)
   const [showVolume, setShowVolume] = useState(false)
@@ -121,7 +123,7 @@ export function AudioPlayer({
       <button
         onClick={toggle}
         className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 transition-all duration-75"
-        title={audioPlaying ? 'Pause' : 'Play'}
+        title={audioPlaying ? t('audioPlayer.pause') : t('audioPlayer.play')}
       >
         {audioPlaying ? (
           <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -138,7 +140,7 @@ export function AudioPlayer({
       <button
         onClick={stop}
         className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 transition-all duration-75"
-        title="Stop"
+        title={t('audioPlayer.stop')}
       >
         <svg className="w-3.5 h-3.5 text-surface-400" fill="currentColor" viewBox="0 0 24 24">
           <rect x="6" y="6" width="12" height="12" rx="1" />
@@ -149,7 +151,7 @@ export function AudioPlayer({
       <button
         onClick={onOpenPreview}
         className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 transition-all duration-75"
-        title="Preview beatmap"
+        title={t('audioPlayer.previewBeatmap')}
       >
         <svg className="w-4 h-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
@@ -191,7 +193,7 @@ export function AudioPlayer({
         <button
           onClick={toggleMute}
         className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0"
-          title={isMuted ? 'Unmute' : 'Mute'}
+          title={isMuted ? t('audioPlayer.unmute') : t('audioPlayer.mute')}
         >
           {isMuted ? (
             <svg className="w-4 h-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

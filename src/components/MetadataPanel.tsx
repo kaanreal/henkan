@@ -1,4 +1,5 @@
 ﻿import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Beatmap, ConvertDirection, ExportConfig } from '../types/beatmap'
 import { FilePicker } from './FilePicker'
 import { useDiffPresetsStore } from '../stores/useDiffPresetsStore'
@@ -43,6 +44,7 @@ export function MetadataPanel({
   onUpdateConfig, onChangeFile, onConvert, onReset, onSelectDifficulty,
   onUpdateDiffNameTemplate, onOpenPresetManager,
 }: Props) {
+  const { t } = useTranslation()
   const isOsu = beatmap.source_format === 'OsuMania'
   const targetExt = isOsu ? '.sm' : '.osu'
   const totalNotes = tapCount + holdCount
@@ -63,18 +65,18 @@ export function MetadataPanel({
           {config.artist} - {config.title}
         </h1>
         <p className="text-sm text-surface-500">
-          mapped by {config.creator} · {expandedDiffName || config.difficulty_name}
+          {t('metadataPanel.mappedBy', { creator: config.creator, difficulty: expandedDiffName || config.difficulty_name })}
         </p>
       </div>
 
       {/* Stats row */}
       <div className="flex items-center gap-2 flex-wrap">
         {[
-          { label: 'Keys', value: `${beatmap.keys}K` },
-          { label: 'Notes', value: totalNotes.toLocaleString() },
+          { label: t('beatmapInfo.keys'), value: `${beatmap.keys}K` },
+          { label: t('beatmapInfo.notes'), value: totalNotes.toLocaleString() },
           { label: 'BPM', value: BpmDisplay(beatmap.timing_points) },
-          { label: 'Length', value: fmt(beatmap.duration_ms / 1000) },
-          { label: 'Source', value: isOsu ? 'osu!mania' : 'StepMania' },
+          { label: t('metadataPanel.length'), value: fmt(beatmap.duration_ms / 1000) },
+          { label: t('metadataPanel.source'), value: isOsu ? 'osu!mania' : 'StepMania' },
         ].map((s, i) => (
           <span key={i}
             className="px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/5 text-xs text-surface-400 font-medium tracking-wide"
@@ -88,7 +90,7 @@ export function MetadataPanel({
       {beatmap.available_difficulties.length > 1 && (
         <div className="animate-fade-in">
           <div className="flex items-center gap-2 mb-2.5">
-            <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Difficulties</h2>
+            <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">{t('metadataPanel.difficulties')}</h2>
             <div className="h-px flex-1 bg-white/5" />
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -112,7 +114,7 @@ export function MetadataPanel({
                 >
                   <div className="font-medium mb-0.5">{d.name}</div>
                   <div className={`text-[10px] ${active ? 'text-accent/60' : 'text-surface-500'}`}>
-                    {active && switchingDifficulty ? 'Loading…' : `${d.keys}K · ${d.note_count} notes`}
+                    {active && switchingDifficulty ? t('common.loading') : t('convertDialog.notes', { keys: d.keys, count: d.note_count })}
                   </div>
                 </button>
               )
@@ -124,22 +126,22 @@ export function MetadataPanel({
       {/* Metadata editor */}
       <div className="animate-fade-in">
         <div className="flex items-center gap-2 mb-2.5">
-          <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Metadata</h2>
+          <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">{t('metadataPanel.metadata')}</h2>
           <div className="h-px flex-1 bg-white/5" />
         </div>
         <div className="grid grid-cols-2 gap-2.5">
-          <Field label="Title" value={config.title} onChange={v => onUpdateConfig({ title: v })} />
-          <Field label="Artist" value={config.artist} onChange={v => onUpdateConfig({ artist: v })} />
-          <Field label="Mapper" value={config.creator} onChange={v => onUpdateConfig({ creator: v })} />
+          <Field label={t('beatmapInfo.title')} value={config.title} onChange={v => onUpdateConfig({ title: v })} />
+          <Field label={t('beatmapInfo.artist')} value={config.artist} onChange={v => onUpdateConfig({ artist: v })} />
+          <Field label={t('beatmapInfo.mapper')} value={config.creator} onChange={v => onUpdateConfig({ creator: v })} />
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] text-surface-500 ml-1 font-medium">Difficulty Name</span>
+              <span className="text-[11px] text-surface-500 ml-1 font-medium">{t('packSettings.difficultyName')}</span>
               <button
                 onClick={onOpenPresetManager}
                 className="text-[10px] text-surface-500 hover:text-accent-muted transition-colors"
-                title="Manage presets"
+                title={t('packSettings.managePresets')}
               >
-                Manage presets
+                {t('packSettings.managePresets')}
               </button>
             </div>
             <div className="flex gap-1.5">
@@ -168,14 +170,14 @@ export function MetadataPanel({
                 className="h-9 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2 text-xs text-surface-200
                   outline-none transition-all duration-75 appearance-none cursor-pointer w-8 shrink-0
                   focus:border-accent/40 focus:bg-accent/[0.03]"
-                title="Template presets"
+                title={t('packSettings.templatePresets')}
               >
                 <option value="__none" className="bg-surface-900">···</option>
                 {presets.map(p => (
                   <option key={p.id} value={p.id} className="bg-surface-900">{p.name}</option>
                 ))}
                 {hasTemplate && !presets.some(p => p.template === diffNameTemplate) && (
-                  <option value="__custom" className="bg-surface-900">Custom</option>
+                  <option value="__custom" className="bg-surface-900">{t('packSettings.custom')}</option>
                 )}
               </select>
             </div>
@@ -186,7 +188,7 @@ export function MetadataPanel({
         {hasTemplate && (
           <div className="mt-1.5 px-2 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.03]">
             <span className="text-[10px] text-surface-500">
-              Result: <span className="text-surface-300 font-medium">{expandedDiffName || '(empty)'}</span>
+              {t('metadataPanel.result')}: <span className="text-surface-300 font-medium">{expandedDiffName || t('metadataPanel.empty')}</span>
             </span>
           </div>
         )}
@@ -196,12 +198,12 @@ export function MetadataPanel({
       {direction === 'etterna-to-osu' && (
         <div className="animate-fade-in">
           <div className="flex items-center gap-2 mb-2.5">
-            <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Difficulty Settings</h2>
+            <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">{t('metadataPanel.difficultySettings')}</h2>
             <div className="h-px flex-1 bg-white/5" />
           </div>
           <div className="grid grid-cols-2 gap-2.5">
-            <NumberField label="HP Drain" value={config.hp_drain} min={0} max={10} step={0.1} onChange={v => onUpdateConfig({ hp_drain: v })} />
-            <NumberField label="OD" value={config.overall_difficulty} min={0} max={10} step={0.1} onChange={v => onUpdateConfig({ overall_difficulty: v })} />
+            <NumberField label={t('packSettings.hpDrain')} value={config.hp_drain} min={0} max={10} step={0.1} onChange={v => onUpdateConfig({ hp_drain: v })} />
+            <NumberField label={t('metadataPanel.od')} value={config.overall_difficulty} min={0} max={10} step={0.1} onChange={v => onUpdateConfig({ overall_difficulty: v })} />
           </div>
         </div>
       )}
@@ -210,7 +212,7 @@ export function MetadataPanel({
       {direction === 'etterna-to-osu' && (
         <div className="animate-fade-in">
           <div className="flex items-center gap-2 mb-2">
-            <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Rate</h2>
+            <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">{t('metadataPanel.rate')}</h2>
             <div className="h-px flex-1 bg-white/5" />
           </div>
           <div className="flex items-center gap-3">
@@ -229,7 +231,7 @@ export function MetadataPanel({
               onClick={() => onUpdateConfig({ conversion_rate: 1 })}
               className="text-[11px] text-surface-500 hover:text-surface-300 transition-colors px-1"
             >
-              Reset
+              {t('metadataPanel.reset')}
             </button>
           </div>
           <label className="flex items-center gap-2 mt-2 cursor-pointer">
@@ -239,7 +241,7 @@ export function MetadataPanel({
               onChange={e => onUpdateConfig({ preserve_pitch: e.target.checked })}
               className="w-3.5 h-3.5 rounded border-white/20 accent-[#6366f1]"
             />
-            <span className="text-xs text-surface-400">Preserve pitch</span>
+            <span className="text-xs text-surface-400">{t('metadataPanel.preservePitch')}</span>
           </label>
         </div>
       )}
@@ -247,17 +249,17 @@ export function MetadataPanel({
       {/* File pickers */}
       <div className="animate-fade-in">
         <div className="flex items-center gap-2 mb-2.5">
-          <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">Files</h2>
+          <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">{t('metadataPanel.files')}</h2>
           <div className="h-px flex-1 bg-white/5" />
         </div>
         <div className="space-y-1.5">
           <FilePicker
-            label="Audio"
+            label={t('metadataPanel.audio')}
             value={config.audio_filename}
             onPick={() => onChangeFile('audio', config.audio_filename)}
           />
           <FilePicker
-            label="Background"
+            label={t('metadataPanel.background')}
             value={config.background_filename}
             hasPreview={!!mediaUrls.background}
             onPick={() => onChangeFile('background', config.background_filename)}
@@ -265,7 +267,7 @@ export function MetadataPanel({
           />
           {direction === 'osu-to-etterna' && (
             <FilePicker
-              label="Banner"
+              label={t('metadataPanel.banner')}
               value={config.banner_filename}
               hasPreview={!!mediaUrls.banner}
               onPick={() => onChangeFile('banner', config.banner_filename)}
@@ -274,7 +276,7 @@ export function MetadataPanel({
           )}
           {direction === 'osu-to-etterna' && (
             <FilePicker
-              label="CD Title"
+              label={t('metadataPanel.cdTitle')}
               value={config.cdtitle_filename}
               hasPreview={!!mediaUrls.cdtitle}
               onPick={() => onChangeFile('cdtitle', config.cdtitle_filename)}
@@ -296,25 +298,25 @@ export function MetadataPanel({
               active:scale-[0.97] transition-all duration-100 cursor-pointer"
           >
             <span className={`text-surface-500 transition-transform duration-150 ${showAdvanced ? 'rotate-90' : ''}`}>▸</span>
-            <span>{showAdvanced ? 'Hide' : 'Show'} Advanced (.sm Metadata)</span>
+            <span>{t(showAdvanced ? 'metadataPanel.hideAdvanced' : 'metadataPanel.showAdvanced')}</span>
           </button>
           {showAdvanced && (
             <div className="space-y-2.5">
               <div className="grid grid-cols-2 gap-2.5">
-                <Field label="Subtitle (#SUBTITLE)" value={config.subtitle ?? ''} onChange={v => onUpdateConfig({ subtitle: v || null })} />
-                <Field label="Title Translit (#TITLETRANSLIT)" value={config.title_translit ?? ''} onChange={v => onUpdateConfig({ title_translit: v || null })} />
-                <Field label="Subtitle Translit (#SUBTITLETRANSLIT)" value={config.subtitle_translit ?? ''} onChange={v => onUpdateConfig({ subtitle_translit: v || null })} />
-                <Field label="Artist Translit (#ARTISTTRANSLIT)" value={config.artist_translit ?? ''} onChange={v => onUpdateConfig({ artist_translit: v || null })} />
-                <Field label="Genre (#GENRE)" value={config.genre ?? ''} onChange={v => onUpdateConfig({ genre: v || null })} />
-                <Field label="Credit (#CREDIT)" value={config.credit ?? ''} onChange={v => onUpdateConfig({ credit: v || null })} />
+                <Field label={t('metadataPanel.subtitle')} value={config.subtitle ?? ''} onChange={v => onUpdateConfig({ subtitle: v || null })} />
+                <Field label={t('metadataPanel.titleTranslit')} value={config.title_translit ?? ''} onChange={v => onUpdateConfig({ title_translit: v || null })} />
+                <Field label={t('metadataPanel.subtitleTranslit')} value={config.subtitle_translit ?? ''} onChange={v => onUpdateConfig({ subtitle_translit: v || null })} />
+                <Field label={t('metadataPanel.artistTranslit')} value={config.artist_translit ?? ''} onChange={v => onUpdateConfig({ artist_translit: v || null })} />
+                <Field label={t('metadataPanel.genre')} value={config.genre ?? ''} onChange={v => onUpdateConfig({ genre: v || null })} />
+                <Field label={t('metadataPanel.credit')} value={config.credit ?? ''} onChange={v => onUpdateConfig({ credit: v || null })} />
               </div>
               <div className="grid grid-cols-2 gap-2.5">
-                <Field label="Display BPM (#DISPLAYBPM)" value={config.display_bpm ?? ''} onChange={v => onUpdateConfig({ display_bpm: v || null })} placeholder="180 / 120:240 / *" />
-                <NullableNumberField label="Sample Start (#SAMPLESTART)" value={config.sample_start ?? ''} onChange={v => onUpdateConfig({ sample_start: v || null })} />
-                <NullableNumberField label="Sample Length (#SAMPLELENGTH)" value={config.sample_length ?? ''} onChange={v => onUpdateConfig({ sample_length: v || null })} />
+                <Field label={t('metadataPanel.displayBpm')} value={config.display_bpm ?? ''} onChange={v => onUpdateConfig({ display_bpm: v || null })} placeholder="180 / 120:240 / *" />
+                <NullableNumberField label={t('metadataPanel.sampleStart')} value={config.sample_start ?? ''} placeholder={t('metadataPanel.omit')} onChange={v => onUpdateConfig({ sample_start: v || null })} />
+                <NullableNumberField label={t('metadataPanel.sampleLength')} value={config.sample_length ?? ''} placeholder={t('metadataPanel.omit')} onChange={v => onUpdateConfig({ sample_length: v || null })} />
               </div>
               <div>
-                <span className="text-[11px] text-surface-500 ml-1 font-medium">Selectable (#SELECTABLE)</span>
+                <span className="text-[11px] text-surface-500 ml-1 font-medium">{t('metadataPanel.selectable')}</span>
                 <div className="flex bg-white/[0.04] rounded-lg border border-white/5 p-0.5 gap-0.5 mt-1">
                   {['YES', 'NO', 'ROULETTE'].map(o => (
                     <button
@@ -338,7 +340,7 @@ export function MetadataPanel({
 
       {/* Output format */}
       <div className="flex items-center gap-2 animate-fade-in">
-        <span className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase mr-1">Format</span>
+        <span className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase mr-1">{t('metadataPanel.format')}</span>
         <FormatToggle
           options={isOsu
             ? [{ label: '.sm folder', value: 'folder' }]
@@ -362,7 +364,7 @@ export function MetadataPanel({
             hover:bg-white/[0.07] hover:text-surface-200 active:scale-[0.97] transition-all duration-75
             disabled:opacity-50 disabled:cursor-wait"
         >
-          {isConverting ? 'Converting…' : `Convert to ${targetExt}`}
+          {isConverting ? t('common.converting') : t('convertPanel.convertTo', { format: targetExt })}
         </button>
         <button
           onClick={onReset}
@@ -370,7 +372,7 @@ export function MetadataPanel({
             bg-white/[0.04] border border-white/8 text-surface-400
             hover:bg-white/[0.07] hover:text-surface-200 active:scale-[0.97] transition-all duration-75"
         >
-          New file
+          {t('convertPanel.newFile')}
         </button>
       </div>
 
@@ -425,7 +427,7 @@ function NumberField({ label, value, min, max, onChange }: { label: string; valu
   )
 }
 
-function NullableNumberField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function NullableNumberField({ label, value, placeholder, onChange }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void }) {
   const [local, setLocal] = useState<string | null>(null)
   const display = local !== null ? local : value
 
@@ -448,8 +450,7 @@ function NullableNumberField({ label, value, onChange }: { label: string; value:
         type="text"
         inputMode="decimal"
         value={display}
-        placeholder="omit"
-        onChange={e => setLocal(e.target.value)}
+        placeholder={placeholder}        onChange={e => setLocal(e.target.value)}
         onFocus={() => setLocal(value)}
         onBlur={() => commit(local ?? value)}
         onKeyDown={e => { if (e.key === 'Enter') commit(local ?? value) }}

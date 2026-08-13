@@ -1,4 +1,5 @@
 ﻿import { useState, useRef, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { searchBeatmaps, coverUrl, previewUrl, type MirrorBeatmapSet, type RankStatus } from '../services/beatmapMirror'
 
 interface BeatmapMirrorDialogProps {
@@ -84,6 +85,7 @@ function formatDuration(seconds: number): string {
 type DownloadState = 'idle' | 'downloading' | 'done'
 
 export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: BeatmapMirrorDialogProps) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<MirrorBeatmapSet[]>([])
   const [loading, setLoading] = useState(false)
@@ -207,7 +209,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
       setTimeout(() => onClose(), 800)
     } catch (e) {
       setDlState(prev => ({ ...prev, [set.id]: 'idle' }))
-      setDlError(e instanceof Error ? e.message : 'Download failed')
+      setDlError(e instanceof Error ? e.message : t('beatmapMirror.downloadFailed'))
     }
   }
 
@@ -227,10 +229,10 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                <span>Beatmap Mirror</span>
+                <span>{t('beatmapMirror.title')}</span>
                 <span className="px-2 py-0.5 rounded-full bg-accent/20 text-accent text-[10px] font-bold uppercase tracking-wider">Beta</span>
               </h2>
-              <p className="text-xs text-surface-400 mt-1">Search & download instantly via catboy.best</p>
+              <p className="text-xs text-surface-400 mt-1">{t('beatmapMirror.subtitle')}</p>
             </div>
             <button
               onClick={onClose}
@@ -251,7 +253,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Song title, artist, or mapper…"
+                placeholder={t('beatmapMirror.searchPlaceholder')}
                 className="w-full px-5 py-3.5 pl-12 rounded-2xl bg-white/[0.03] border border-white/[0.06]
                   text-white text-sm placeholder-surface-500 shadow-inner
                   focus:outline-none focus:border-accent/50 focus:bg-white/[0.06] focus:ring-4 focus:ring-accent/10
@@ -269,7 +271,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shrink-0"
             >
               {loading ? <Spinner className="w-4 h-4" /> : <SearchIcon />}
-              Search
+              {t('beatmapMirror.search')}
             </button>
           </div>
 
@@ -287,7 +289,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                       : 'text-surface-500 hover:text-surface-300 hover:bg-white/[0.05]'
                     }`}
                 >
-                  {opt.label}
+                  {opt.value === 0 ? t('beatmapMirror.all') : opt.label}
                 </button>
               ))}
             </div>
@@ -332,8 +334,8 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                 </svg>
               </div>
-              <p className="text-base font-semibold text-surface-300">Search osu!mania beatmaps</p>
-              <p className="text-sm mt-1.5 text-surface-500">Results are streamed directly from catboy.best</p>
+              <p className="text-base font-semibold text-surface-300">{t('beatmapMirror.searchTitle')}</p>
+              <p className="text-sm mt-1.5 text-surface-500">{t('beatmapMirror.streamedFrom')}</p>
             </div>
           )}
 
@@ -341,7 +343,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
           {loading && (
             <div className="flex flex-col items-center justify-center py-16">
               <Spinner className="w-7 h-7 text-accent mb-3" />
-              <p className="text-sm text-surface-400">Searching…</p>
+              <p className="text-sm text-surface-400">{t('beatmapMirror.searching')}</p>
             </div>
           )}
 
@@ -351,8 +353,8 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
               <svg className="w-10 h-10 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-sm font-medium text-surface-400">No results found</p>
-              <p className="text-xs mt-1 text-surface-600">Try a different query or filter</p>
+              <p className="text-sm font-medium text-surface-400">{t('beatmapMirror.noResults')}</p>
+              <p className="text-xs mt-1 text-surface-600">{t('beatmapMirror.noResultsHint')}</p>
             </div>
           )}
 
@@ -408,7 +410,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                     {set.artist}
                   </div>
                   <div className="flex items-center gap-2 mt-1.5 drop-shadow-sm">
-                    <span className="text-[12px] text-surface-200 font-medium">Mapped by <span className="text-white">{set.creator}</span></span>
+                    <span className="text-[12px] text-surface-200 font-medium">{t('beatmapMirror.mappedBy', { creator: set.creator })}</span>
                     {set.bpm > 0 && (
                       <>
                         <span className="text-[10px] text-surface-400 font-bold">·</span>
@@ -447,7 +449,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                         ? 'bg-accent/25 text-accent border border-accent/40'
                         : 'bg-white/10 text-surface-300 border border-white/10 hover:bg-white/20 hover:text-white hover:border-white/30'
                       }`}
-                    title={previewingId === set.id ? 'Stop preview' : 'Preview'}
+                    title={previewingId === set.id ? t('beatmapMirror.stopPreview') : t('beatmapMirror.preview')}
                   >
                     {previewingId === set.id ? <StopIcon /> : <PlayIcon />}
                   </button>
@@ -461,7 +463,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                           ? 'bg-accent/20 text-accent border border-accent/40 cursor-wait'
                           : 'bg-white/10 text-surface-300 border border-white/10 hover:bg-white/20 hover:text-white hover:border-white/30'
                       }`}
-                    title={isDone ? 'Downloaded' : isDownloading ? 'Downloading…' : 'Download'}
+                    title={isDone ? t('beatmapMirror.downloaded') : isDownloading ? t('beatmapMirror.downloading') : t('beatmapMirror.download')}
                   >
                     {isDownloading ? <Spinner className="w-3.5 h-3.5" /> : isDone ? <CheckIcon /> : <DownloadIcon />}
                   </button>
@@ -482,7 +484,7 @@ export function BeatmapMirrorDialog({ open, onClose, onDownloadAndQueue }: Beatm
                   active:scale-[0.97] transition-all duration-75
                   disabled:opacity-50 flex items-center gap-2"
               >
-                {loadingMore ? <><Spinner className="w-3 h-3" />Loading…</> : 'Load more'}
+                {loadingMore ? <><Spinner className="w-3 h-3" />{t('common.loading')}</> : t('beatmapMirror.loadMore')}
               </button>
             </div>
           )}
