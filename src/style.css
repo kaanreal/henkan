@@ -200,11 +200,11 @@ body::-webkit-scrollbar { display: none; }
 }
 
 @keyframes judgePop {
-  0% { opacity: 0; transform: translate(-50%, 10px) scale(0.7); }
-  15% { opacity: 1; transform: translate(-50%, 0) scale(1.15); }
-  30% { transform: translate(-50%, 0) scale(1); }
+  0% { opacity: 0; transform: translateY(10px) scale(0.7); }
+  15% { opacity: 1; transform: translateY(0) scale(1.15); }
+  30% { transform: translateY(0) scale(1); }
   70% { opacity: 1; }
-  100% { opacity: 0; transform: translate(-50%, -14px) scale(1); }
+  100% { opacity: 0; transform: translateY(-14px) scale(1); }
 }
 
 @keyframes comboPop {
