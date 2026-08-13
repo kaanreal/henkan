@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { Trans, useTranslation } from 'react-i18next'
+import { Trans, useT } from '../i18n'
 import { SEO } from '../components/SEO'
 import { SiteHeader, SiteFooter } from '../components/SiteLayout'
 
@@ -8,7 +8,7 @@ const code = (key: string) => (
 )
 
 export function PackCreatorPage() {
-  const { t } = useTranslation()
+  const t = useT()
   return (
     <div className="min-h-screen bg-surface-950 text-surface-200 flex flex-col">
       <SEO

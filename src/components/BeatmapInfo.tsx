@@ -1,4 +1,4 @@
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import type { Beatmap } from '../types/beatmap'
 
 interface BeatmapInfoProps {
@@ -6,7 +6,7 @@ interface BeatmapInfoProps {
 }
 
 export function BeatmapInfo({ beatmap }: BeatmapInfoProps) {
-  const { t } = useTranslation()
+  const t = useT()
   const tapCount = beatmap.notes.filter(n => !n.hold).length
   const holdCount = beatmap.notes.filter(n => n.hold).length
   const bpmChanges = beatmap.timing_points.filter(tp => tp.uninherited && tp.beat_length > 0).length

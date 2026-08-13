@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import type { PackEntry } from '../types/beatmap'
 import { resolveMediaFile, readFileAsDataUrl } from '../services/files'
 
@@ -25,7 +25,7 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
   onToggle: () => void
   onEdit: () => void
 }) {
-  const { t } = useTranslation()
+  const t = useT()
   const [bgUrl, setBgUrl] = useState<string | null>(() => {
     const key = `${entry.source_dir}|${entry.background_filename ?? ''}`
     return _bgCache.get(key) ?? null
@@ -107,7 +107,7 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
 }
 
 export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onSelectAll, onConvert, onConvertAll, onBack, bannerUrl, isConverting }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const allSelected = selected.size === entries.length
 
   return (

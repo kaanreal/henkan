@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { marked } from 'marked'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 
 interface UpdateInfo {
   version: string
@@ -17,7 +17,7 @@ interface UpdateDialogProps {
 }
 
 export function UpdateDialog({ open, updateInfo, installing, onUpdate, onDismiss }: UpdateDialogProps) {
-  const { t } = useTranslation()
+  const t = useT()
   const [dontAskAgain, setDontAskAgain] = useState(false)
 
   const renderedBody = useMemo(() => {

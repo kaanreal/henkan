@@ -1,5 +1,5 @@
 ﻿import type { Beatmap, ConvertDirection, DiffInfo, ExportConfig } from '../types/beatmap'
-import i18n from '../i18n'
+import { t } from '../i18n'
 import { isTauri } from './environment'
 import { readFileText } from './files'
 import { getCachedFile } from './fileCache'
@@ -170,7 +170,7 @@ export async function parseFile(
 
   if (isOsz(pathOrContent)) {
     const { osuEntries, sourceDir, difficulties } = await extractOsz(pathOrContent)
-    if (!osuEntries.length) throw new Error(i18n.t('services.noOsuInOsz'))
+    if (!osuEntries.length) throw new Error(t('services.noOsuInOsz'))
 
     // Parse first .osu as the main beatmap
     const main = await wasmParseOsu(osuEntries[0].text)

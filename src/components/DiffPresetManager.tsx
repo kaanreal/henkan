@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import { useDiffPresetsStore } from '../stores/useDiffPresetsStore'
 import { PLACEHOLDERS, DEFAULT_PRESETS, placeholderDescription, presetDisplayName } from '../lib/diffTemplate'
 import type { Beatmap, ExportConfig } from '../types/beatmap'
@@ -13,7 +13,7 @@ interface Props {
 }
 
 export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const { presets, addPreset, updatePreset, deletePreset, resetToDefaults } = useDiffPresetsStore()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
@@ -192,7 +192,7 @@ function PresetEditor({ name, template, preview, onSave, onCancel }: {
   onSave: (name: string, template: string) => void
   onCancel: () => void
 }) {
-  const { t } = useTranslation()
+  const t = useT()
   const [editName, setEditName] = useState(name)
   const [editTemplate, setEditTemplate] = useState(template)
 

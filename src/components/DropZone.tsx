@@ -1,5 +1,5 @@
 import { useRef, useCallback } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import type { ConvertDirection } from '../types/beatmap'
 import { openFiles } from '../services/dialogs'
 import { fileInputCache } from '../services/fileCache'
@@ -11,7 +11,7 @@ interface DropZoneProps {
 }
 
 export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
-  const { t } = useTranslation()
+  const t = useT()
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleClick = useCallback(async () => {

@@ -1,4 +1,4 @@
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 
 interface Props {
   label: string
@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function FilePicker({ label, value, hasPreview, onPick, onClear }: Props) {
-  const { t } = useTranslation()
+  const t = useT()
   const short = value
     ? value.split('/').pop()?.split('\\').pop() || value
     : t('filePicker.auto')

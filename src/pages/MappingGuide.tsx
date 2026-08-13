@@ -1,10 +1,10 @@
 import { Link } from 'react-router'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import { SEO } from '../components/SEO'
 import { SiteHeader, SiteFooter } from '../components/SiteLayout'
 
 export function MappingGuide() {
-  const { t } = useTranslation()
+  const t = useT()
   return (
     <div className="min-h-screen bg-surface-950 text-surface-200 flex flex-col">
       <SEO

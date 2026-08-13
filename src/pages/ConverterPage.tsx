@@ -1,7 +1,7 @@
 ﻿import type { Beatmap, ExportConfig, PackEntry } from '../types/beatmap'
 import { useCallback, useState, useEffect, useRef, startTransition } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { useTranslation } from 'react-i18next'
+import { useT } from '../i18n'
 import { useConverterStore } from '../stores/useConverterStore'
 import { useQueueStore, type QueueItem, buildConfig, emptyConfig, generateId, detectDirection } from '../stores/useQueueStore'
 import { ErrorBoundary } from '../components/ErrorBoundary'
@@ -41,7 +41,6 @@ import {
   type SkinInput,
 } from '../services/skinInput'
 import { detectSkinArchive } from '../services/skinConverter'
-import i18n from '../i18n'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
@@ -144,7 +143,7 @@ async function resolveMediaName(sourceDir: string, filename: string | null | und
 
 export default function ConverterPage() {
   const navigate = useNavigate()
-  const { t } = useTranslation()
+  const t = useT()
   const {
     beatmap, config, direction, mediaUrls,
     isConverting, exportPath, error, dragging,
@@ -255,7 +254,7 @@ export default function ConverterPage() {
       const newVol = Math.round(Math.max(0, Math.min(1, player.volume + step)) * 100)
       player.volume = newVol / 100
       if (volumeToastTimer.current) clearTimeout(volumeToastTimer.current)
-      setVolumeToast({ msg: i18n.t('converter.volume', { value: newVol }) })
+      setVolumeToast({ msg: t('converter.volume', { value: newVol }) })
       volumeToastTimer.current = window.setTimeout(() => {
         setVolumeToast(v => v ? { ...v, leaving: true } : null)
         volumeToastTimer.current = window.setTimeout(() => setVolumeToast(null), 220)
@@ -263,7 +262,7 @@ export default function ConverterPage() {
     }
     window.addEventListener('wheel', handler, { passive: false })
     return () => window.removeEventListener('wheel', handler)
-  }, [])
+  }, [t])
 
   // Initialize WebAudioPlayer and wire up callbacks
   useEffect(() => {
@@ -357,7 +356,7 @@ export default function ConverterPage() {
   const handleMirrorDownload = async (setId: number, filename: string) => {
     const { downloadBeatmapPath } = await import('../services/beatmapMirror')
     const { path, error } = await downloadBeatmapPath(setId, filename)
-    if (error || !path) throw new Error(error ?? i18n.t('beatmapMirror.downloadFailed'))
+    if (error || !path) throw new Error(error ?? t('beatmapMirror.downloadFailed'))
     handleFilesSelected([path])
   }
 
@@ -470,12 +469,12 @@ export default function ConverterPage() {
           }
         }
       } catch (e: unknown) {
-        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.failedToParseFile')
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToParseFile')
         console.error('ParseFile error:', e)
         queueUpdateItem(id, { status: 'error', error: msg })
       }
     }
-  }, [queueAddItem, queueUpdateItem, queueSetActiveId, queueItems.length, setDirection, setBeatmap, loadQueueMedia])
+  }, [queueAddItem, queueUpdateItem, queueSetActiveId, queueItems.length, setDirection, setBeatmap, loadQueueMedia, t])
 
   const handleMainFilesSelected = useCallback(async (paths: string[]) => {
     const skinPath = paths.find(isSkinArchiveName)
@@ -530,11 +529,11 @@ export default function ConverterPage() {
       setBeatmap(item.beatmap, item.direction)
       useConverterStore.getState().updateConfig(item.config)
     } catch {
-      setError(i18n.t('converter.failedToLoadMedia'))
+      setError(t('converter.failedToLoadMedia'))
     } finally {
       setQueueLoading(false)
     }
-  }, [queueActiveId, queueUpdateItem, queueSetActiveId, setDirection, setBeatmap, loadMediaAsDataUrl])
+  }, [queueActiveId, queueUpdateItem, queueSetActiveId, setDirection, setBeatmap, loadMediaAsDataUrl, t])
 
   const handleQueueAddFiles = useCallback(async () => {
     const selected = await dialogOpenFiles({
@@ -719,7 +718,7 @@ export default function ConverterPage() {
         }
         queueUpdateItem(item.id, { status: 'completed', exportPath: allPaths[allPaths.length - 1], config: cfg })
       } catch (e: unknown) {
-        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.conversionFailed')
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.conversionFailed')
         queueUpdateItem(item.id, { status: 'error', error: msg, config: cfg })
       }
     }
@@ -887,10 +886,10 @@ export default function ConverterPage() {
       trackEvent('conversion_completed', { count: String(indices.length), format: cur.output_format })
     } catch (e: unknown) {
       if (queueActiveId) {
-        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.conversionFailed')
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.conversionFailed')
         queueUpdateItem(queueActiveId, { status: 'error', error: msg, config: cur })
       }
-      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.conversionFailed')
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.conversionFailed')
       setError(msg)
       trackEvent('conversion_failed', { error: msg })
     } finally {
@@ -963,7 +962,7 @@ export default function ConverterPage() {
         console.log('[handleOpenPack] scanSongsFolder returned', entries.length, 'entries')
         detectedType = 'osu'
       } catch (e: unknown) {
-        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.failedToScanFolder')
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToScanFolder')
         console.error('[handleOpenPack] scanSongsFolder error:', msg)
         setError(msg)
         setPackFolder(null)
@@ -973,7 +972,7 @@ export default function ConverterPage() {
     }
 
     if (entries.length === 0) {
-      const msg = i18n.t('converter.noBeatmapsFound', { folder })
+      const msg = t('converter.noBeatmapsFound', { folder })
       console.error('[handleOpenPack]', msg)
       setError(msg)
       setPackFolder(null)
@@ -1074,10 +1073,10 @@ export default function ConverterPage() {
         useConverterStore.getState().updateConfig({ background_filename: bgName })
       }
     } catch (e: unknown) {
-      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.failedToLoadSong'))
+      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToLoadSong'))
       setPackEditing(null)
     }
-  }, [packEntries, packEditing, setAudioPlaying, setError])
+  }, [packEntries, packEditing, setAudioPlaying, setError, t])
 
   const handlePackBack = useCallback(() => {
     // Save current config
@@ -1353,7 +1352,7 @@ export default function ConverterPage() {
         trackEvent('pack_conversion_completed', { count: String(indices.length), mode: settings.mode })
       }
     } catch (e: unknown) {
-      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.packConversionFailed')
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.packConversionFailed')
       setError(msg)
       trackEvent('pack_conversion_failed', { error: msg })
     } finally {
@@ -1394,11 +1393,11 @@ export default function ConverterPage() {
       ])
       useConverterStore.getState().setMediaUrls({ audio, background: bg, banner, cdtitle })
       } catch (e: unknown) {
-        setError(typeof e === 'string' ? e : e instanceof Error ? e.message : i18n.t('converter.failedToSelectDifficulty'))
+        setError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToSelectDifficulty'))
       } finally {
         setSwitchingDifficulty(false)
       }
-  }, [beatmap, setError, queueActiveId, queueUpdateItem])
+  }, [beatmap, setError, queueActiveId, queueUpdateItem, t])
 
   const handleChangeFile = useCallback(async (field: string, _current: string | null): Promise<void> => {
     try {
