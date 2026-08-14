@@ -27,7 +27,7 @@ use ureq::ResponseExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_aptabase::EventTracker;
 
 // ── Public CLI API ─────────────────────────────────────────
@@ -438,6 +438,16 @@ fn resolve_file(source_dir: String, filename: String) -> Result<String, String> 
     }
 }
 
+/// Pick the set's main audio file, used when a lone .osu references an audio
+/// file that the downloaded set doesn't ship under that name.
+#[tauri::command]
+fn resolve_audio_fallback(source_dir: String) -> Result<String, String> {
+    match scan_source_dir_for_audio(&source_dir) {
+        Some(p) => Ok(p.to_string_lossy().to_string()),
+        None => Err("No audio found".to_string()),
+    }
+}
+
 /// Try to find a media file by exact match, then alternate extensions, then case-insensitive,
 /// then heuristic scan for plausible files.
 pub fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&str]) -> Option<PathBuf> {
@@ -514,6 +524,29 @@ pub fn scan_source_dir_for_bg(source_dir: &str) -> Option<PathBuf> {
 }
 
 pub const IMAGE_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"];
+
+pub const AUDIO_EXTS: &[&str] = &[".mp3", ".ogg", ".wav", ".m4a", ".flac", ".wma"];
+
+/// Scan source_dir for the largest audio file. Mirrors the background
+/// heuristic for images, so a mismatched `AudioFilename` still previews.
+pub fn scan_source_dir_for_audio(source_dir: &str) -> Option<PathBuf> {
+    if let Ok(entries) = fs::read_dir(source_dir) {
+        let mut candidates: Vec<(u64, PathBuf)> = Vec::new();
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if !p.is_file() { continue; }
+            let ext = p.extension().and_then(|e| e.to_str().map(|s| s.to_lowercase())).unwrap_or_default();
+            if !AUDIO_EXTS.contains(&format!(".{}", ext).as_str()) { continue; }
+            if let Ok(meta) = p.metadata() {
+                candidates.push((meta.len(), p));
+            }
+        }
+        if let Some((_, biggest)) = candidates.into_iter().max_by_key(|(size, _)| *size) {
+            return Some(biggest);
+        }
+    }
+    None
+}
 
 pub const DEFAULT_CDTITLE: &[u8] = include_bytes!("../assets/cdtitle_default.png");
 
@@ -2219,18 +2252,37 @@ pub fn headless_process(paths: &[String]) {
 }
 
 #[tauri::command]
-fn download_mirror_osz(set_id: u64, filename: String) -> Result<String, String> {
+fn download_mirror_osz(app: tauri::AppHandle, set_id: u64, filename: String) -> Result<String, String> {
     let url = format!("https://catboy.best/d/{}", set_id);
     let mut response = ureq::get(&url)
         .header("User-Agent", "henkan/1.0")
         .call()
         .map_err(|e| format!("Download failed: {}", e))?;
 
-    let bytes = response.body_mut()
+    let total = response.body().content_length();
+    let mut reader = response.body_mut()
         .with_config()
         .limit(500 * 1024 * 1024)
-        .read_to_vec()
-        .map_err(|e| format!("Read response failed: {}", e))?;
+        .reader();
+
+    let mut bytes = Vec::new();
+    let mut buf = [0u8; 64 * 1024];
+    let mut received: u64 = 0;
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| format!("Read response failed: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&buf[..n]);
+        received += n as u64;
+        if let Some(total) = total {
+            if total > 0 {
+                let percent = ((received as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as u32;
+                let _ = app.emit("mirror-download-progress", serde_json::json!({ "setId": set_id, "percent": percent }));
+            }
+        }
+    }
+    drop(reader);
 
     if bytes.len() < 100 {
         return Err("Download returned empty or invalid data".to_string());
@@ -2289,6 +2341,25 @@ fn search_mirror(query: String, status: String, offset: u64) -> Result<String, S
     String::from_utf8(body).map_err(|e| format!("UTF-8 decode failed: {}", e))
 }
 
+#[tauri::command]
+fn lookup_beatmap_set(beatmap_id: u64) -> Result<String, String> {
+    let url = format!("https://catboy.best/api/b/{}", beatmap_id);
+    let response = ureq::get(&url)
+        .header("User-Agent", "henkan/1.0")
+        .call()
+        .map_err(|e| format!("Beatmap lookup failed: {}", e))?;
+    let body = response.into_body()
+        .read_to_vec()
+        .map_err(|e| format!("Read lookup response failed: {}", e))?;
+    String::from_utf8(body).map_err(|e| format!("UTF-8 decode failed: {}", e))
+}
+
+#[tauri::command]
+fn extract_osz_media(path: String) -> Result<String, String> {
+    let (_, _, tmp_dir) = extract_osz_all(&path)?;
+    Ok(tmp_dir)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Keep a tokio runtime alive so aptabase' reqwest::Client::builder().build()
@@ -2324,6 +2395,7 @@ pub fn run() {
             select_difficulty,
             expand_diff_name,
             resolve_file,
+            resolve_audio_fallback,
             read_file_as_data_url,
             convert_beatmap,
             export_beatmap,
@@ -2343,7 +2415,9 @@ pub fn run() {
             open_url,
             get_github_stars,
             download_mirror_osz,
-            search_mirror
+            search_mirror,
+            lookup_beatmap_set,
+            extract_osz_media
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

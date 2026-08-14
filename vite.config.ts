@@ -78,7 +78,11 @@ async function handleMirror(req: IncomingMessage, res: ServerResponse) {
   }
 
   // Safety: only allow known endpoints
-  if (mirrorPath !== '/api/search' && !/^\/d\/\d+$/.test(mirrorPath)) {
+  const allowed = mirrorPath === '/api/search'
+    || /^\/d\/\d+$/.test(mirrorPath)
+    || /^\/api\/s\/\d+$/.test(mirrorPath)
+    || /^\/api\/b\/\d+$/.test(mirrorPath)
+  if (!allowed) {
     res.statusCode = 403
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({ error: 'Forbidden' }))
@@ -107,6 +111,10 @@ async function handleMirror(req: IncomingMessage, res: ServerResponse) {
     res.setHeader('Content-Type', contentType)
     res.setHeader('Cache-Control', 'public, max-age=60')
     res.setHeader('Access-Control-Allow-Origin', '*')
+    // Forward content-length so the browser can show determinate download
+    // progress instead of falling back to an indeterminate stream.
+    const contentLength = upstream.headers.get('content-length')
+    if (contentLength) res.setHeader('Content-Length', contentLength)
     if (upstream.body) {
       const { Readable } = await import('stream')
       Readable.fromWeb(upstream.body as any).pipe(res)

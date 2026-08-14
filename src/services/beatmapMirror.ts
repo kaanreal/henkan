@@ -80,6 +80,30 @@ function buildDownloadUrl(setId: number): string {
   return `${MIRROR_PROXY}?path=/d/${setId}`
 }
 
+function buildJsonUrl(path: string): string {
+  if (isTauri()) return `${MIRROR_BASE}${path}`
+  return `${MIRROR_PROXY}?path=${encodeURIComponent(path)}`
+}
+
+/** Resolve a beatmapset id from a beatmap id (used when a .osu lacks BeatmapSetID). */
+export async function fetchSetIdByBeatmapId(beatmapId: number): Promise<number | null> {
+  try {
+    let raw: string
+    if (isTauri()) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      raw = await invoke<string>('lookup_beatmap_set', { beatmapId })
+    } else {
+      const res = await fetch(buildJsonUrl(`/api/b/${beatmapId}`), { headers: { 'User-Agent': UA } })
+      if (!res.ok) return null
+      raw = await res.text()
+    }
+    const data = JSON.parse(raw) as { ParentSetID?: number }
+    return typeof data.ParentSetID === 'number' && data.ParentSetID > 0 ? data.ParentSetID : null
+  } catch {
+    return null
+  }
+}
+
 function parseResults(raw: string): CatboySet[] {
   const data: unknown = JSON.parse(raw)
   return Array.isArray(data) ? data as CatboySet[] : []
@@ -154,12 +178,26 @@ export async function searchBeatmaps(
   }
 }
 
-export async function downloadBeatmapPath(setId: number, filename: string): Promise<{ path: string | null; error: string | null }> {
+export async function downloadBeatmapPath(
+  setId: number,
+  filename: string,
+  onProgress?: (percent: number) => void,
+): Promise<{ path: string | null; error: string | null }> {
   try {
     if (isTauri()) {
       const { invoke } = await import('@tauri-apps/api/core')
-      const path = await invoke<string>('download_mirror_osz', { setId, filename })
-      return { path, error: null }
+      const { listen } = await import('@tauri-apps/api/event')
+      const unlisten = await listen<{ setId: number; percent: number }>('mirror-download-progress', (event) => {
+        if (event.payload.setId === setId && onProgress) {
+          onProgress(Math.min(100, Math.max(0, Math.round(event.payload.percent))))
+        }
+      })
+      try {
+        const path = await invoke<string>('download_mirror_osz', { setId, filename })
+        return { path, error: null }
+      } finally {
+        unlisten()
+      }
     }
 
     const controller = new AbortController()
@@ -169,6 +207,26 @@ export async function downloadBeatmapPath(setId: number, filename: string): Prom
     const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': UA } })
     clearTimeout(timeout)
     if (!res.ok) return { path: null, error: t('services.downloadFailed') }
+
+    const total = Number(res.headers.get('content-length') || 0)
+    if (onProgress && res.body) {
+      const reader = res.body.getReader()
+      const chunks: BlobPart[] = []
+      let received = 0
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value) {
+          chunks.push(value.slice())
+          received += value.length
+          if (total > 0) onProgress(Math.min(100, Math.round((received / total) * 100)))
+        }
+      }
+      const blob = new Blob(chunks, { type: 'application/octet-stream' })
+      const file = new File([blob], filename, { type: 'application/octet-stream' })
+      fileInputCache.push(file)
+      return { path: filename, error: null }
+    }
 
     const blob = await res.blob()
     const file = new File([blob], filename, { type: 'application/octet-stream' })
