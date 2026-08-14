@@ -38,6 +38,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Cache-Control', 'public, s-maxage=300, max-age=60')
     res.setHeader('Access-Control-Allow-Origin', '*')
 
+    // Forward Content-Length so the client can show a determinate progress bar.
+    const contentLength = upstream.headers.get('content-length')
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength)
+    }
+
     if (upstream.body) {
       Readable.fromWeb(upstream.body as any).pipe(res)
     } else {

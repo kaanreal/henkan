@@ -1,8 +1,8 @@
-﻿import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useT, type MessageKey } from '../i18n'
-import type { Note, SourceFormat } from '../types/beatmap'
 import type { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { useConverterStore } from '../stores/useConverterStore'
+import type { Note, SourceFormat } from '../types/beatmap'
 
 interface Props {
   audioPlayerRef: { current: WebAudioPlayer | null }
@@ -39,7 +39,7 @@ const LOOK_AHEAD_MAX = 600
 const LOOK_AHEAD_DEFAULT = 380
 const TIMING_OFFSET = 0 // Web Audio API's decodeAudioData handles LAME padding natively; no manual shift needed
 
-// Playable preview — mania-style judging
+// Playable preview - mania-style judging
 const WINDOW_PERFECT = 49
 const WINDOW_GREAT = 99
 const WINDOW_GOOD = 151
@@ -81,8 +81,17 @@ let _rate = useConverterStore.getState().config.conversion_rate
 let _hitsound = true
 
 export function PreviewOverlay({
-  audioPlayerRef, playing, duration,
-  notes, keys, bpm, backgroundUrl, previewTime, sourceFormat, onSetPreviewTime, onClose,
+  audioPlayerRef,
+  playing,
+  duration,
+  notes,
+  keys,
+  bpm,
+  backgroundUrl,
+  previewTime,
+  sourceFormat,
+  onSetPreviewTime,
+  onClose,
 }: Props) {
   const t = useT()
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -131,7 +140,7 @@ export function PreviewOverlay({
   const timelineFillRef = useRef<HTMLDivElement>(null)
   const timelineThumbRef = useRef<HTMLDivElement>(null)
   const timeLabelRef = useRef<HTMLSpanElement>(null)
-  
+
   const [currentBucket, setCurrentBucket] = useState(-1)
   const currentBucketRef = useRef(-1)
 
@@ -159,7 +168,7 @@ export function PreviewOverlay({
     if (toastTimer.current) clearTimeout(toastTimer.current)
     setToast({ msg, leaving: false })
     toastTimer.current = window.setTimeout(() => {
-      setToast(prev => prev ? { ...prev, leaving: true } : null)
+      setToast((prev) => (prev ? { ...prev, leaving: true } : null))
       toastTimer.current = window.setTimeout(() => setToast(null), 220)
     }, 1400)
   }, [])
@@ -176,7 +185,9 @@ export function PreviewOverlay({
       const arr = await res.arrayBuffer()
       const buf = await ctx.decodeAudioData(arr)
       clapBufRef.current = buf
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [])
 
   const playHit = useCallback((gain: number = 0.08) => {
@@ -191,7 +202,9 @@ export function PreviewOverlay({
       src.connect(g)
       g.connect(compressorRef.current ?? ctx.destination)
       src.start()
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [])
 
   const recordJudge = useCallback((grade: Judgement) => {
@@ -214,44 +227,50 @@ export function PreviewOverlay({
     setCombo(0)
   }, [])
 
-  const judgeColumn = useCallback((col: number) => {
-    if (!playModeRef.current) {
-      playModeRef.current = true
-      setPlayMode(true)
-      judgedRef.current.clear()
-      autoFiredRef.current.clear()
-      comboRef.current = 0
-      setCombo(0)
-    }
-    clearTimeout(inactiveTimerRef.current)
-    inactiveTimerRef.current = window.setTimeout(exitPlayMode, 1000)
-    const now = nowRef.current
-    const notes = notesRef.current
-    let best = -1
-    let bestDiff = Infinity
-    for (let i = 0; i < notes.length; i++) {
-      const n = notes[i]
-      if (n.column !== col || judgedRef.current.has(i)) continue
-      const diff = Math.abs(n.time_ms - now)
-      if (diff <= WINDOW_MEH && diff < bestDiff) {
-        bestDiff = diff
-        best = i
+  const judgeColumn = useCallback(
+    (col: number) => {
+      if (!playModeRef.current) {
+        playModeRef.current = true
+        setPlayMode(true)
+        judgedRef.current.clear()
+        autoFiredRef.current.clear()
+        comboRef.current = 0
+        setCombo(0)
       }
-    }
-    pressedRef.current.set(col, now)
-    const el = audioPlayerRefRef.current.current
-    if (el && el.paused) el.play().catch(() => {})
-    if (best === -1) return
-    const grade: Judgement =
-      bestDiff <= WINDOW_PERFECT ? 'PERFECT'
-      : bestDiff <= WINDOW_GREAT ? 'GREAT'
-      : bestDiff <= WINDOW_GOOD ? 'GOOD'
-      : 'MEH'
-    judgedRef.current.add(best)
-    hitFlashRef.current.set(col, now)
-    recordJudge(grade)
-    if (hitsoundRef.current) playHit(0.16)
-  }, [playHit, recordJudge, exitPlayMode])
+      clearTimeout(inactiveTimerRef.current)
+      inactiveTimerRef.current = window.setTimeout(exitPlayMode, 1000)
+      const now = nowRef.current
+      const notes = notesRef.current
+      let best = -1
+      let bestDiff = Infinity
+      for (let i = 0; i < notes.length; i++) {
+        const n = notes[i]
+        if (n.column !== col || judgedRef.current.has(i)) continue
+        const diff = Math.abs(n.time_ms - now)
+        if (diff <= WINDOW_MEH && diff < bestDiff) {
+          bestDiff = diff
+          best = i
+        }
+      }
+      pressedRef.current.set(col, now)
+      const el = audioPlayerRefRef.current.current
+      if (el && el.paused) el.play().catch(() => {})
+      if (best === -1) return
+      const grade: Judgement =
+        bestDiff <= WINDOW_PERFECT
+          ? 'PERFECT'
+          : bestDiff <= WINDOW_GREAT
+            ? 'GREAT'
+            : bestDiff <= WINDOW_GOOD
+              ? 'GOOD'
+              : 'MEH'
+      judgedRef.current.add(best)
+      hitFlashRef.current.set(col, now)
+      recordJudge(grade)
+      if (hitsoundRef.current) playHit(0.16)
+    },
+    [playHit, recordJudge, exitPlayMode],
+  )
 
   // ── Init hitsound AudioContext ──
   useEffect(() => {
@@ -269,7 +288,10 @@ export function PreviewOverlay({
 
     const mainEl = audioPlayerRef.current
     if (!mainEl?.src) {
-      return () => { ctx.close(); audioCtxRef.current = null }
+      return () => {
+        ctx.close()
+        audioCtxRef.current = null
+      }
     }
 
     return () => {
@@ -278,11 +300,12 @@ export function PreviewOverlay({
     }
   }, [audioPlayerRef, ensureClap])
 
-
-
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'F12') { e.preventDefault(); return }
+      if (e.key === 'F12') {
+        e.preventDefault()
+        return
+      }
       const playCol = playColumnFor(e.code, keysRef.current)
       if (playCol !== -1) {
         e.preventDefault()
@@ -334,26 +357,29 @@ export function PreviewOverlay({
 
   useEffect(() => () => clearTimeout(inactiveTimerRef.current), [])
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.altKey) return
-    if (e.ctrlKey) {
-      const delta = e.deltaY > 0 ? -0.05 : 0.05
-      const newRate = Math.max(0.5, Math.min(3, +(rateRef.current + delta).toFixed(2)))
-      rateRef.current = newRate
-      _rate = newRate
-      setRate(newRate)
-      const el = audioPlayerRefRef.current.current
-      if (el) el.playbackRate = newRate
-      useConverterStore.getState().updateConfig({ conversion_rate: newRate })
-      showToast(`${newRate.toFixed(2)}x`)
-    } else {
-      const delta = e.deltaY > 0 ? 25 : -25
-      const prev = scrollRef.current
-      scrollRef.current = Math.max(LOOK_AHEAD_MIN, Math.min(LOOK_AHEAD_MAX, scrollRef.current + delta))
-      _scrollSpeed = scrollRef.current
-      if (scrollRef.current !== prev) showToast(`${scrollRef.current}ms`)
-    }
-  }, [showToast])
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      if (e.altKey) return
+      if (e.ctrlKey) {
+        const delta = e.deltaY > 0 ? -0.05 : 0.05
+        const newRate = Math.max(0.5, Math.min(3, +(rateRef.current + delta).toFixed(2)))
+        rateRef.current = newRate
+        _rate = newRate
+        setRate(newRate)
+        const el = audioPlayerRefRef.current.current
+        if (el) el.playbackRate = newRate
+        useConverterStore.getState().updateConfig({ conversion_rate: newRate })
+        showToast(`${newRate.toFixed(2)}x`)
+      } else {
+        const delta = e.deltaY > 0 ? 25 : -25
+        const prev = scrollRef.current
+        scrollRef.current = Math.max(LOOK_AHEAD_MIN, Math.min(LOOK_AHEAD_MAX, scrollRef.current + delta))
+        _scrollSpeed = scrollRef.current
+        if (scrollRef.current !== prev) showToast(`${scrollRef.current}ms`)
+      }
+    },
+    [showToast],
+  )
 
   const [hoverPct, setHoverPct] = useState<number | null>(null)
   const [graphHover, setGraphHover] = useState<{ pct: number; x: number } | null>(null)
@@ -422,13 +448,13 @@ export function PreviewOverlay({
       const halfBarH = barH / 2
 
       // Update timeline DOM directly
-      const pct = duration > 0 ? Math.min(100, ((nowMs / 1000) / duration) * 100) : 0
+      const pct = duration > 0 ? Math.min(100, (nowMs / 1000 / duration) * 100) : 0
       if (timelineGlowRef.current) timelineGlowRef.current.style.width = `${pct}%`
       if (timelineFillRef.current) timelineFillRef.current.style.width = `${pct}%`
       if (timelineThumbRef.current) timelineThumbRef.current.style.left = `${pct}%`
       if (timeLabelRef.current) timeLabelRef.current.innerText = fmt(nowMs / 1000)
 
-      const bucket = duration > 0 ? Math.floor(((nowMs / 1000) / duration) * 80) : -1
+      const bucket = duration > 0 ? Math.floor((nowMs / 1000 / duration) * 80) : -1
       if (bucket !== currentBucketRef.current) {
         currentBucketRef.current = bucket
         setCurrentBucket(bucket)
@@ -582,13 +608,19 @@ export function PreviewOverlay({
   const maxCount = Math.max(...buckets, 1)
 
   return (
-    <div className={`fixed inset-0 z-50 flex flex-col select-none bg-[#080c18] ${closing ? 'animate-fade-out' : 'animate-fade-in'}`}
+    <div
+      className={`fixed inset-0 z-50 flex flex-col select-none bg-[#080c18] ${closing ? 'animate-fade-out' : 'animate-fade-in'}`}
       onContextMenu={(e) => {
         e.preventDefault()
         const el = audioPlayerRef.current
         if (!el) return
-        if (el.paused) { el.play().catch(() => {}); showToast(t('preview.playing')) }
-        else { el.pause(); showToast(t('preview.paused')) }
+        if (el.paused) {
+          el.play().catch(() => {})
+          showToast(t('preview.playing'))
+        } else {
+          el.pause()
+          showToast(t('preview.paused'))
+        }
       }}
     >
       {/* Header */}
@@ -607,10 +639,17 @@ export function PreviewOverlay({
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-white/50">{playing ? '▶' : '⏸'}</span>
           <span className="text-[10px] text-white/25">Esc / Space</span>
-          <button onClick={close}
+          <button
+            onClick={close}
             className="w-7 h-7 rounded-full bg-white/8 hover:bg-white/20 flex items-center justify-center transition-all"
           >
-            <svg className="w-3.5 h-3.5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="w-3.5 h-3.5 text-white/40"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -621,7 +660,10 @@ export function PreviewOverlay({
       <div className="flex-1 relative" onWheel={handleWheel}>
         {backgroundUrl && (
           <>
-            <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${backgroundUrl})`, filter: 'blur(16px) saturate(0.4)' }} />
+            <div
+              className="absolute inset-0 bg-cover bg-center"
+              style={{ backgroundImage: `url(${backgroundUrl})`, filter: 'blur(16px) saturate(0.4)' }}
+            />
             <div className="absolute inset-0 bg-[#080c18]/70" />
           </>
         )}
@@ -630,13 +672,15 @@ export function PreviewOverlay({
         <div className="absolute left-4 top-4 z-10 flex flex-col gap-1.5 pointer-events-none">
           {KEYBINDS.map(({ keys, descKey }) => (
             <div key={keys} className="flex items-center gap-2 text-[11px]">
-              <span className="text-white/50 font-mono tracking-wide bg-white/5 px-1.5 py-0.5 rounded leading-none">{keys}</span>
+              <span className="text-white/50 font-mono tracking-wide bg-white/5 px-1.5 py-0.5 rounded leading-none">
+                {keys}
+              </span>
               <span className="text-white/30">{t(descKey)}</span>
             </div>
           ))}
           <div className="flex items-center gap-2 text-[11px]">
             <span className="text-white/60 font-mono tracking-wide bg-emerald-400/10 text-emerald-300/80 px-1.5 py-0.5 rounded leading-none">
-              {(MANIA_KEY_MAP[keys] ?? MANIA_KEY_MAP[4]).map(c => c.slice(3)).join(' ')}
+              {(MANIA_KEY_MAP[keys] ?? MANIA_KEY_MAP[4]).map((c) => c.slice(3)).join(' ')}
             </span>
             <span className="text-white/30">Play</span>
           </div>
@@ -659,7 +703,7 @@ export function PreviewOverlay({
           </div>
         </div>
 
-        {/* Play HUD — judgment + combo, centered, only while playing */}
+        {/* Play HUD - judgment + combo, centered, only while playing */}
         {playMode && (
           <div className="absolute inset-x-0 top-[38%] z-10 flex flex-col items-center gap-1 pointer-events-none">
             {judgePop && (
@@ -672,7 +716,10 @@ export function PreviewOverlay({
               </div>
             )}
             {combo > 1 && (
-              <div key={combo} className="text-white font-bold text-3xl animate-[comboPop_0.15s_ease-out] tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">
+              <div
+                key={combo}
+                className="text-white font-bold text-3xl animate-[comboPop_0.15s_ease-out] tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]"
+              >
                 {combo}
               </div>
             )}
@@ -680,7 +727,8 @@ export function PreviewOverlay({
         )}
 
         {!playing && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 cursor-pointer z-10"
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center gap-2 cursor-pointer z-10"
             onClick={() => {
               const el = audioPlayerRef.current
               if (!el) return
@@ -700,10 +748,11 @@ export function PreviewOverlay({
       {/* Timeline */}
       <div className="shrink-0 bg-black/50">
         <div className="px-6 pb-[3px] pt-2">
-
           {/* Time labels */}
           <div className="flex justify-between text-[11px] mb-1.5">
-            <span ref={timeLabelRef} className="font-mono text-white/35">0:00</span>
+            <span ref={timeLabelRef} className="font-mono text-white/35">
+              0:00
+            </span>
             {previewTime >= 0 && (
               <span className="text-emerald-400/50 text-[10px] tracking-wide font-mono">
                 ◉ {fmt(previewTime / 1000)}
@@ -713,7 +762,8 @@ export function PreviewOverlay({
           </div>
 
           {/* Note density graph (dotted bars) */}
-          <div className="relative h-[36px] mb-[3px] cursor-pointer"
+          <div
+            className="relative h-[36px] mb-[3px] cursor-pointer"
             onClick={(e) => {
               const el = audioPlayerRef.current
               if (!el) return
@@ -732,11 +782,7 @@ export function PreviewOverlay({
                 const numDots = Math.max(0, Math.round((count / maxCount) * MAX_DOTS))
                 const filled = i <= currentBucket
                 return (
-                  <div
-                    key={i}
-                    className="flex-1 flex flex-col-reverse items-center"
-                    style={{ gap: '1px' }}
-                  >
+                  <div key={i} className="flex-1 flex flex-col-reverse items-center" style={{ gap: '1px' }}>
                     {Array.from({ length: MAX_DOTS }).map((_, j) => {
                       const isOn = j < numDots
                       const isActive = filled && isOn
@@ -747,11 +793,7 @@ export function PreviewOverlay({
                           style={{
                             width: '4px',
                             height: '4px',
-                            backgroundColor: isActive
-                              ? '#fff'
-                              : isOn
-                                ? 'rgba(255,255,255,0.12)'
-                                : 'transparent',
+                            backgroundColor: isActive ? '#fff' : isOn ? 'rgba(255,255,255,0.12)' : 'transparent',
                           }}
                         />
                       )
@@ -770,7 +812,9 @@ export function PreviewOverlay({
                 <div className="bg-black/80 backdrop-blur-sm text-white/80 text-[10px] px-2 py-1 rounded tracking-wide font-mono flex flex-col items-center gap-0.5 whitespace-nowrap">
                   <span className="text-white/90">{fmt((graphHover.pct / 100) * duration)}</span>
                   <span className="text-white/40 text-[9px]">
-                    {t('preview.notesCount', { count: buckets[Math.min(NUM_BUCKETS - 1, Math.floor((graphHover.pct / 100) * NUM_BUCKETS))] || 0 })}
+                    {t('preview.notesCount', {
+                      count: buckets[Math.min(NUM_BUCKETS - 1, Math.floor((graphHover.pct / 100) * NUM_BUCKETS))] || 0,
+                    })}
                   </span>
                 </div>
               </div>
@@ -778,7 +822,8 @@ export function PreviewOverlay({
           </div>
 
           {/* Progress bar */}
-          <div className="relative h-9 flex items-center cursor-pointer group"
+          <div
+            className="relative h-9 flex items-center cursor-pointer group"
             onClick={(e) => {
               const el = audioPlayerRef.current
               if (!el) return
@@ -793,17 +838,24 @@ export function PreviewOverlay({
             onMouseLeave={() => setHoverPct(null)}
           >
             <div className="absolute inset-x-0 h-[3px] bg-white/8 rounded-full" />
-            <div ref={timelineGlowRef} className="absolute left-0 h-[14px] -translate-y-1/2 top-1/2 rounded-full bg-white/8 blur-md pointer-events-none"
+            <div
+              ref={timelineGlowRef}
+              className="absolute left-0 h-[14px] -translate-y-1/2 top-1/2 rounded-full bg-white/8 blur-md pointer-events-none"
               style={{ width: '0%' }}
             />
-            <div ref={timelineFillRef} className="absolute left-0 h-[3px] rounded-full bg-gradient-to-r from-white/30 via-white/70 to-white pointer-events-none"
+            <div
+              ref={timelineFillRef}
+              className="absolute left-0 h-[3px] rounded-full bg-gradient-to-r from-white/30 via-white/70 to-white pointer-events-none"
               style={{ width: '0%' }}
             />
-            <div ref={timelineThumbRef} className="absolute w-[11px] h-[11px] rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)] pointer-events-none transition-none"
+            <div
+              ref={timelineThumbRef}
+              className="absolute w-[11px] h-[11px] rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.5)] pointer-events-none transition-none"
               style={{ left: '0%', transform: 'translate(-50%, 0)' }}
             />
             {previewTime >= 0 && duration > 0 && (
-              <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 group/preview"
+              <div
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 group/preview"
                 style={{ left: `${prvPct}%` }}
                 onClick={(e) => {
                   e.stopPropagation()
@@ -820,7 +872,8 @@ export function PreviewOverlay({
               </div>
             )}
             {hoverPct !== null && (
-              <div className="absolute -top-6 -translate-x-1/2 pointer-events-none transition-none"
+              <div
+                className="absolute -top-6 -translate-x-1/2 pointer-events-none transition-none"
                 style={{ left: `${hoverPct}%` }}
               >
                 <div className="bg-black/80 backdrop-blur-sm text-white/70 text-[10px] px-1.5 py-0.5 rounded font-mono">
@@ -829,7 +882,6 @@ export function PreviewOverlay({
               </div>
             )}
           </div>
-
         </div>
       </div>
     </div>

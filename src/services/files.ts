@@ -100,6 +100,10 @@ export async function readFileArrayBuffer(pathOrFile: string | File): Promise<Ar
   throw new Error(`File not found: ${pathOrFile}`)
 }
 
+function isInSourceDir(w: string, dir: string): boolean {
+  return w.startsWith(dir + '/') || w.includes('/' + dir + '/')
+}
+
 export async function resolveMediaFile(
   sourceDir: string,
   filename: string,
@@ -111,10 +115,6 @@ export async function resolveMediaFile(
     } catch {
       return null
     }
-  }
-
-  function isInSourceDir(w: string, dir: string): boolean {
-    return w.startsWith(dir + '/') || w.includes('/' + dir + '/')
   }
 
   function doAutoDiscovery() {
@@ -193,6 +193,32 @@ export async function resolveMediaFile(
   }
 
   return null
+}
+
+const AUDIO_FILE_RE = /\.(mp3|ogg|wav|flac|m4a|wma)$/i
+
+/**
+ * Pick the largest audio file in sourceDir. Used when a lone .osu references
+ * an audio file the downloaded set doesn't ship under that exact name.
+ */
+export async function resolveAudioFallback(sourceDir: string): Promise<string | null> {
+  if (isTauri()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    try {
+      return await invoke<string>('resolve_audio_fallback', { sourceDir })
+    } catch {
+      return null
+    }
+  }
+
+  const audioFiles = getCachedFiles().filter(f =>
+    AUDIO_FILE_RE.test(f.name) &&
+    (!sourceDir || !f.webkitRelativePath || isInSourceDir(f.webkitRelativePath, sourceDir))
+  )
+  if (audioFiles.length === 0) return null
+  audioFiles.sort((a, b) => b.size - a.size)
+  const best = audioFiles[0]
+  return best.webkitRelativePath || best.name
 }
 
 export async function saveContentToFile(path: string, content: string): Promise<void> {

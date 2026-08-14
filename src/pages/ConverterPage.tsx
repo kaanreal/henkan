@@ -14,6 +14,7 @@ import { AudioPlayer } from '../components/AudioPlayer'
 import { PreviewOverlay } from '../components/PreviewOverlay'
 import { ConvertDialog } from '../components/ConvertDialog'
 import { MultiAudioWarning } from '../components/MultiAudioWarning'
+import { MirrorDownloadWarning } from '../components/MirrorDownloadWarning'
 import { BulkConvertDialog } from '../components/BulkConvertDialog'
 import { PackBrowser } from '../components/PackBrowser'
 import { FallingArrows } from '../components/FallingArrows'
@@ -25,8 +26,9 @@ import { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { isTauri } from '../services/environment'
 import { openFiles as dialogOpenFiles, openDirectory as dialogOpenDirectory, saveFile as dialogSaveFile } from '../services/dialogs'
 import { fileInputCache, getCachedFile, clearFileCache } from '../services/fileCache'
-import { readFileAsDataUrl, resolveMediaFile, saveBlobToFile } from '../services/files'
+import { readFileAsDataUrl, resolveMediaFile, resolveAudioFallback, saveBlobToFile } from '../services/files'
 import { parseFile, selectDifficulty, convertBeatmap, expandDiffName, ensureOszMediaCached } from '../services/convert'
+import { fetchMissingMedia, type MirrorProgress, type FetchLookupInfo } from '../services/mirrorMedia'
 import { exportBeatmap, exportAllBeatmaps, zipFolder, addCdtitleToZip } from '../services/export'
 import { scanPack, scanSongsFolder, loadPackBannerUrl, createDummyDiff, cleanDir, generateDummyDiffContent } from '../services/pack'
 import { openFile } from '../services/platform'
@@ -141,6 +143,71 @@ async function resolveMediaName(sourceDir: string, filename: string | null | und
   }
 }
 
+interface MediaLoadOptions {
+  audioFilename?: string | null
+  backgroundFilename?: string | null
+  bannerFilename?: string | null
+  cdtitleFilename?: string | null
+  creator?: string | null
+  resolveBgName?: boolean
+  /** Ask the user before downloading missing media from the mirror. */
+  confirmFetch?: (bm: Beatmap, info: FetchLookupInfo) => Promise<boolean>
+  /** Report download/extraction progress to the UI. */
+  onMirrorProgress?: (p: MirrorProgress) => void
+}
+
+interface MediaLoadResult {
+  audio: string | null
+  background: string | null
+  banner: string | null
+  cdtitle: string | null
+  audioFile: File | null
+  sourceDir: string
+  bgName: string | null
+}
+
+async function resolveBeatmapMedia(bm: Beatmap, opts: MediaLoadOptions = {}): Promise<MediaLoadResult> {
+  if (bm.source_file) {
+    await ensureOszMediaCached(bm.source_file)
+  }
+
+  let sourceDir = bm.source_dir
+  const audioFilename = opts.audioFilename ?? bm.audio_filename
+  const backgroundFilename = opts.backgroundFilename ?? bm.background_filename
+  const bannerFilename = opts.bannerFilename ?? bm.banner_filename
+  const cdtitleFilename = opts.cdtitleFilename ?? bm.cdtitle_filename
+  const creator = opts.creator ?? bm.creator
+
+  let audioPath = audioFilename ? await resolveMediaFile(sourceDir, audioFilename) : null
+
+  // Lone .osu with no local audio: fetch the set's media from the mirror
+  if (!audioPath && audioFilename && bm.source_format === 'OsuMania') {
+    const fetched = await fetchMissingMedia(bm, {
+      confirmFetch: opts.confirmFetch,
+      onProgress: opts.onMirrorProgress,
+    })
+    if (fetched) {
+      sourceDir = fetched.source_dir
+      audioPath = audioFilename ? await resolveMediaFile(sourceDir, audioFilename) : null
+      // The .osu may reference an audio file the set doesn't ship under that
+      // exact name — fall back to the set's main audio so the preview still works.
+      if (!audioPath) {
+        audioPath = await resolveAudioFallback(sourceDir)
+      }
+    }
+  }
+
+  const audioFile = audioPath ? getCachedFile(audioPath) ?? null : null
+  const [audio, background, banner, cdtitle, bgName] = await Promise.all([
+    audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(sourceDir, audioFilename),
+    loadMediaAsDataUrl(sourceDir, backgroundFilename),
+    loadMediaAsDataUrl(sourceDir, bannerFilename),
+    loadCdtitleAsDataUrl(sourceDir, cdtitleFilename, creator),
+    opts.resolveBgName ? resolveMediaName(sourceDir, backgroundFilename) : Promise.resolve(null),
+  ])
+  return { audio, background, banner, cdtitle, audioFile, sourceDir, bgName }
+}
+
 export default function ConverterPage() {
   const navigate = useNavigate()
   const t = useT()
@@ -160,6 +227,8 @@ export default function ConverterPage() {
   const pendingIndicesRef = useRef<number[]>([])
   const [showBulkConvert, setShowBulkConvert] = useState(false)
   const [showPackSettings, setShowPackSettings] = useState(false)
+  const [mirrorFetchRequest, setMirrorFetchRequest] = useState<{ resolve: (ok: boolean) => void; title: string; artist: string; unmatched: boolean } | null>(null)
+  const [mirrorProgress, setMirrorProgress] = useState<MirrorProgress | null>(null)
   const [packConvertAllMode, setPackConvertAllMode] = useState(false)
   const [queueLoading, setQueueLoading] = useState(false)
 
@@ -408,29 +477,39 @@ export default function ConverterPage() {
 
   // ── Multi-file queue ─────────────────────────────────────────
 
+  const requestMirrorFetch = useCallback((bm: Beatmap, info: FetchLookupInfo) => new Promise<boolean>(resolve => {
+    setMirrorFetchRequest({ resolve, title: bm.title, artist: bm.artist, unmatched: info.status === 'unmatched' })
+  }), [])
+
+  const reportMirrorProgress = useCallback((p: MirrorProgress) => {
+    setMirrorProgress(p)
+  }, [])
+
+  useEffect(() => {
+    if (mirrorProgress?.phase === 'done') {
+      setMirrorProgress(null)
+      setMirrorFetchRequest(null)
+    }
+  }, [mirrorProgress])
+
   const loadQueueMedia = useCallback(async (bm: Beatmap) => {
     console.log('[media] loadQueueMedia start', { source_file: bm.source_file, source_dir: bm.source_dir, audio: bm.audio_filename, bg: bm.background_filename })
-    if (bm.source_file) {
-      await ensureOszMediaCached(bm.source_file)
+    const result = await resolveBeatmapMedia(bm, { confirmFetch: requestMirrorFetch, onMirrorProgress: reportMirrorProgress })
+    // Tauri: point the active beatmap at the mirror-extracted media dir so
+    // later loads (difficulty switch, re-selection) don't re-download.
+    if (result.sourceDir !== bm.source_dir) {
+      const updated = { ...bm, source_dir: result.sourceDir }
+      const store = useConverterStore.getState()
+      store.setBeatmap(updated, store.direction)
+      const activeId = useQueueStore.getState().activeId
+      if (activeId) {
+        queueUpdateItem(activeId, { beatmap: updated })
+      }
     }
-    const audioFile = bm.audio_filename
-      ? await resolveMediaFile(bm.source_dir, bm.audio_filename).then(r => {
-          console.log('[media] resolveMediaFile audio', { requested: bm.audio_filename, resolved: r })
-          return r ? getCachedFile(r) ?? null : null
-        })
-      : null
-    if (audioFile) console.log('[media] audioFile found', { name: audioFile.name, size: audioFile.size })
-    else console.log('[media] audioFile is null')
-    audioFileRef.current = audioFile
-    const [audio, bg, banner, cdtitle] = await Promise.all([
-      audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
-      loadMediaAsDataUrl(bm.source_dir, bm.background_filename),
-      loadMediaAsDataUrl(bm.source_dir, bm.banner_filename),
-      loadCdtitleAsDataUrl(bm.source_dir, bm.cdtitle_filename, bm.creator),
-    ])
-    console.log('[media] loadQueueMedia done', { audio: audio?.slice(0, 40), bg: bg?.slice(0, 40), banner: banner?.slice(0, 40), cdtitle: cdtitle?.slice(0, 40) })
-    setMediaUrls({ audio, background: bg, banner, cdtitle })
-  }, [setMediaUrls])
+    audioFileRef.current = result.audioFile
+    console.log('[media] loadQueueMedia done', { audio: result.audio?.slice(0, 40), bg: result.background?.slice(0, 40), banner: result.banner?.slice(0, 40), cdtitle: result.cdtitle?.slice(0, 40) })
+    setMediaUrls({ audio: result.audio, background: result.background, banner: result.banner, cdtitle: result.cdtitle })
+  }, [setMediaUrls, queueUpdateItem, requestMirrorFetch, reportMirrorProgress])
 
   const handleFilesSelected = useCallback(async (paths: string[]) => {
     const newIds: string[] = []
@@ -511,21 +590,9 @@ export default function ConverterPage() {
     queueSetActiveId(item.id)
     setDirection(item.direction)
     try {
-      // Ensure media files for this source are in the cache (restores OSZ media if previously cleared)
-      if (item.beatmap.source_file) {
-        await ensureOszMediaCached(item.beatmap.source_file)
-      }
-      const audioFile = item.beatmap.audio_filename
-        ? await resolveMediaFile(item.beatmap.source_dir, item.beatmap.audio_filename).then(r => r ? getCachedFile(r) ?? null : null)
-        : null
-      audioFileRef.current = audioFile
-      const [audio, bg, banner, cdtitle] = await Promise.all([
-        audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.audio_filename),
-        loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.background_filename),
-        loadMediaAsDataUrl(item.beatmap.source_dir, item.beatmap.banner_filename),
-        loadCdtitleAsDataUrl(item.beatmap.source_dir, item.beatmap.cdtitle_filename, item.beatmap.creator),
-      ])
-      useConverterStore.getState().setMediaUrls({ audio, background: bg, banner, cdtitle })
+      const result = await resolveBeatmapMedia(item.beatmap, { confirmFetch: requestMirrorFetch, onMirrorProgress: reportMirrorProgress })
+      audioFileRef.current = result.audioFile
+      useConverterStore.getState().setMediaUrls({ audio: result.audio, background: result.background, banner: result.banner, cdtitle: result.cdtitle })
       setBeatmap(item.beatmap, item.direction)
       useConverterStore.getState().updateConfig(item.config)
     } catch {
@@ -533,7 +600,7 @@ export default function ConverterPage() {
     } finally {
       setQueueLoading(false)
     }
-  }, [queueActiveId, queueUpdateItem, queueSetActiveId, setDirection, setBeatmap, loadMediaAsDataUrl, t])
+  }, [queueActiveId, queueUpdateItem, queueSetActiveId, setDirection, setBeatmap, requestMirrorFetch, reportMirrorProgress, t])
 
   const handleQueueAddFiles = useCallback(async () => {
     const selected = await dialogOpenFiles({
@@ -1047,17 +1114,9 @@ export default function ConverterPage() {
       const bm = await parseFile(entry.source_file, direction)
 
       // Load media
-      const audioFile = bm.audio_filename
-        ? await resolveMediaFile(bm.source_dir, bm.audio_filename).then(r => r ? getCachedFile(r) ?? null : null)
-        : null
-      audioFileRef.current = audioFile
-      const [newAudio, bg, cdtitle, bgName] = await Promise.all([
-        audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(bm.source_dir, bm.audio_filename),
-        loadMediaAsDataUrl(bm.source_dir, bm.background_filename),
-        loadCdtitleAsDataUrl(bm.source_dir, bm.cdtitle_filename, bm.creator),
-        resolveMediaName(bm.source_dir, bm.background_filename),
-      ])
-      useConverterStore.getState().setMediaUrls({ audio: newAudio, background: bg, banner: null, cdtitle })
+      const result = await resolveBeatmapMedia(bm, { resolveBgName: true, confirmFetch: requestMirrorFetch, onMirrorProgress: reportMirrorProgress })
+      audioFileRef.current = result.audioFile
+      useConverterStore.getState().setMediaUrls({ audio: result.audio, background: result.background, banner: null, cdtitle: result.cdtitle })
       useConverterStore.getState().setBeatmap(bm, direction)
 
       // Restore any saved config for this song (after setBeatmap resets it)
@@ -1069,14 +1128,14 @@ export default function ConverterPage() {
       // If background was auto-discovered, update config so the FilePicker
       // shows the actual filename instead of "auto"
       const finalConfig = useConverterStore.getState().config
-      if (bgName && !finalConfig.background_filename) {
-        useConverterStore.getState().updateConfig({ background_filename: bgName })
+      if (result.bgName && !finalConfig.background_filename) {
+        useConverterStore.getState().updateConfig({ background_filename: result.bgName })
       }
     } catch (e: unknown) {
       setError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToLoadSong'))
       setPackEditing(null)
     }
-  }, [packEntries, packEditing, setAudioPlaying, setError, t])
+  }, [packEntries, packEditing, setAudioPlaying, setError, requestMirrorFetch, reportMirrorProgress, t])
 
   const handlePackBack = useCallback(() => {
     // Save current config
@@ -1380,24 +1439,23 @@ export default function ConverterPage() {
       // Load media using config values - now correctly reflects user customizations
       // while falling back to the new difficulty's defaults for non-customized fields
       const cfg = useConverterStore.getState().config
-      const audioFilename = cfg.audio_filename || bm.audio_filename
-      const audioFile = audioFilename
-        ? await resolveMediaFile(bm.source_dir, audioFilename).then(r => r ? getCachedFile(r) ?? null : null)
-        : null
-      audioFileRef.current = audioFile
-      const [audio, bg, banner, cdtitle] = await Promise.all([
-        audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(bm.source_dir, audioFilename),
-        loadMediaAsDataUrl(bm.source_dir, cfg.background_filename || bm.background_filename),
-        loadMediaAsDataUrl(bm.source_dir, cfg.banner_filename || bm.banner_filename),
-        loadCdtitleAsDataUrl(bm.source_dir, cfg.cdtitle_filename || bm.cdtitle_filename, cfg.creator || bm.creator),
-      ])
-      useConverterStore.getState().setMediaUrls({ audio, background: bg, banner, cdtitle })
+      const result = await resolveBeatmapMedia(bm, {
+        audioFilename: cfg.audio_filename || bm.audio_filename,
+        backgroundFilename: cfg.background_filename || bm.background_filename,
+        bannerFilename: cfg.banner_filename || bm.banner_filename,
+        cdtitleFilename: cfg.cdtitle_filename || bm.cdtitle_filename,
+        creator: cfg.creator || bm.creator,
+        confirmFetch: requestMirrorFetch,
+        onMirrorProgress: reportMirrorProgress,
+      })
+      audioFileRef.current = result.audioFile
+      useConverterStore.getState().setMediaUrls({ audio: result.audio, background: result.background, banner: result.banner, cdtitle: result.cdtitle })
       } catch (e: unknown) {
         setError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToSelectDifficulty'))
       } finally {
         setSwitchingDifficulty(false)
       }
-  }, [beatmap, setError, queueActiveId, queueUpdateItem, t])
+  }, [beatmap, setError, queueActiveId, queueUpdateItem, requestMirrorFetch, reportMirrorProgress, t])
 
   const handleChangeFile = useCallback(async (field: string, _current: string | null): Promise<void> => {
     try {
@@ -1880,6 +1938,24 @@ export default function ConverterPage() {
             onSeparateSongs={handleSeparateSongs}
             onCombineAnyway={handleCombineAnyway}
             onCancel={handleMultiAudioCancel}
+          />
+        )}
+
+        {/* Mirror download confirmation */}
+        {mirrorFetchRequest && (
+          <MirrorDownloadWarning
+            title={mirrorFetchRequest.title}
+            artist={mirrorFetchRequest.artist}
+            progress={mirrorProgress}
+            unmatched={mirrorFetchRequest.unmatched}
+            onConfirm={() => {
+              mirrorFetchRequest.resolve(true)
+            }}
+            onCancel={() => {
+              mirrorFetchRequest.resolve(false)
+              setMirrorFetchRequest(null)
+              setMirrorProgress(null)
+            }}
           />
         )}
 
