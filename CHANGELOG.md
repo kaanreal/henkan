@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.6.0](https://github.com/kaanreal/henkan/compare/v1.5.1...v1.6.0) (2026-08-14)
+
+
+### Features
+
+* **i18n:** add localization for 8 languages ✨ ([a2d6b73](https://github.com/kaanreal/henkan/commit/a2d6b739d225a6ef9b8b11ff634e4581a2a1d844))
+* **mirror:** fetch missing media for lone .osu files from the osu! mirror 🚀 ([6492b47](https://github.com/kaanreal/henkan/commit/6492b47c942c66ebdbab3f8fcfa94763f41d3116))
+* **preview:** center HUD, autoplay when idle, notes under receptors 🎹 ([92a1f4c](https://github.com/kaanreal/henkan/commit/92a1f4c7f69041bd74dfbf2ae359ba3c92145cbc))
+* **preview:** make the beatmap preview playable 🎮 ([50c4660](https://github.com/kaanreal/henkan/commit/50c466062cb93be02f14f7375a39971fdf133b3e))
+
+
+### Bug Fixes
+
+* **update:** fetch real release notes from GitHub API 🐛 ([a78a00e](https://github.com/kaanreal/henkan/commit/a78a00e4c2119100feeac7f1b5dab9893b141282))
+
 ## [1.5.1](https://github.com/kaanreal/henkan/compare/v1.5.0...v1.5.1) (2026-08-03)
 
 
