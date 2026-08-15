@@ -41,26 +41,7 @@ fn rate_label(rate: f64) -> Option<String> {
 
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-pub fn convert_etterna_to_osu(beatmap_json: &str, config_json: &str) -> Result<String, JsValue> {
-    let beatmap: Beatmap =
-        serde_json::from_str(beatmap_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let config: ExportConfig =
-        serde_json::from_str(config_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    converters::etterna_to_osu::convert(&beatmap, &config)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
-}
-
-#[wasm_bindgen]
-pub fn convert_osu_to_etterna(
-    beatmap_json: &str,
-    config_json: &str,
-) -> Result<String, JsValue> {
-    let mut beatmap: Beatmap =
-        serde_json::from_str(beatmap_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let config: ExportConfig =
-        serde_json::from_str(config_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-
+fn apply_config_overrides(beatmap: &mut Beatmap, config: &ExportConfig) {
     beatmap.title = config.title.clone();
     beatmap.artist = config.artist.clone();
     if !config.creator.is_empty() {
@@ -78,7 +59,33 @@ pub fn convert_osu_to_etterna(
     beatmap.banner_filename = config.banner_filename.clone();
     beatmap.cdtitle_filename = config.cdtitle_filename.clone();
     beatmap.preview_time = config.preview_time;
+}
 
+#[wasm_bindgen]
+pub fn convert_etterna_to_osu(beatmap_json: &str, config_json: &str) -> Result<String, JsValue> {
+    let mut beatmap: Beatmap =
+        serde_json::from_str(beatmap_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let config: ExportConfig =
+        serde_json::from_str(config_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    apply_config_overrides(&mut beatmap, &config);
+    apply_rate_scaling(&mut beatmap, config.conversion_rate);
+
+    converters::etterna_to_osu::convert(&beatmap, &config)
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn convert_osu_to_etterna(
+    beatmap_json: &str,
+    config_json: &str,
+) -> Result<String, JsValue> {
+    let mut beatmap: Beatmap =
+        serde_json::from_str(beatmap_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let config: ExportConfig =
+        serde_json::from_str(config_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    apply_config_overrides(&mut beatmap, &config);
     apply_rate_scaling(&mut beatmap, config.conversion_rate);
 
     converters::osu_to_etterna::convert(&mut beatmap, &config)
