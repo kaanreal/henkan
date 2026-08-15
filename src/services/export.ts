@@ -116,7 +116,9 @@ export async function exportBeatmap(
           : originalName
       zip.file(zipName, await file.arrayBuffer())
     }
-    await addCdtitleToZip(zip, beatmap.source_dir, config.cdtitle_filename || beatmap.cdtitle_filename, 'cdtitle.png', config.creator || beatmap.creator)
+    if (beatmap.source_format === 'OsuMania') {
+      await addCdtitleToZip(zip, beatmap.source_dir, config.cdtitle_filename || beatmap.cdtitle_filename, 'cdtitle.png', config.creator || beatmap.creator)
+    }
 
     const blob = await zip.generateAsync({ type: 'blob' })
     const bundleExt = config.output_format === 'osz' ? '.osz' : '.zip'
@@ -220,7 +222,9 @@ export async function exportAllBeatmaps(
           addedMedia.add(name)
           zip.file(name, await file.arrayBuffer())
         }
-        await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, 'cdtitle.png', bm.creator)
+        if (bm.source_format === 'OsuMania') {
+          await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, 'cdtitle.png', bm.creator)
+        }
       }
 
       const safePackName = packTitle.replace(/[/\\?%*:|"<>]/g, '_')
