@@ -770,7 +770,9 @@ export default function ConverterPage() {
               addedMedia.add(mediaPath)
               zip.file(mediaPath, await file.arrayBuffer())
             }
-            await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, `${safeName}/${safeDiff}/cdtitle.png`, bm.creator)
+            if (bm.source_format === 'OsuMania') {
+              await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, `${safeName}/${safeDiff}/cdtitle.png`, bm.creator)
+            }
           }
           const blob = await zip.generateAsync({ type: 'blob' })
           const zipName = `${safeName}.zip`
@@ -876,7 +878,9 @@ export default function ConverterPage() {
               addedMedia.add(mediaPath)
               zip.file(mediaPath, await file.arrayBuffer())
             }
-            await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, `${safeName}/${safeDiff}/cdtitle.png`, bm.creator)
+            if (bm.source_format === 'OsuMania') {
+              await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, `${safeName}/${safeDiff}/cdtitle.png`, bm.creator)
+            }
           }
           const blob = await zip.generateAsync({ type: 'blob' })
           const zipName = `${safeName}.zip`
@@ -1327,8 +1331,10 @@ export default function ConverterPage() {
           }
         }
 
-        // Add cdtitle.png (default fallback)
-        await addCdtitleToZip(zip, '', null, 'cdtitle.png')
+        // Add cdtitle.png (default fallback) - only for osu→etterna (SM destination)
+        if (packType === 'osu') {
+          await addCdtitleToZip(zip, '', null, 'cdtitle.png')
+        }
 
         // Only add dummy diff for SM packs (osu→etterna direction doesn't need it)
         if (packType !== 'osu') {

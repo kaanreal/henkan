@@ -1,7 +1,7 @@
 ﻿import type { Beatmap, ConvertDirection, DiffInfo, ExportConfig } from '../types/beatmap'
 import { t } from '../i18n'
 import { isTauri } from './environment'
-import { readFileText } from './files'
+import { readFileText, resolveMediaFile } from './files'
 import { getCachedFile } from './fileCache'
 import {
   wasmParseOsu,
@@ -282,8 +282,6 @@ export async function parseSmAll(pathOrContent: string): Promise<Beatmap[]> {
   return beatmaps
 }
 
-const HENKAN_ATTRIBUTION = '// Converted using "https://github.com/kaanreal/henkan"\n\n'
-
 export async function convertBeatmap(
   beatmap: Beatmap,
   config: ExportConfig,
@@ -293,14 +291,27 @@ export async function convertBeatmap(
     return await invoke<string>('convert_beatmap', { beatmap, config })
   }
 
-  if (beatmap.source_format === 'Etterna') {
-    const result = await wasmConvertEtternaToOsu(beatmap, config)
-    return result.replace('osu file format v14\n\n', `osu file format v14\n\n${HENKAN_ATTRIBUTION}`)
+  // Mirror desktop's export_all_beatmaps fallback (config bg → beatmap bg →
+  // scan_source_dir_for_bg): when no background is configured, keep the parsed
+  // one or auto-discover a plausible image. Otherwise apply_config_overrides
+  // in wasm would wipe beatmap.background_filename to None and the .osu would
+  // lose its [Events] background line and exported image.
+  if (!config.background_filename) {
+    let bgName = beatmap.background_filename || null
+    if (!bgName) {
+      const bg = await resolveMediaFile(beatmap.source_dir, '')
+      bgName = bg?.split(/[/\\]+/).pop() || null
+    }
+    if (bgName) {
+      config.background_filename = bgName
+      beatmap.background_filename = bgName
+    }
   }
-  return HENKAN_ATTRIBUTION + await wasmConvertOsuToEtterna(
-    beatmap,
-    config,
-  )
+
+  if (beatmap.source_format === 'Etterna') {
+    return await wasmConvertEtternaToOsu(beatmap, config)
+  }
+  return await wasmConvertOsuToEtterna(beatmap, config)
 }
 
 export async function scaleTimingForRate(
