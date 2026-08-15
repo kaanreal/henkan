@@ -160,11 +160,11 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
             let end_shifted = shift_note(note.hold_end_ms.unwrap_or(note.time_ms + 1000.0));
             let end_time = snap_to_osu_grid(end_shifted, &osu_tps).max(0.0) as u64;
             output.push_str(&format!(
-                "{},{},{},128,0,{}:0:0:0:0:0\n",
+                "{},{},{},128,1,{}:0:0:0:0:0\n",
                 x, 192, time, end_time
             ));
         } else {
-            output.push_str(&format!("{},{},{},1,0,0:0,0,0,0,0\n", x, 192, time));
+            output.push_str(&format!("{},{},{},1,1,0:0:0:0:0\n", x, 192, time));
         }
     }
 
