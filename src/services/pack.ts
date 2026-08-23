@@ -2,7 +2,7 @@
 import { isTauri } from './environment'
 import { readFileAsDataUrl } from './files'
 import { wasmParseSmAll } from './wasm'
-import { getCachedFiles, getCachedFile, cacheFileContent } from './fileCache'
+import { getCachedFiles, getCachedFile, cacheFileContent, type FileWithPath } from './fileCache'
 
 function decodeFileContent(file: File): Promise<string> {
   return file.arrayBuffer().then(buf => {
@@ -36,7 +36,7 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
   for (const file of smFiles) {
     try {
       const content = await decodeFileContent(file)
-      const sourceFile = (file as any).path || file.webkitRelativePath || file.name
+      const sourceFile = (file as FileWithPath).path || file.webkitRelativePath || file.name
       cacheFileContent(sourceFile, content) // cache for later re-read by parseFile
 
       const beatmaps = await wasmParseSmAll(content)
@@ -211,8 +211,7 @@ export async function scanSongsFolder(folder: string): Promise<PackEntry[]> {
   for (const file of osuFiles) {
     try {
       const content = await decodeFileContent(file)
-      const sourceFile = (file as any).path || file.webkitRelativePath || file.name
-      console.log('[scanSongsFolder] caching key=', JSON.stringify(sourceFile), 'webkit=', JSON.stringify(file.webkitRelativePath), 'name=', JSON.stringify(file.name))
+      const sourceFile = (file as FileWithPath).path || file.webkitRelativePath || file.name
       cacheFileContent(sourceFile, content)
 
       const { wasmParseOsu } = await import('./wasm')

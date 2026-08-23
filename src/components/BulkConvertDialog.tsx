@@ -169,13 +169,10 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
 
       <div className={`relative w-full max-w-lg mx-4 transition-all duration-200 ease-out ${!leaving ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 pointer-events-none translate-y-4'}`}>
         <div className="bg-surface-900/95 border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
-          {/* Accent bar */}
-          <div className="h-0.5 bg-gradient-to-r from-accent via-accent-muted to-accent/40" />
-
           {/* Header */}
           <div className="px-5 pt-5 pb-3">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center shadow-sm shadow-accent/10">
+              <div className="w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center">
                 <svg className="w-4.5 h-4.5 text-accent-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
                 </svg>
@@ -336,8 +333,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
                 bg-accent text-white
                 hover:bg-accent-hover active:scale-[0.97]
                 transition-all duration-75
-                disabled:opacity-40 disabled:cursor-not-allowed
-                shadow-lg shadow-accent/25"
+                disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {converting ? t('common.converting') : t('bulkConvert.convertWithCount', { count: selected.size })}
             </button>

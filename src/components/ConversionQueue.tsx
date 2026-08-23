@@ -61,9 +61,8 @@ export function ConversionQueue({
   items, activeId, isConverting, onSelect, onRemove, onAddFiles, onConvertAll, onResetAll, onClearCompleted, onClearAll,
 }: Props) {
   const t = useT()
-  if (items.length === 0) return null
-
   const scrollRef = useRef<HTMLDivElement>(null)
+  if (items.length === 0) return null
 
   const doneCount = items.filter((i) => i.status === 'completed').length
   const readyCount = items.filter((i) => i.status === 'ready').length

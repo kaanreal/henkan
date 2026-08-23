@@ -105,7 +105,7 @@ export function MetadataPanel({
                     relative text-left px-3.5 py-2.5 rounded-xl text-xs font-medium
                     transition-all duration-100 active:scale-[0.97]
                     ${active
-                      ? 'bg-accent/15 border border-accent/40 text-accent-muted shadow-sm shadow-accent/10'
+                      ? 'bg-accent/15 border border-accent/40 text-accent-muted'
                       : switchingDifficulty
                         ? 'bg-white/[0.02] border border-white/5 text-surface-500 cursor-wait'
                         : 'bg-white/[0.03] border border-white/5 text-surface-400 hover:bg-white/[0.06] hover:text-surface-200 hover:border-white/10'

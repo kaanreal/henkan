@@ -60,7 +60,8 @@ export function loadCatalog(locale: Locale): Promise<void> {
   if (!loader) return Promise.resolve()
   const task = loader()
     .then((catalog) => registerCatalog(locale, catalog))
-    .catch(() => {})
+    // Drop the failed attempt so a later locale switch can retry the load
+    .catch(() => { pending.delete(locale) })
   pending.set(locale, task)
   return task
 }

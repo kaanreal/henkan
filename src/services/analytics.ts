@@ -1,5 +1,12 @@
 import { isTauri } from './environment'
 
+// Plausible-style analytics injected by the web deployment
+declare global {
+  interface Window {
+    pta?: (event: string, properties?: Record<string, string>) => void
+  }
+}
+
 export async function trackEvent(
   event: string,
   properties?: Record<string, string>,
@@ -14,9 +21,9 @@ export async function trackEvent(
     return
   }
 
-  if (typeof window !== 'undefined' && (window as any).pta) {
+  if (typeof window !== 'undefined' && window.pta) {
     try {
-      (window as any).pta(event, properties)
+      window.pta(event, properties)
     } catch {
       // ignore
     }

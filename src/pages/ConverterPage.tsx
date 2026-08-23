@@ -1,9 +1,10 @@
 ﻿import type { Beatmap, ExportConfig, PackEntry } from '../types/beatmap'
-import { useCallback, useState, useEffect, useRef, startTransition } from 'react'
+import { useCallback, useState, useEffect, useMemo, useRef, startTransition } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useT } from '../i18n'
 import { useConverterStore } from '../stores/useConverterStore'
 import { useQueueStore, type QueueItem, buildConfig, emptyConfig, generateId, detectDirection } from '../stores/useQueueStore'
+import type { FileWithPath } from '../services/fileCache'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { trackEvent } from '../services/analytics'
 import { Header } from '../components/Header'
@@ -125,6 +126,7 @@ async function loadCdtitleAsDataUrl(sourceDir: string, filename: string | null |
 
   try {
     const resp = await fetch('/cdtitle_default.png')
+    if (!resp.ok) return null
     const blob = await resp.blob()
     return URL.createObjectURL(blob)
   } catch {
@@ -446,6 +448,8 @@ export default function ConverterPage() {
     const player = audioPlayerRef.current
     if (!player) return
     if (mediaUrls.audio) {
+      // loading has to flip before the async decode kicks off
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAudioLoading(true)
       const source = audioFileRef.current || mediaUrls.audio
       player.load(source).finally(() => {
@@ -482,18 +486,16 @@ export default function ConverterPage() {
   }), [])
 
   const reportMirrorProgress = useCallback((p: MirrorProgress) => {
-    setMirrorProgress(p)
-  }, [])
-
-  useEffect(() => {
-    if (mirrorProgress?.phase === 'done') {
+    // 'done' only means "stop showing the warning"; no need to round-trip it through state
+    if (p.phase === 'done') {
       setMirrorProgress(null)
       setMirrorFetchRequest(null)
+    } else {
+      setMirrorProgress(p)
     }
-  }, [mirrorProgress])
+  }, [])
 
   const loadQueueMedia = useCallback(async (bm: Beatmap) => {
-    console.log('[media] loadQueueMedia start', { source_file: bm.source_file, source_dir: bm.source_dir, audio: bm.audio_filename, bg: bm.background_filename })
     const result = await resolveBeatmapMedia(bm, { confirmFetch: requestMirrorFetch, onMirrorProgress: reportMirrorProgress })
     // Tauri: point the active beatmap at the mirror-extracted media dir so
     // later loads (difficulty switch, re-selection) don't re-download.
@@ -507,7 +509,6 @@ export default function ConverterPage() {
       }
     }
     audioFileRef.current = result.audioFile
-    console.log('[media] loadQueueMedia done', { audio: result.audio?.slice(0, 40), bg: result.background?.slice(0, 40), banner: result.banner?.slice(0, 40), cdtitle: result.cdtitle?.slice(0, 40) })
     setMediaUrls({ audio: result.audio, background: result.background, banner: result.banner, cdtitle: result.cdtitle })
   }, [setMediaUrls, queueUpdateItem, requestMirrorFetch, reportMirrorProgress])
 
@@ -717,7 +718,7 @@ export default function ConverterPage() {
               const diffName = bm.difficulty_name || `Diff ${i+1}`
               const safeDiff = diffName.replace(/[/\\?%*:|"<>]/g, '_')
               const diffDir = `${baseDir}/${safeName}/${safeDiff}`
-              try { await invoke('clean_dir', { path: diffDir }) } catch {}
+              try { await invoke('clean_dir', { path: diffDir }) } catch { /* dir may not exist yet */ }
               const diffCfg = {
                 ...cfg,
                 audio_filename: bm.audio_filename || cfg.audio_filename,
@@ -904,7 +905,7 @@ export default function ConverterPage() {
             const safeDiff = diffLabel.replace(/[/\\?%*:|"<>]/g, '_')
             const diffDir = `${exportDir}/${safeName}/${safeDiff}`
             const { invoke } = await import('@tauri-apps/api/core')
-            try { await invoke('clean_dir', { path: diffDir }) } catch {}
+            try { await invoke('clean_dir', { path: diffDir }) } catch { /* dir may not exist yet */ }
             const result = await exportBeatmap(bm, diffCfg, content, diffDir, diffLabel, true)
             allPaths.push(result)
           }
@@ -1015,22 +1016,18 @@ export default function ConverterPage() {
     }
 
     // Try scanning for .sm files first (existing etterna pack behavior)
-    let entries: PackEntry[] = []
+    let entries: PackEntry[]
     let detectedType: 'sm' | 'osu' = 'sm'
     try {
       entries = await scanPack(folder)
-      console.log('[handleOpenPack] scanPack returned', entries.length, 'entries')
-    } catch (e) {
-      console.log('[handleOpenPack] scanPack error:', e)
+    } catch {
       entries = []
     }
 
     // If no sm files found, try scanning for .osu files
     if (entries.length === 0) {
       try {
-        console.log('[handleOpenPack] calling scanSongsFolder for:', folder)
         entries = await scanSongsFolder(folder)
-        console.log('[handleOpenPack] scanSongsFolder returned', entries.length, 'entries')
         detectedType = 'osu'
       } catch (e: unknown) {
         const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToScanFolder')
@@ -1114,7 +1111,6 @@ export default function ConverterPage() {
 
     try {
       const direction = packType === 'osu' ? 'osu-to-etterna' : 'etterna-to-osu'
-      console.log('[handlePackEditSong] parsing', entry.source_file, 'dir:', direction)
       const bm = await parseFile(entry.source_file, direction)
 
       // Load media
@@ -1504,6 +1500,12 @@ export default function ConverterPage() {
 
   // Drag-and-drop
   const lastDropRef = useRef(0)
+  // Latest-ref pattern: the callbacks change identity with queue state, and
+  // re-registering the native drag-drop listener on every change is wasteful
+  const dropHandlers = useRef({ setDragging, handleMainFilesSelected, handleOpenPack, routeSkinInput })
+  useEffect(() => {
+    dropHandlers.current = { setDragging, handleMainFilesSelected, handleOpenPack, routeSkinInput }
+  })
   useEffect(() => {
     let unlisten: (() => void) | undefined
     let cancelled = false
@@ -1512,6 +1514,8 @@ export default function ConverterPage() {
       import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
         if (cancelled) return
         getCurrentWindow().onDragDropEvent(async (evt) => {
+          if (cancelled) return
+          const { setDragging, handleMainFilesSelected, handleOpenPack, routeSkinInput } = dropHandlers.current
           if (cancelled) return
           if (evt.payload.type === 'enter') {
             setDragging(true)
@@ -1560,10 +1564,11 @@ export default function ConverterPage() {
       cancelled = true
       unlisten?.()
     }
-  }, [setDragging, handleMainFilesSelected, handleOpenPack, routeSkinInput])
+  }, [setDragging])
 
-  const tapCount = beatmap?.notes.filter(n => !n.hold).length ?? 0
-  const holdCount = beatmap?.notes.filter(n => n.hold).length ?? 0
+  const notes = beatmap?.notes
+  const tapCount = useMemo(() => notes?.filter(n => !n.hold).length ?? 0, [notes])
+  const holdCount = useMemo(() => notes?.filter(n => n.hold).length ?? 0, [notes])
 
   return (
     <ErrorBoundary>
@@ -1609,9 +1614,9 @@ export default function ConverterPage() {
           }
 
           // Detect folder drop
-          const hasWebkitPath = files.some(f => (f as any).webkitRelativePath)
+          const hasWebkitPath = files.some(f => !!f.webkitRelativePath)
           if (hasWebkitPath) {
-            const rootFolder = (files[0] as any).webkitRelativePath.split('/')[0]
+            const rootFolder = files[0].webkitRelativePath.split('/')[0]
             if (containsSkinMarker(files)) {
               const archive = await archiveSkinFolderFiles(files, rootFolder)
               if (await routeSkinInput(archive)) return
@@ -1637,7 +1642,7 @@ export default function ConverterPage() {
           for (const f of files) {
             const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase()
             if (!knownExts.includes(ext)) continue
-            const p = (f as any).path || f.name
+            const p = (f as FileWithPath).path || f.name
             if (seen.has(p)) continue
             seen.add(p)
             filePaths.push(p)
@@ -2106,7 +2111,7 @@ export default function ConverterPage() {
                     <button
                       onClick={handleOpenInOsu}
                       className="px-6 py-2.5 rounded-xl bg-accent text-white font-medium text-sm
-                                 hover:bg-accent-hover active:scale-[0.97] transition-all duration-75 shadow-lg shadow-accent/25"
+                                 hover:bg-accent-hover active:scale-[0.97] transition-all duration-75"
                     >
                       {direction === 'etterna-to-osu' ? t('converter.openInOsu') : t('converter.showInExplorer')}
                     </button>
