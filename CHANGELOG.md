@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.6.1](https://github.com/kaanreal/henkan/compare/v1.6.0...v1.6.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* **converter:** export clean hold notes without bogus custom sample 🔇 ([360655e](https://github.com/kaanreal/henkan/commit/360655e30a26deaf707497e3be68d64f71489994))
+* **converter:** give hold notes a hitsound in osu export 🔊 ([d423a6d](https://github.com/kaanreal/henkan/commit/d423a6d65d32acef875e41658af333849c5cd5a5))
+* patch review findings across converter, CLI and UI 🫧 ([1d7f2a4](https://github.com/kaanreal/henkan/commit/1d7f2a4d30159fc2b098d2fc7dcc68a597f2eafb))
+* **update:** embed markdown release notes in updater manifest 📝 ([2e07a16](https://github.com/kaanreal/henkan/commit/2e07a16c03642f397f70211b3f9ef73132cd4f3b))
+* **web:** carry background into osu exports and drop cdtitle for osu destination 🖼️ ([e77e813](https://github.com/kaanreal/henkan/commit/e77e8136eec4c0da7f9d71a7864894b17d6174c4))
+
 ## [1.6.0](https://github.com/kaanreal/henkan/compare/v1.5.1...v1.6.0) (2026-08-14)
 
 
