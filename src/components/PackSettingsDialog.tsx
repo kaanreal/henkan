@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useT } from '../i18n'
 import { useDiffPresetsStore } from '../stores/useDiffPresetsStore'
 import { presetDisplayName } from '../lib/diffTemplate'
@@ -27,12 +27,17 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
   const [leaving, setLeaving] = useState(false)
   const { presets } = useDiffPresetsStore()
 
+  // defaultSettings is rebuilt on every parent render; only pick it up when the dialog opens
+  const defaultsRef = useRef(defaultSettings)
+  useEffect(() => {
+    defaultsRef.current = defaultSettings
+  }, [defaultSettings])
   useEffect(() => {
     if (open) {
-      setSettings(defaultSettings)
+      setSettings(defaultsRef.current)
       setLeaving(false)
     }
-  }, [open, defaultSettings])
+  }, [open])
 
   function update<K extends keyof PackSettings>(key: K, value: PackSettings[K]) {
     setSettings(prev => ({ ...prev, [key]: value }))
@@ -78,7 +83,6 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
       />
       <div className={`relative w-full max-w-md mx-4 ${leaving ? 'animate-fade-out' : 'animate-scale-in'}`}>
         <div className="bg-surface-900/95 border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
-          <div className="h-0.5 bg-gradient-to-r from-accent via-accent-muted to-accent/40" />
           <div className="px-5 pt-5 pb-4 space-y-4">
             <div>
               <h2 className="text-base font-semibold text-surface-100 tracking-tight">{t('packSettings.title')}</h2>
@@ -89,13 +93,13 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
             <div className="flex gap-1.5 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06]">
               <button
                 onClick={() => update('mode', 'folder')}
-                className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'folder' ? 'bg-accent text-white shadow-sm shadow-accent/20' : 'text-surface-400 hover:text-surface-200'}`}
+                className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'folder' ? 'bg-accent text-white' : 'text-surface-400 hover:text-surface-200'}`}
               >
                 {t('packSettings.folder')}
               </button>
               <button
                 onClick={() => update('mode', 'osz')}
-                className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'osz' ? 'bg-accent text-white shadow-sm shadow-accent/20' : 'text-surface-400 hover:text-surface-200'}`}
+                className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'osz' ? 'bg-accent text-white' : 'text-surface-400 hover:text-surface-200'}`}
               >
                 {t('packSettings.oszArchive')}
               </button>
@@ -189,8 +193,7 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
                 bg-accent text-white
                 hover:bg-accent-hover active:scale-[0.97]
                 transition-all duration-75
-                disabled:opacity-40 disabled:cursor-not-allowed
-                shadow-lg shadow-accent/25"
+                disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {isConverting ? t('common.converting') : t('convertDialog.title')}
             </button>

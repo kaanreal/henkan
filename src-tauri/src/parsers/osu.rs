@@ -182,7 +182,8 @@ fn parse_difficulty(content: &str) -> Difficulty {
         let trimmed = line.trim();
         if let Some((key, value)) = trimmed.split_once(':') {
             if key.trim() == "CircleSize" {
-                diff.keys = value.trim().parse().unwrap_or(4);
+                // Clamp to a sane mania key count; 0 would underflow column math later
+                diff.keys = value.trim().parse().unwrap_or(4).clamp(1, 18);
             }
         }
     }

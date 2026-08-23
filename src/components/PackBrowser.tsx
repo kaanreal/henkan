@@ -20,7 +20,6 @@ interface Props {
 
 function PackCard({ entry, checked, onToggle, onEdit }: {
   entry: PackEntry
-  index: number
   checked: boolean
   onToggle: () => void
   onEdit: () => void
@@ -72,7 +71,7 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-accent/[0.04] to-surface-800" />
+          <div className="w-full h-full bg-surface-800" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-surface-950/90 via-surface-950/30 to-transparent" />
 
@@ -160,7 +159,6 @@ export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onS
           <PackCard
             key={i}
             entry={entry}
-            index={i}
             checked={selected.has(i)}
             onToggle={() => onToggleSelect(i)}
             onEdit={() => onEditSong(i)}
@@ -200,8 +198,7 @@ export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onS
                 bg-accent text-white
                 hover:bg-accent-hover active:scale-[0.97]
                 transition-all duration-75
-                disabled:opacity-30 disabled:cursor-not-allowed
-                shadow-lg shadow-accent/25"
+                disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {t('packBrowser.convertSelected')}{selected.size > 0 ? ` (${selected.size})` : ''}
             </button>

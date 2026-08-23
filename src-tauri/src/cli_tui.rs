@@ -414,7 +414,7 @@ impl App {
         let content = std::mem::take(&mut self.paste_buf);
         if self.screen == Screen::Drop {
             self.cmd_input.push_str(&content);
-            self.cmd_cursor = self.cmd_input.len();
+            self.cmd_cursor = self.cmd_input.chars().count();
             self.compute_completions();
         }
     }
@@ -693,7 +693,7 @@ if ($res -eq 'OK') { $d.SelectedPath }
             KeyCode::Enter => {
                 if has_comps && self.completion_idx < self.completions.len() {
                     self.cmd_input.clone_from(&self.completions[self.completion_idx]);
-                    self.cmd_cursor = self.cmd_input.len();
+                    self.cmd_cursor = self.cmd_input.chars().count();
                     self.completions.clear();
                     self.completion_idx = 0;
                     self.execute_command();
@@ -719,7 +719,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 }
             }
             KeyCode::Right => {
-                if self.cmd_cursor < self.cmd_input.len() {
+                // cmd_cursor is a char index, never a byte offset
+                if self.cmd_cursor < self.cmd_input.chars().count() {
                     self.cmd_cursor += 1;
                 }
             }
@@ -727,23 +728,26 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 self.cmd_cursor = 0;
             }
             KeyCode::End => {
-                self.cmd_cursor = self.cmd_input.len();
+                self.cmd_cursor = self.cmd_input.chars().count();
             }
             KeyCode::Char(ch) => {
-                self.cmd_input.insert(self.cmd_cursor, ch);
+                let byte_at = cmd_byte_offset(&self.cmd_input, self.cmd_cursor);
+                self.cmd_input.insert(byte_at, ch);
                 self.cmd_cursor += 1;
                 self.compute_completions();
             }
             KeyCode::Backspace => {
                 if self.cmd_cursor > 0 {
                     self.cmd_cursor -= 1;
-                    self.cmd_input.remove(self.cmd_cursor);
+                    let byte_at = cmd_byte_offset(&self.cmd_input, self.cmd_cursor);
+                    self.cmd_input.remove(byte_at);
                     self.compute_completions();
                 }
             }
             KeyCode::Delete => {
-                if self.cmd_cursor < self.cmd_input.len() {
-                    self.cmd_input.remove(self.cmd_cursor);
+                if self.cmd_cursor < self.cmd_input.chars().count() {
+                    let byte_at = cmd_byte_offset(&self.cmd_input, self.cmd_cursor);
+                    self.cmd_input.remove(byte_at);
                     self.compute_completions();
                 }
             }
@@ -766,7 +770,7 @@ if ($res -eq 'OK') { $d.SelectedPath }
                     }
                     if let Some(pos) = self.history_pos {
                         self.cmd_input.clone_from(&self.cmd_history[pos]);
-                        self.cmd_cursor = self.cmd_input.len();
+                        self.cmd_cursor = self.cmd_input.chars().count();
                     }
                     self.completions.clear();
                     self.completion_idx = 0;
@@ -784,11 +788,11 @@ if ($res -eq 'OK') { $d.SelectedPath }
                     if pos < self.cmd_history.len() - 1 {
                         self.history_pos = Some(pos + 1);
                         self.cmd_input.clone_from(&self.cmd_history[pos + 1]);
-                        self.cmd_cursor = self.cmd_input.len();
+                        self.cmd_cursor = self.cmd_input.chars().count();
                     } else {
                         self.history_pos = None;
                         self.cmd_input = self.history_saved.clone();
-                        self.cmd_cursor = self.cmd_input.len();
+                        self.cmd_cursor = self.cmd_input.chars().count();
                     }
                     self.completions.clear();
                     self.completion_idx = 0;
@@ -878,7 +882,7 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let rest = parts[1..].join(" ");
 
         let result = match key {
-            "Fetch osu! avatars for cdtitle" => parse_onoff(&rest).map(|v| self.settings.fetch_avatar = v),
+            "avatar" => parse_onoff(&rest).map(|v| self.settings.fetch_avatar = v),
             "format" => {
                 let v = rest.to_lowercase();
                 if v == "osz" { self.settings.export_format_osz = true; Ok(()) }
@@ -957,7 +961,7 @@ if ($res -eq 'OK') { $d.SelectedPath }
     fn tab_complete(&mut self) {
         if self.completions.is_empty() { return; }
         self.cmd_input.clone_from(&self.completions[0]);
-        self.cmd_cursor = self.cmd_input.len();
+        self.cmd_cursor = self.cmd_input.chars().count();
         self.completions.clear();
         self.completion_idx = 0;
     }
@@ -1996,13 +2000,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
         }
 
         // ── Command input bar ──
-        let before = &self.cmd_input[..self.cmd_cursor];
+        let byte_at = cmd_byte_offset(&self.cmd_input, self.cmd_cursor);
+        let before = &self.cmd_input[..byte_at];
         let at = self.cmd_input.chars().nth(self.cmd_cursor).map(|c| c.to_string()).unwrap_or_default();
-        let after = if self.cmd_cursor < self.cmd_input.len() {
-            &self.cmd_input[self.cmd_cursor + at.len()..]
-        } else {
-            ""
-        };
+        let after = &self.cmd_input[byte_at + at.len()..];
         let input_display = format!("{}\u{2588}{}{}", before, at, after);
         let cmd_block = Block::default()
             .borders(Borders::ALL)
@@ -3240,6 +3241,11 @@ if ($res -eq 'OK') { $d.SelectedPath }
 }
 
 // ── Help text drawing inside TUI ────────────────────────────────
+/// Byte offset for a char index in the command input; clamps to the end
+fn cmd_byte_offset(s: &str, char_idx: usize) -> usize {
+    s.char_indices().nth(char_idx).map(|(b, _)| b).unwrap_or(s.len())
+}
+
 fn desc_for(cmd: &str) -> &'static str {
     let trimmed = cmd.trim().strip_prefix("set ").unwrap_or(cmd.trim());
     for (name, desc) in COMMAND_DESCS {

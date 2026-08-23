@@ -20,10 +20,11 @@ export function UpdateDialog({ open, updateInfo, installing, onUpdate, onDismiss
   const t = useT()
   const [dontAskAgain, setDontAskAgain] = useState(false)
 
+  const body = updateInfo?.body ?? null
   const renderedBody = useMemo(() => {
-    if (!updateInfo?.body) return null
-    return marked.parse(updateInfo.body, { async: false }) as string
-  }, [updateInfo?.body])
+    if (!body) return null
+    return marked.parse(body, { async: false }) as string
+  }, [body])
 
   if (!open || !updateInfo) return null
 

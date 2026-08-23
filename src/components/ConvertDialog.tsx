@@ -19,13 +19,16 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
   const t = useT()
   const [selected, setSelected] = useState<Set<number>>(new Set([currentIndex]))
   const [leaving, setLeaving] = useState(false)
+  const [lastOpen, setLastOpen] = useState(open)
 
-  // Reset state when dialog opens - called synchronously during first render
-  if (open && leaving) {
-    setLeaving(false)
-  }
-  if (open && selected.size === 1 && !selected.has(currentIndex)) {
-    setSelected(new Set([currentIndex]))
+  // Fresh selection each time the dialog opens, otherwise stale indices
+  // from a previous beatmap survive and get converted by mistake
+  if (open !== lastOpen) {
+    setLastOpen(open)
+    if (open) {
+      setSelected(new Set([currentIndex]))
+      setLeaving(false)
+    }
   }
 
   const allSelected = selected.size === difficulties.length
@@ -71,13 +74,10 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
       <div className={`relative w-full max-w-sm mx-4 transition-all duration-200 ease-out ${!leaving ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 translate-y-4'}`}>
         <div className="bg-surface-900/95 border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden">
 
-          {/* Accent glow bar */}
-          <div className="h-0.5 bg-gradient-to-r from-accent via-accent-muted to-accent/40" />
-
           {/* Header */}
           <div className="px-5 pt-5 pb-3">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center shadow-sm shadow-accent/10">
+              <div className="w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center">
                 <svg className="w-4.5 h-4.5 text-accent-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
                 </svg>
@@ -103,7 +103,7 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
                     border transition-all duration-150
                     animate-fade-in
                     ${checked
-                      ? 'bg-accent/[0.06] border-accent/20 text-surface-100 shadow-sm shadow-accent/5'
+                      ? 'bg-accent/[0.06] border-accent/20 text-surface-100'
                       : 'border-white/[0.04] text-surface-400 hover:bg-white/[0.03] hover:border-white/10 hover:text-surface-200'
                     }
                   `}
@@ -111,7 +111,7 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
                   <div className={`
                     w-4 h-4 rounded flex items-center justify-center shrink-0 transition-all duration-150
                     ${checked
-                      ? 'bg-accent shadow-sm shadow-accent/30'
+                      ? 'bg-accent'
                       : 'border border-white/12'
                     }
                   `}>
@@ -165,8 +165,7 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
                 bg-accent text-white
                 hover:bg-accent-hover active:scale-[0.97]
                 transition-all duration-75
-                disabled:opacity-40 disabled:cursor-not-allowed
-                shadow-lg shadow-accent/25"
+                disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {selected.size === difficulties.length
                 ? t('convertDialog.convertAll')

@@ -53,7 +53,6 @@ export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
       />
       <div className={`relative w-full max-w-lg mx-4 max-h-[80vh] flex flex-col ${leaving ? 'animate-fade-out' : 'animate-scale-in'}`}>
         <div className="bg-surface-900/95 border border-white/[0.08] rounded-2xl shadow-2xl shadow-black/60 overflow-hidden flex flex-col max-h-full">
-          <div className="h-0.5 bg-gradient-to-r from-accent via-accent-muted to-accent/40 shrink-0" />
           <div className="px-5 pt-5 pb-4 space-y-4 overflow-y-auto custom-scrollbar min-h-0">
             <div>
               <h2 className="text-base font-semibold text-surface-100 tracking-tight">{t('diffPreset.title')}</h2>
@@ -138,7 +137,7 @@ export function DiffPresetManager({ open, beatmap, config, onClose }: Props) {
                   className="h-9 px-4 rounded-lg bg-accent text-white text-xs font-medium
                     hover:bg-accent-hover active:scale-[0.97] transition-all duration-75
                     disabled:opacity-40 disabled:cursor-not-allowed
-                    shadow-sm shadow-accent/20"
+                    "
                 >
                   {t('queue.add')}
                 </button>

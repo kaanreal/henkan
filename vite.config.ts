@@ -117,7 +117,7 @@ async function handleMirror(req: IncomingMessage, res: ServerResponse) {
     if (contentLength) res.setHeader('Content-Length', contentLength)
     if (upstream.body) {
       const { Readable } = await import('stream')
-      Readable.fromWeb(upstream.body as any).pipe(res)
+      Readable.fromWeb(upstream.body as unknown as import("node:stream/web").ReadableStream).pipe(res)
     } else {
       const buffer = Buffer.from(await upstream.arrayBuffer())
       res.end(buffer)

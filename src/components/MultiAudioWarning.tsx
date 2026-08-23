@@ -70,7 +70,7 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
               >
                 <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 mt-0.5 transition-all duration-150
                   ${choice === 'separate'
-                    ? 'bg-accent shadow-sm shadow-accent/30'
+                    ? 'bg-accent'
                     : 'border border-white/12'
                   }`}>
                   {choice === 'separate' && (

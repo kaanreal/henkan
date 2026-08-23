@@ -60,7 +60,7 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
       <div className="flex flex-col items-center gap-4 sm:gap-5 py-10 sm:py-16 px-6 sm:px-8 relative">
         <div className={`w-14 h-14 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl flex items-center justify-center transition-all duration-300 ${
           dragging
-            ? 'bg-accent/15 scale-110 rotate-3 shadow-lg shadow-accent/10'
+            ? 'bg-accent/15 scale-110 rotate-3'
             : 'bg-white/[0.04]'
         }`}>
           <svg

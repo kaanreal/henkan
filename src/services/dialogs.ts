@@ -1,5 +1,17 @@
 import { isTauri } from './environment'
-import { fileInputCache } from './fileCache'
+import { fileInputCache, type FileWithPath } from './fileCache'
+
+// Minimal shape of the File System Access API directory handle
+interface DirHandleLike {
+  name: string
+  entries(): AsyncIterableIterator<[string, DirEntryLike]>
+}
+interface DirEntryLike {
+  kind: 'file' | 'directory'
+  name?: string
+  getFile?: () => Promise<File>
+  entries?: DirHandleLike['entries']
+}
 
 interface OpenFileOptions {
   multiple?: boolean
@@ -38,7 +50,7 @@ export async function openFiles(options: OpenFileOptions = {}): Promise<string[]
         resolve(null)
         return
       }
-      resolve(files.map(f => (f as any).path || f.name))
+      resolve(files.map(f => (f as FileWithPath).path || f.name))
       fileInputCache.push(...files)
     }
     input.click()
@@ -54,24 +66,24 @@ export async function openDirectory(options: { title?: string } = {}): Promise<s
 
   if ('showDirectoryPicker' in window) {
     try {
-      const handle = await (window as any).showDirectoryPicker()
+      const handle = await (window as { showDirectoryPicker?: () => Promise<DirHandleLike> }).showDirectoryPicker!()
       const files: File[] = []
-      const walk = async (dirHandle: any, path: string = '') => {
+      const walk = async (dirHandle: DirHandleLike, path: string = '') => {
         for await (const [name, entry] of dirHandle.entries()) {
           if (entry.kind === 'file') {
-            const file = await entry.getFile()
+            const file = await entry.getFile!()
             const fullPath = path ? `${path}/${name}` : name
             Object.defineProperty(file, 'webkitRelativePath', { value: fullPath, writable: false })
             files.push(file)
           } else if (entry.kind === 'directory') {
-            await walk(entry, path ? `${path}/${name}` : name)
+            await walk({ name: entry.name || name, entries: entry.entries! }, path ? `${path}/${name}` : name)
           }
         }
       }
       await walk(handle)
       for (const f of files) {
-        const path = (f as any).webkitRelativePath || f.name
-        const existing = fileInputCache.find(c => (c as any).webkitRelativePath === path)
+        const path = f.webkitRelativePath || f.name
+        const existing = fileInputCache.find(c => c.webkitRelativePath === path)
         if (!existing) fileInputCache.push(f)
       }
       return handle.name
@@ -87,7 +99,7 @@ export async function openDirectory(options: { title?: string } = {}): Promise<s
     input.onchange = () => {
       const files = Array.from(input.files || [])
       if (!files.length) { resolve(null); return }
-      const path = (files[0] as any).path || files[0].webkitRelativePath.split('/')[0] || 'folder'
+      const path = (files[0] as FileWithPath).path || files[0].webkitRelativePath.split('/')[0] || 'folder'
       fileInputCache.push(...files)
       resolve(path)
     }

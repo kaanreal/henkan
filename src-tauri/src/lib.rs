@@ -229,7 +229,11 @@ pub fn extract_osz_all(path: &str) -> Result<OszResult, String> {
             || lower.ends_with(".webp")
             || lower.ends_with(".bmp")
         {
-            let target = tmp.join(&name);
+            // Refuse entries that escape the extraction dir (zip-slip)
+            let Some(safe_name) = entry.enclosed_name().map(|p| p.to_string_lossy().to_string()) else {
+                continue;
+            };
+            let target = tmp.join(&safe_name);
             if let Some(parent) = target.parent() {
                 let _ = fs::create_dir_all(parent);
             }
@@ -757,7 +761,14 @@ pub fn read_file_bytes(source_dir: &str, filename: &str) -> Result<(Vec<u8>, Str
     Ok((bytes, ext))
 }
 
+static FFMPEG_PATH: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
 pub fn find_ffmpeg() -> Option<PathBuf> {
+    // Spawning `ffmpeg -version` on every call is expensive; resolve once
+    FFMPEG_PATH.get_or_init(locate_ffmpeg).clone()
+}
+
+fn locate_ffmpeg() -> Option<PathBuf> {
     // Check PATH first (works on all platforms)
     if std::process::Command::new("ffmpeg").arg("-version").output().is_ok() {
         return Some(PathBuf::from("ffmpeg"));
@@ -1182,7 +1193,9 @@ fn scan_pack(folder: String) -> Result<Vec<PackEntry>, String> {
                         // Extract raw #BACKGROUND: from content (parsed beatmap may have
                         // fallbacked to #BANNER when #BACKGROUND is empty)
                         let raw_bg = {
-                            let upper = content.to_uppercase();
+                            // ASCII-only uppercasing keeps byte indices valid for
+                            // slicing the original string (to_uppercase can change length)
+                            let upper = content.to_ascii_uppercase();
                             let tag = "#BACKGROUND";
                             upper.find(tag).and_then(|pos| {
                                 let after_tag = &content[pos + tag.len()..];
@@ -1705,7 +1718,10 @@ fn export_all_beatmaps(
 
             // Filter by selected indices if provided
             if let Some(idxs) = &indices {
-                parsed = idxs.iter().map(|&i| parsed[i].clone()).collect();
+                parsed = idxs
+                    .iter()
+                    .filter_map(|&i| parsed.get(i).cloned())
+                    .collect();
             }
 
             let highest_diff = parsed.last()
@@ -1908,7 +1924,7 @@ fn create_dummy_diff(
     osu.push_str("[HitObjects]\n");
     // No hit objects - this is purely a visual pack identifier
 
-    let osu_name = format!("{}.osu", title);
+    let osu_name = format!("{}.osu", sanitize_filename(&title, 120));
     let osu_path = out_dir.join(&osu_name);
     fs::write(&osu_path, &osu)
         .map_err(|e| format!("Failed to write dummy .osu: {}", e))?;
@@ -2290,7 +2306,12 @@ fn download_mirror_osz(app: tauri::AppHandle, set_id: u64, filename: String) -> 
 
     let temp_dir = std::env::temp_dir().join("henkan-mirror");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Create temp dir failed: {}", e))?;
-    let path = temp_dir.join(&filename);
+    // filename comes from the frontend; never let it escape the temp dir
+    let safe_name = sanitize_filename(&filename, 200);
+    if safe_name.is_empty() {
+        return Err("Invalid filename".to_string());
+    }
+    let path = temp_dir.join(safe_name);
     let _ = std::fs::remove_file(&path);
     std::fs::write(&path, &bytes).map_err(|e| format!("Save file failed: {}", e))?;
 

@@ -122,7 +122,7 @@ export function AudioPlayer({
       {/* Play/Pause */}
       <button
         onClick={toggle}
-        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 transition-all duration-75"
+        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0"
         title={audioPlaying ? t('audioPlayer.pause') : t('audioPlayer.play')}
       >
         {audioPlaying ? (
@@ -139,7 +139,7 @@ export function AudioPlayer({
       {/* Stop */}
       <button
         onClick={stop}
-        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 transition-all duration-75"
+        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0"
         title={t('audioPlayer.stop')}
       >
         <svg className="w-3.5 h-3.5 text-surface-400" fill="currentColor" viewBox="0 0 24 24">
@@ -150,7 +150,7 @@ export function AudioPlayer({
       {/* Preview */}
       <button
         onClick={onOpenPreview}
-        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0 transition-all duration-75"
+        className="w-8 h-8 rounded-lg bg-surface-800 hover:bg-surface-700 flex items-center justify-center transition-all duration-75 shrink-0"
         title={t('audioPlayer.previewBeatmap')}
       >
         <svg className="w-4 h-4 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

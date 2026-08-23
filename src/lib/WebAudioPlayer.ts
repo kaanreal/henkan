@@ -159,7 +159,7 @@ export class WebAudioPlayer {
   get src(): boolean { return !!this.el.src }
 
   private applyPreservesPitch() {
-    (this.el as any).preservesPitch = this._preservesPitch
+    this.el.preservesPitch = this._preservesPitch
   }
 }
 
@@ -210,7 +210,7 @@ function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
   
   let offset = 44;
   for (let i = 0; i < result.length; i++, offset += 2) {
-    let s = Math.max(-1, Math.min(1, result[i]));
+    const s = Math.max(-1, Math.min(1, result[i]));
     view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
   }
   

@@ -77,7 +77,6 @@ function playColumnFor(code: string, cols: number): number {
 
 // Persist settings across preview open/close
 let _scrollSpeed = LOOK_AHEAD_DEFAULT
-let _rate = useConverterStore.getState().config.conversion_rate
 let _hitsound = true
 
 export function PreviewOverlay({
@@ -98,8 +97,8 @@ export function PreviewOverlay({
   const rafId = useRef(0)
   const [closing, setClosing] = useState(false)
   const scrollRef = useRef(_scrollSpeed)
-  const [rate, setRate] = useState(_rate)
-  const rateRef = useRef(_rate)
+  const [rate, setRate] = useState(() => useConverterStore.getState().config.conversion_rate)
+  const rateRef = useRef(rate)
   const hitsoundRef = useRef(_hitsound)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const compressorRef = useRef<DynamicsCompressorNode | null>(null)
@@ -123,13 +122,12 @@ export function PreviewOverlay({
   const smoothTimeRef = useRef(0)
   const warmupFrames = useRef(2)
 
-  // Sync rate + preservePitch from store on mount (in case they changed since last preview session)
+  // Sync preservePitch + element rate on mount; rate state itself is read
+  // lazily from the store so no setState-in-effect is needed
   useEffect(() => {
-    const el = audioPlayerRefRef.current.current
+    const el = audioPlayerRef.current
     const storeRate = useConverterStore.getState().config.conversion_rate
-    _rate = storeRate
     rateRef.current = storeRate
-    setRate(storeRate)
     if (el) {
       el.playbackRate = storeRate
       el.preservesPitch = useConverterStore.getState().config.preserve_pitch
@@ -146,14 +144,12 @@ export function PreviewOverlay({
 
   const notesRef = useRef(notes)
   const keysRef = useRef(keys)
-  const audioPlayerRefRef = useRef(audioPlayerRef)
   const onCloseRef = useRef(onClose)
   const onSetRef = useRef(onSetPreviewTime)
 
   useEffect(() => {
     notesRef.current = notes
     keysRef.current = keys
-    audioPlayerRefRef.current = audioPlayerRef
     onCloseRef.current = onClose
     onSetRef.current = onSetPreviewTime
   })
@@ -253,7 +249,7 @@ export function PreviewOverlay({
         }
       }
       pressedRef.current.set(col, now)
-      const el = audioPlayerRefRef.current.current
+      const el = audioPlayerRef.current
       if (el && el.paused) el.play().catch(() => {})
       if (best === -1) return
       const grade: Judgement =
@@ -286,14 +282,6 @@ export function PreviewOverlay({
     compressorRef.current = comp
     ensureClap()
 
-    const mainEl = audioPlayerRef.current
-    if (!mainEl?.src) {
-      return () => {
-        ctx.close()
-        audioCtxRef.current = null
-      }
-    }
-
     return () => {
       ctx.close()
       audioCtxRef.current = null
@@ -320,7 +308,7 @@ export function PreviewOverlay({
       }
       if (e.key === 'Tab') {
         e.preventDefault()
-        const el = audioPlayerRefRef.current.current
+        const el = audioPlayerRef.current
         if (el) {
           onSetRef.current(el.currentTime * 1000)
           showToast(t('preview.previewPointSet'))
@@ -364,9 +352,8 @@ export function PreviewOverlay({
         const delta = e.deltaY > 0 ? -0.05 : 0.05
         const newRate = Math.max(0.5, Math.min(3, +(rateRef.current + delta).toFixed(2)))
         rateRef.current = newRate
-        _rate = newRate
         setRate(newRate)
-        const el = audioPlayerRefRef.current.current
+        const el = audioPlayerRef.current
         if (el) el.playbackRate = newRate
         useConverterStore.getState().updateConfig({ conversion_rate: newRate })
         showToast(`${newRate.toFixed(2)}x`)
@@ -416,7 +403,7 @@ export function PreviewOverlay({
       const dpr = devicePixelRatio
       ctx.clearRect(0, 0, w, h)
 
-      const el = audioPlayerRefRef.current.current
+      const el = audioPlayerRef.current
       const audioTimeMs = (el ? el.currentTime * 1000 : 0) + (useOffsetRef.current ? TIMING_OFFSET : 0)
 
       // EMA smoothing to prevent sub-frame jitter from affecting note positions

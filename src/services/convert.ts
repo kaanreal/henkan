@@ -88,7 +88,7 @@ async function extractOsz(path: string): Promise<OszData> {
   }
   oszCachedFiles.clear()
 
-  let JSZip: any
+  let JSZip: typeof import('jszip')
   try {
     JSZip = (await import('jszip')).default
   } catch (e) {

@@ -45,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (upstream.body) {
-      Readable.fromWeb(upstream.body as any).pipe(res)
+      Readable.fromWeb(upstream.body as unknown as import("node:stream/web").ReadableStream).pipe(res)
     } else {
       const buffer = Buffer.from(await upstream.arrayBuffer())
       res.status(200).send(buffer)

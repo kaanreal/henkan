@@ -8,12 +8,25 @@ let _defaultCdtitleBlob: Blob | null = null
 async function defaultCdtitleBlob(): Promise<Blob> {
   if (!_defaultCdtitleBlob) {
     const resp = await fetch('/cdtitle_default.png')
+    if (!resp.ok) throw new Error(`cdtitle_default.png: ${resp.status}`)
     _defaultCdtitleBlob = await resp.blob()
   }
   return _defaultCdtitleBlob
 }
 
 const _avatarCacheExport = new Map<string, Blob>()
+
+// Shared zip-entry name for a converted beatmap (used by both export paths)
+function beatmapZipName(bm: Beatmap, config: ExportConfig): string {
+  const ext = bm.source_format === 'OsuMania' ? '.sm' : '.osu'
+  const safeTitle = (config.title || bm.title).replace(/[/\\?%*:|"<>]/g, '_')
+  const safeCreator = (config.creator || bm.creator).replace(/[/\\?%*:|"<>]/g, '_')
+  const safeDiff = (bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
+  const baseName = bm.source_format === 'OsuMania'
+    ? `${safeTitle} [${safeCreator}]`
+    : `${(config.artist || bm.artist).replace(/[/\\?%*:|"<>]/g, '_')} - ${safeTitle}`
+  return safeDiff ? `${baseName} [${safeDiff}]${ext}` : `${baseName}${ext}`
+}
 async function avatarFromApi(creator: string): Promise<Blob | null> {
   const cached = _avatarCacheExport.get(creator)
   if (cached) return cached
@@ -52,8 +65,10 @@ export async function addCdtitleToZip(
       return
     }
   }
-  const blob = await defaultCdtitleBlob()
-  zip.file(pathInZip, blob)
+  try {
+    const blob = await defaultCdtitleBlob()
+    zip.file(pathInZip, blob)
+  } catch { /* no default available, skip */ }
 }
 
 export async function exportBeatmap(
@@ -161,9 +176,7 @@ export async function exportAllBeatmaps(
       if (!cached) return paths
 
       const diffCount = cached.difficulties.length
-      const toProcess = indices ?? Array.from({ length: diffCount }, (_, i) => i).filter(
-        i => i < diffCount
-      )
+      const toProcess = indices ?? Array.from({ length: diffCount }, (_, i) => i)
 
       beatmaps = []
       for (const idx of toProcess) {
@@ -193,14 +206,7 @@ export async function exportAllBeatmaps(
       for (const bm of beatmaps) {
         if (!bm) continue
         const content = await convertBeatmap(bm, config)
-        const ext = bm.source_format === 'OsuMania' ? '.sm' : '.osu'
-        const safeTitle = (config.title || bm.title).replace(/[/\\?%*:|"<>]/g, '_')
-        const safeCreator = (config.creator || bm.creator).replace(/[/\\?%*:|"<>]/g, '_')
-        const safeDiff = (bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
-        const baseName = bm.source_format === 'OsuMania'
-          ? `${safeTitle} [${safeCreator}]`
-          : `${(config.artist || bm.artist).replace(/[/\\?%*:|"<>]/g, '_')} - ${safeTitle}`
-        const filename = safeDiff ? `${baseName} [${safeDiff}]${ext}` : `${baseName}${ext}`
+        const filename = beatmapZipName(bm, config)
         zip.file(filename, content)
         paths.push(filename)
 
@@ -238,14 +244,7 @@ export async function exportAllBeatmaps(
     for (const bm of beatmaps) {
       if (!bm) continue
       const content = await convertBeatmap(bm, config)
-      const ext = bm.source_format === 'OsuMania' ? '.sm' : '.osu'
-      const safeTitle = (config.title || bm.title).replace(/[/\\?%*:|"<>]/g, '_')
-      const safeCreator = (config.creator || bm.creator).replace(/[/\\?%*:|"<>]/g, '_')
-      const safeDiff = (bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
-      const baseName = bm.source_format === 'OsuMania'
-        ? `${safeTitle} [${safeCreator}]`
-        : `${(config.artist || bm.artist).replace(/[/\\?%*:|"<>]/g, '_')} - ${safeTitle}`
-      const filename = safeDiff ? `${baseName} [${safeDiff}]${ext}` : `${baseName}${ext}`
+      const filename = beatmapZipName(bm, config)
       await saveContentToFile(filename, content)
       paths.push(filename)
     }

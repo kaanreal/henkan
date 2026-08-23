@@ -1,9 +1,12 @@
 export const fileInputCache: File[] = []
 export const fileContentCache = new Map<string, string>()
 
+// Electron-style absolute path attached to dropped/picked files (not part of the DOM spec)
+export type FileWithPath = File & { path?: string }
+
 export function getCachedFile(name: string): File | undefined {
   return fileInputCache.find(f => {
-    if ((f as any).path === name) return true
+    if ((f as FileWithPath).path === name) return true
     if (f.webkitRelativePath === name) return true
     if (f.webkitRelativePath && f.webkitRelativePath.endsWith(name)) return true
     if (f.webkitRelativePath && name.endsWith(f.webkitRelativePath)) return true

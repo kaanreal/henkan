@@ -1,5 +1,5 @@
 import { isTauri } from './environment'
-import { getCachedFile, getCachedFileContent, getCachedFiles, fileContentCache } from './fileCache'
+import { getCachedFile, getCachedFileContent, getCachedFiles } from './fileCache'
 
 export async function readFileAsDataUrl(pathOrFile: string | File): Promise<string | null> {
   if (pathOrFile instanceof File) {
@@ -56,17 +56,24 @@ export async function readFileText(pathOrFile: string | File): Promise<string> {
     const { invoke } = await import('@tauri-apps/api/core')
     const dataUrl = await invoke<string>('read_file_as_data_url', { path: pathOrFile })
     const base64 = dataUrl.split(',')[1]
-    return atob(base64)
+    const binaryStr = atob(base64)
+    const bytes = new Uint8Array(binaryStr.length)
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i)
+    }
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    } catch {
+      return new TextDecoder('iso-8859-1').decode(bytes)
+    }
   }
 
   // Check content cache first (populated by scanSongsFolder / scanPack)
   const cachedContent = getCachedFileContent(pathOrFile)
   if (cachedContent !== undefined) {
-    console.log('[readFileText] using cached content for', JSON.stringify(pathOrFile))
     return cachedContent
   }
 
-  console.warn('[readFileText] miss for', JSON.stringify(pathOrFile), 'cache keys:', JSON.stringify(Array.from(fileContentCache.keys())))
   const cached = getCachedFile(pathOrFile)
   if (cached) {
     return await decodeFileText(cached)
@@ -135,7 +142,7 @@ export async function resolveMediaFile(
     })
     // Fall back to picking the largest file, similar to desktop
     const match = preferred || candidates.sort((a, b) => b.size - a.size)[0]
-    return (match as any).webkitRelativePath || match.name
+    return match.webkitRelativePath || match.name
   }
 
   if (!filename) {
@@ -150,7 +157,6 @@ export async function resolveMediaFile(
   const inDir = files.filter(f =>
     !sourceDir || !f.webkitRelativePath || isInSourceDir(f.webkitRelativePath, sourceDir)
   )
-  console.log('[media] resolveMediaFile web', { sourceDir, filename, baseLower, cacheSize: files.length, inDirSize: inDir.length, cacheNames: files.map(f => f.name) })
   // 1. Exact filename match (case-insensitive)
   const exact = inDir.find(f => f.name.toLowerCase() === baseLower)
   if (exact) return exact.webkitRelativePath || exact.name
