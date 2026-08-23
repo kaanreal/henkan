@@ -205,13 +205,17 @@ jobs:
               shell: bash
               env:
                   TAG_NAME: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+                  GH_TOKEN: ${{ secrets.MY_RELEASE_TOKEN }}
               run: |
                   VERSION="${TAG_NAME#v}"
+                  # Embed the real markdown notes so the app never has to call the GitHub API at runtime
+                  gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json body -q .body > release-notes.md
                   node scripts/generate-updater-manifest.mjs \
                     --bundles bundles \
                     --version "$VERSION" \
                     --tag "$TAG_NAME" \
                     --repo "${{ github.repository }}" \
+                    --notes-file release-notes.md \
                     --output updater.json
                   cat updater.json
 

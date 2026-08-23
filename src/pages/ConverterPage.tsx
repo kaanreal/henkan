@@ -47,19 +47,24 @@ import { detectSkinArchive } from '../services/skinConverter'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
-// The updater manifest stores the GitHub release URL in `notes`, which the
+// Older updater manifests store the GitHub release URL in `notes`, which the
 // plugin surfaces as `body`. Fetch the real markdown notes from the API.
 async function resolveUpdateBody(version: string, body: string | null): Promise<string | null> {
   if (body && !/^https?:\/\//.test(body)) return body
+  // Prefer the tag from the URL itself; fall back to v<version>
+  const tag = body?.match(/releases\/tag\/([^/?#]+)/)?.[1] ?? `v${version}`
   try {
-    const resp = await fetch(`https://api.github.com/repos/kaanreal/henkan/releases/tags/v${version}`, {
+    const resp = await fetch(`https://api.github.com/repos/kaanreal/henkan/releases/tags/${encodeURIComponent(tag)}`, {
       headers: { Accept: 'application/vnd.github+json' },
     })
-    if (!resp.ok) return body
+    if (!resp.ok) return null
     const release = await resp.json()
-    return release?.body ?? body
+    const notes: unknown = release?.body
+    if (typeof notes !== 'string' || !notes.trim()) return null
+    return notes
   } catch {
-    return body
+    // No usable notes; better to hide the section than show a bare link
+    return null
   }
 }
 
