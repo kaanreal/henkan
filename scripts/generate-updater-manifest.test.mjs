@@ -67,3 +67,19 @@ test('rejects an updater signed by a key the installed app does not trust', asyn
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('embeds release notes and falls back to the release URL without them', async () => {
+  const { root, configPath } = await fixture()
+  try {
+    const base = { bundlesDir: path.join(root, 'bundles'), version: '1.4.0', tag: 'v1.4.0', repository: 'kaanreal/henkan', configPath }
+    const withNotes = await createUpdaterManifest({ ...base, notes: '### Features\n\n* something' })
+    assert.equal(withNotes.notes, '### Features\n\n* something')
+    // Whitespace-only notes should not win over the URL fallback
+    const blank = await createUpdaterManifest({ ...base, notes: '  \n' })
+    assert.equal(blank.notes, 'https://github.com/kaanreal/henkan/releases/tag/v1.4.0')
+    const none = await createUpdaterManifest(base)
+    assert.equal(none.notes, 'https://github.com/kaanreal/henkan/releases/tag/v1.4.0')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

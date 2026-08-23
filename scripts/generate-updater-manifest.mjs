@@ -34,7 +34,7 @@ function minisignKeyId(text, label) {
   return decoded.subarray(2, 10).toString('hex')
 }
 
-export async function createUpdaterManifest({ bundlesDir, version, tag, repository, configPath }) {
+export async function createUpdaterManifest({ bundlesDir, version, tag, repository, configPath, notes }) {
   const config = JSON.parse(await readFile(configPath, 'utf8'))
   const encodedPublicKey = config?.plugins?.updater?.pubkey
   if (!encodedPublicKey) throw new Error(`No updater public key found in ${configPath}`)
@@ -77,7 +77,7 @@ export async function createUpdaterManifest({ bundlesDir, version, tag, reposito
     version,
     pub_date: new Date().toISOString(),
     platforms,
-    notes: `https://github.com/${repository}/releases/tag/${tag}`,
+    notes: notes?.trim() || `https://github.com/${repository}/releases/tag/${tag}`,
   }
 }
 
@@ -93,12 +93,16 @@ function parseArgs(argv) {
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = parseArgs(process.argv.slice(2))
   const root = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)))
+  // Real release notes go straight into the manifest so the updater plugin can
+  // surface them without the app having to call the GitHub API at runtime
+  const notes = args['notes-file'] ? await readFile(args['notes-file'], 'utf8') : undefined
   const manifest = await createUpdaterManifest({
     bundlesDir: path.resolve(args.bundles),
     version: args.version,
     tag: args.tag,
     repository: args.repo,
     configPath: path.join(root, 'src-tauri', 'tauri.conf.json'),
+    notes,
   })
   await writeFile(args.output, `${JSON.stringify(manifest, null, 2)}\n`)
   console.log(`Created ${args.output} for ${Object.keys(manifest.platforms).join(', ')}`)
