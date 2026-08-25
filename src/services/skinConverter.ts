@@ -1125,8 +1125,9 @@ function mergeTemplateSkinIni(
   return result.endsWith('\n') ? result : `${result}\n`
 }
 
-async function receptorFromOsuKey(entry: JSZipObject): Promise<RasterAsset> {
+async function receptorFromOsuKey(entry: JSZipObject, tapEntry: JSZipObject): Promise<RasterAsset> {
   const key = await rasterise(entry, false)
+  const tap = await rasterise(tapEntry, false)
   const image = await decodeImage(key.blob)
   const sourceCanvas = document.createElement('canvas')
   sourceCanvas.width = key.width
@@ -1187,15 +1188,33 @@ async function receptorFromOsuKey(entry: JSZipObject): Promise<RasterAsset> {
 
   const sourceWidth = maxX - minX + 1
   const sourceHeight = maxY - minY + 1
+  const tapBounds = await visibleBounds(tap)
   const canvas = document.createElement('canvas')
   canvas.width = 128
   canvas.height = 128
   const context = canvas.getContext('2d')
   if (!context) throw new Error(t('services.skin.canvasUnavailable'))
+
+  // Etterna treats a doubleres receptor as a square 128x128 canvas. The osu!
+  // key artwork itself is often a wide, short rectangle (for example the
+  // rounded key in ena's skin). Drawing the cropped bounds into the complete
+  // canvas distorts that artwork excessively. Fit it inside the square and
+  // leave transparent padding; wide art gets a controlled height adjustment
+  // below so it remains comparable to the note texture in Etterna.
+  const scale = Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight)
+  const drawWidth = Math.max(1, Math.round(sourceWidth * scale))
+  const naturalHeight = Math.max(1, Math.round(sourceHeight * scale))
+  // Wide osu! key art is naturally shorter than the note texture. Match its
+  // visible height to the note when it would otherwise look undersized in
+  // Etterna, but leave square/tall receptors at their authored proportions.
+  const noteHeight = Math.max(1, Math.round(tapBounds.height * canvas.width / tap.width))
+  const drawHeight = Math.min(canvas.height, Math.max(naturalHeight, noteHeight))
+  const drawX = Math.floor((canvas.width - drawWidth) / 2)
+  const drawY = Math.floor((canvas.height - drawHeight) / 2)
   context.drawImage(
     sourceCanvas,
     minX, minY, sourceWidth, sourceHeight,
-    0, 0, canvas.width, canvas.height,
+    drawX, drawY, drawWidth, drawHeight,
   )
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.cropFailed', { name: entry.name }))), 'image/png')
@@ -1467,8 +1486,8 @@ async function convertOsuToEtterna(input: File | string): Promise<SkinConversion
     const addAsset = async (label: string, entry: JSZipObject, filename = `${column} ${label}.png`) => {
       let image: RasterAsset
       if (label === 'Receptor') {
-        const cacheKey = entry.name.toLowerCase()
-        if (!receptorCache.has(cacheKey)) receptorCache.set(cacheKey, receptorFromOsuKey(entry))
+        const cacheKey = `${entry.name.toLowerCase()}|${tap.name.toLowerCase()}`
+        if (!receptorCache.has(cacheKey)) receptorCache.set(cacheKey, receptorFromOsuKey(entry, tap))
         image = await receptorCache.get(cacheKey)!
       } else {
         const kind = label.includes('Body')
@@ -1720,10 +1739,11 @@ export async function buildSkinPreview(
       if (!cache.has(key)) cache.set(key, noteFromOsuImage(entry, kind, style).catch(() => fallback))
       return cache.get(key)!
     }
-    const receptor = (entry: JSZipObject | null) => {
+    const receptor = (entry: JSZipObject | null, tapEntry: JSZipObject | null) => {
       if (!entry) return Promise.resolve(fallback)
-      const key = `${entry.name.toLowerCase()}|receptor`
-      if (!cache.has(key)) cache.set(key, receptorFromOsuKey(entry).catch(() => fallback))
+      const reference = tapEntry || entry
+      const key = `${entry.name.toLowerCase()}|receptor|${reference.name.toLowerCase()}`
+      if (!cache.has(key)) cache.set(key, receptorFromOsuKey(entry, reference).catch(() => fallback))
       return cache.get(key)!
     }
     const tail = (tailEntry: JSZipObject | null, bodyEntry: JSZipObject | null) => {
@@ -1746,7 +1766,7 @@ export async function buildSkinPreview(
         // asking Chromium to display a 40,000px source image.
         holdBody: await note(lane[2].entry || lane[0].entry, 'body', 0),
         holdTail: await tail(lane[3].entry || lane[1].entry, lane[2].entry),
-        receptor: await receptor(lane[4].entry || lane[0].entry),
+        receptor: await receptor(lane[4].entry || lane[0].entry, lane[0].entry),
       }))),
     }
   }
