@@ -56,6 +56,7 @@ export const zh = {
   'siteHeader.packCreator': '包创建器',
   'siteHeader.mapViewer': '谱面查看器',
   'siteHeader.github': 'GitHub',
+  'siteHeader.menu': '菜单',
   'siteFooter.tools': '工具',
   'siteFooter.converter': '转换器',
   'siteFooter.skinConverter': '皮肤转换器',

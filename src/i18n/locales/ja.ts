@@ -56,6 +56,7 @@ export const ja = {
   'siteHeader.packCreator': 'パッククリエイター',
   'siteHeader.mapViewer': '譜面ビューアー',
   'siteHeader.github': 'GitHub',
+  'siteHeader.menu': 'メニュー',
   'siteFooter.tools': 'ツール',
   'siteFooter.converter': 'コンバーター',
   'siteFooter.skinConverter': 'スキンコンバーター',

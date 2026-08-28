@@ -53,6 +53,7 @@ export const es = {
   "siteHeader.packCreator": "Creador de packs",
   "siteHeader.mapViewer": "Visor de mapas",
   "siteHeader.github": "GitHub",
+  "siteHeader.menu": "Menú",
   "siteFooter.tools": "Herramientas",
   "siteFooter.converter": "Conversor",
   "siteFooter.skinConverter": "Conversor de skins",

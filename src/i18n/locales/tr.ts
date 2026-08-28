@@ -53,6 +53,7 @@ export const tr = {
   "siteHeader.packCreator": "Paket Oluşturucu",
   "siteHeader.mapViewer": "Harita Görüntüleyici",
   "siteHeader.github": "GitHub",
+  "siteHeader.menu": "Menü",
   "siteFooter.tools": "Araçlar",
   "siteFooter.converter": "Dönüştürücü",
   "siteFooter.skinConverter": "Skin Dönüştürücü",
