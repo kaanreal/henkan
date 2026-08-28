@@ -56,6 +56,7 @@ export const en = {
   'siteHeader.packCreator': 'Pack Creator',
   'siteHeader.mapViewer': 'Map Viewer',
   'siteHeader.github': 'GitHub',
+  'siteHeader.menu': 'Menu',
   'siteFooter.tools': 'Tools',
   'siteFooter.converter': 'Converter',
   'siteFooter.skinConverter': 'Skin Converter',

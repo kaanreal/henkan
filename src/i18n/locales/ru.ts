@@ -62,6 +62,7 @@ export const ru = {
   'siteHeader.packCreator': 'Создатель сетов',
   'siteHeader.mapViewer': 'Просмотр карт',
   'siteHeader.github': 'GitHub',
+  'siteHeader.menu': 'Меню',
   'siteFooter.tools': 'Инструменты',
   'siteFooter.converter': 'Конвертер',
   'siteFooter.skinConverter': 'Конвертер скинов',

@@ -53,6 +53,7 @@ export const de = {
   "siteHeader.packCreator": "Pack-Ersteller",
   "siteHeader.mapViewer": "Map-Viewer",
   "siteHeader.github": "GitHub",
+  "siteHeader.menu": "Menü",
   "siteFooter.tools": "Werkzeuge",
   "siteFooter.converter": "Konverter",
   "siteFooter.skinConverter": "Skin-Konverter",

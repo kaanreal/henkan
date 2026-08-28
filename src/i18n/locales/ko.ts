@@ -56,6 +56,7 @@ export const ko = {
   'siteHeader.packCreator': '팩 생성기',
   'siteHeader.mapViewer': '맵 뷰어',
   'siteHeader.github': 'GitHub',
+  'siteHeader.menu': '메뉴',
   'siteFooter.tools': '도구',
   'siteFooter.converter': '변환기',
   'siteFooter.skinConverter': '스킨 변환기',

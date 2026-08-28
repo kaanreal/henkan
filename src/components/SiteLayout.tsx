@@ -1,9 +1,22 @@
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { useT } from '../i18n'
+import type { MessageKey } from '../i18n/core'
 import { LanguageSwitcher } from './LanguageSwitcher'
+
+const NAV_LINKS: Array<{ to: string; labelKey: MessageKey }> = [
+  { to: '/osu-to-stepmania', labelKey: 'siteHeader.converter' },
+  { to: '/skin-converter', labelKey: 'siteHeader.skins' },
+  { to: '/osu-mania-pack-creator', labelKey: 'siteHeader.packCreator' },
+  { to: '/osu-mania-map-viewer', labelKey: 'siteHeader.mapViewer' },
+]
 
 export function SiteHeader() {
   const t = useT()
+  const [open, setOpen] = useState(false)
+
+  const linkClass = 'px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all'
+
   return (
     <header className="border-b border-surface-800/50 bg-surface-950/80 backdrop-blur-md sticky top-0 z-40">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
@@ -11,15 +24,55 @@ export function SiteHeader() {
           <img src="/logo32.png" alt="Henkan" className="w-7 h-7 rounded-lg" />
           <span className="font-semibold text-sm">Henkan</span>
         </Link>
-        <nav className="flex items-center gap-1">
-          <Link to="/osu-to-stepmania" className="px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all">{t('siteHeader.converter')}</Link>
-          <Link to="/skin-converter" className="px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all">{t('siteHeader.skins')}</Link>
-          <Link to="/osu-mania-pack-creator" className="px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all">{t('siteHeader.packCreator')}</Link>
-          <Link to="/osu-mania-map-viewer" className="px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all">{t('siteHeader.mapViewer')}</Link>
-          <a href="https://github.com/kaanreal/henkan" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 text-xs text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all">{t('siteHeader.github')}</a>
+
+        <nav className="hidden md:flex items-center gap-1">
+          {NAV_LINKS.map(link => (
+            <Link key={link.to} to={link.to} className={linkClass}>{t(link.labelKey)}</Link>
+          ))}
+          <a href="https://github.com/kaanreal/henkan" target="_blank" rel="noopener noreferrer" className={linkClass}>{t('siteHeader.github')}</a>
           <LanguageSwitcher />
         </nav>
+
+        <div className="flex md:hidden items-center gap-2">
+          <LanguageSwitcher />
+          <button
+            onClick={() => setOpen(o => !o)}
+            aria-expanded={open}
+            aria-label={t('siteHeader.menu')}
+            className="h-9 w-9 grid place-items-center rounded-lg border border-white/10 bg-white/[0.04] text-surface-400 hover:text-surface-200 transition-all duration-75"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              {open
+                ? <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                : <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />}
+            </svg>
+          </button>
+        </div>
       </div>
+
+      {open && (
+        <nav className="md:hidden border-t border-surface-800/50 px-2 py-2 space-y-1">
+          {NAV_LINKS.map(link => (
+            <Link
+              key={link.to}
+              to={link.to}
+              onClick={() => setOpen(false)}
+              className="block px-3 py-2.5 text-sm text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all"
+            >
+              {t(link.labelKey)}
+            </Link>
+          ))}
+          <a
+            href="https://github.com/kaanreal/henkan"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setOpen(false)}
+            className="block px-3 py-2.5 text-sm text-surface-400 hover:text-surface-200 rounded-lg hover:bg-white/5 transition-all"
+          >
+            {t('siteHeader.github')}
+          </a>
+        </nav>
+      )}
     </header>
   )
 }

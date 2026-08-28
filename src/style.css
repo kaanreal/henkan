@@ -35,16 +35,19 @@ html, body, #root {
   height: 100%;
   margin: 0;
   overflow-x: clip;
-  overflow-y: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 body {
   background: var(--color-surface-950);
   color: var(--color-surface-100);
   font-family: 'Satoshi', system-ui, -apple-system, sans-serif;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
 }
+
+#root::-webkit-scrollbar,
+body::-webkit-scrollbar { display: none; }
 
 @font-face {
   font-family: 'Satoshi';
