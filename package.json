@@ -16,7 +16,8 @@
     "build:skin-template": "node scripts/build-osu-skin-template.mjs",
     "build:logo": "node scripts/build-logo.mjs",
     "audit:assets": "node scripts/audit-assets.mjs",
-    "audit:packages": "node scripts/audit-packages.mjs"
+    "audit:packages": "node scripts/audit-packages.mjs",
+    "sync:packages": "node scripts/sync-package-metadata.mjs"
   },
   "dependencies": {
     "@aptabase/tauri": "^0.4.1",

@@ -22,9 +22,11 @@ const versioned = [
   'packaging/winget/henkan.installer.yaml',
   'packaging/winget/henkan.locale.en-US.yaml',
 ]
+const snapshotVersion = read('packaging/nix/package.nix').match(/version = "([^"]+)"/)?.[1]
+check(Boolean(snapshotVersion), 'nix package: missing snapshot version')
 for (const path of versioned) {
   const contents = read(path)
-  check(contents.includes(version), `${path}: does not contain current version ${version}`)
+  check(contents.includes(snapshotVersion), `${path}: package snapshot versions are out of sync`)
   check(!contents.includes('CHANGE_ME'), `${path}: contains a placeholder checksum`)
   check(!contents.includes('â'), `${path}: contains mojibake`)
 }
@@ -42,4 +44,4 @@ if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join('\n'))
   process.exit(1)
 }
-console.log(`package audit passed for ${version}`)
+console.log(`package audit passed (app ${version}, package snapshot ${snapshotVersion})`)
