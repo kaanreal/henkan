@@ -1,5 +1,14 @@
 $ErrorActionPreference = 'Stop'
-$url        = '{{INSTALLER_URL}}'
-$checksum   = '{{INSTALLER_SHA}}'
-$checksumType = 'sha256'
-Install-ChocolateyPackage 'henkan' 'exe' '/S' $url -checksum $checksum -checksumType $checksumType
+
+$packageArgs = @{
+  packageName    = $env:ChocolateyPackageName
+  fileType       = 'exe'
+  url64bit       = '{{INSTALLER_URL}}'
+  checksum64     = '{{INSTALLER_SHA}}'
+  checksumType64 = 'sha256'
+  softwareName   = 'Henkan*'
+  silentArgs     = '/S'
+  validExitCodes = @(0, 3010, 1641)
+}
+
+Install-ChocolateyPackage @packageArgs
