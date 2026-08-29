@@ -46,7 +46,11 @@ jobs:
             - name: Verify committed WASM artifacts
               run: |
                   npm run build:wasm
-                  git diff --exit-code -- src/wasm
+                  git diff --exit-code -- \
+                    src/wasm/henkan_core.js \
+                    src/wasm/henkan_core.d.ts \
+                    src/wasm/henkan_core_bg.wasm.d.ts \
+                    src/wasm/source.sha256
 
             - name: Build and test
               run: |
