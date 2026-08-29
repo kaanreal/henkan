@@ -260,3 +260,43 @@ jobs:
         with:
             version: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
         secrets: inherit
+
+    sync-package-metadata:
+        needs: [publish, release-please]
+        if: ${{ always() && needs.publish.result == 'success' }}
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: main
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+
+            - name: Synchronize checked-in package snapshots
+              shell: bash
+              env:
+                  TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+              run: |
+                  set -euo pipefail
+                  version="${TAG#v}"
+                  release="https://github.com/${{ github.repository }}/releases/download/$TAG"
+                  checksum() { curl -fsSL "$1" | sha256sum | cut -d' ' -f1; }
+                  node scripts/sync-package-metadata.mjs \
+                    --version="$version" \
+                    --sourceSha="$(checksum "https://github.com/${{ github.repository }}/archive/refs/tags/$TAG.tar.gz")" \
+                    --dmgSha="$(checksum "$release/Henkan-v$version-macos.dmg")" \
+                    --installerSha="$(checksum "$release/Henkan-v$version-windows-setup.exe")" \
+                    --appimageSha="$(checksum "$release/Henkan-v$version-linux.AppImage")" \
+                    --releaseDate="$(date -u +%F)"
+
+            - name: Commit synchronized metadata
+              shell: bash
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                  git add README.md packaging/
+                  git diff --cached --quiet && exit 0
+                  git commit -m "chore(packaging): sync release metadata [skip ci]"
+                  git push
