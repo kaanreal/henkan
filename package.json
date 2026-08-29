@@ -14,7 +14,6 @@
     "cli": "cargo run --manifest-path src-tauri/Cargo.toml --package henkan --bin henkan-cli",
     "build:wasm": "wasm-pack build --target web --release wasm-core && cp wasm-core/pkg/henkan_core_bg.wasm wasm-core/pkg/henkan_core.js wasm-core/pkg/henkan_core.d.ts wasm-core/pkg/henkan_core_bg.wasm.d.ts src/wasm/",
     "build:skin-template": "node scripts/build-osu-skin-template.mjs",
-    "build:og": "node scripts/build-og-image.mjs",
     "build:logo": "node scripts/build-logo.mjs"
   },
   "dependencies": {
@@ -36,7 +35,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@resvg/resvg-js": "^2.6.2",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/cli": "^2.11.2",
     "@types/node": "^24.12.3",
