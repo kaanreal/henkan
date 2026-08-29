@@ -51,7 +51,7 @@ export function Header({
     <header className="app-header px-3 sm:px-6 py-3 border-b border-white/5 bg-black/20 backdrop-blur-md grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-3 items-center shrink-0 animate-fade-in gap-3">
       <div className="flex items-center gap-2.5 min-w-0">
         <Link to="/" className="flex items-center gap-2.5 min-w-0" title={t('header.backToConverter')}>
-          <img src="/logo32.png" alt="Henkan" className="w-8 h-8 rounded-lg shrink-0" />
+          <img src="/logo.png" alt="Henkan" className="w-8 h-8 rounded-lg shrink-0" />
           <span className="hidden sm:inline text-base font-semibold tracking-tight text-surface-100">Henkan</span>
         </Link>
 

@@ -2009,7 +2009,7 @@ export default function ConverterPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowVersionDialog(false)}>
             <div className="bg-surface-900 border border-surface-700/50 rounded-2xl shadow-2xl max-w-sm w-full mx-4 animate-scale-in p-6" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-3 mb-4">
-                <img src="/logo32.png" alt="Henkan" className="w-10 h-10 rounded-xl" />
+                <img src="/logo.png" alt="Henkan" className="w-10 h-10 rounded-xl" />
                 <div>
                   <h2 className="text-lg font-semibold text-surface-100">Henkan</h2>
                   <p className="text-sm text-surface-400 font-mono">v{appVersion || '-'}</p>
