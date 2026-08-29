@@ -11,7 +11,7 @@ let
     url = "https://github.com/kaanreal/henkan/releases/download/v${version}/Henkan-v${version}-linux.AppImage";
     hash = "sha256-T3zOuSM8daRFW3I/kVIDRuGHo02AP+Fn9axWrNi54cQ=";
   };
-  appimageContents = appimageTools.extractType2 { inherit pname version src; };
+  appimageContents = appimageTools.extract { inherit pname version src; };
 in
 appimageTools.wrapType2 {
   inherit pname version src;
@@ -30,7 +30,7 @@ appimageTools.wrapType2 {
 
   meta = {
     description = "osu!mania to Etterna and StepMania converter";
-    homepage = "https://henkan.app/";
+    homepage = "https://henkan.kaanreal.me/";
     downloadPage = "https://github.com/kaanreal/henkan/releases";
     license = lib.licenses.mit;
     sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];

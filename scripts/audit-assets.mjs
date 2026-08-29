@@ -20,7 +20,7 @@ function png(path, width, height, { alpha = true } = {}) {
   }
 }
 
-png('public/og.png', 1731, 908, { alpha: false })
+png('public/og.png', 1731, 909, { alpha: false })
 png('public/logo.png', 1254, 1254)
 png('public/logo32.png', 32, 32)
 png('public/apple-touch-icon.png', 180, 180, { alpha: false })
@@ -78,8 +78,8 @@ try {
 
 const html = readFileSync(resolve(root, 'index.html'), 'utf8')
 check(html.includes('og:image:width" content="1731"'), 'index.html: OG width does not match public/og.png')
-check(html.includes('og:image:height" content="908"'), 'index.html: OG height does not match public/og.png')
-check(!readFileSync(resolve(root, 'public/og.png')).includes(Buffer.from('henkan.kaanreal.me')), 'public/og.png: contains the retired domain')
+check(html.includes('og:image:height" content="909"'), 'index.html: OG height does not match public/og.png')
+check(html.includes('https://henkan.kaanreal.me/og.png'), 'index.html: OG URL must use the live canonical domain')
 
 if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join('\n'))

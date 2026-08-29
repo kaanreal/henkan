@@ -5,7 +5,7 @@ cask "henkan" do
   url "https://github.com/kaanreal/henkan/releases/download/v#{version}/Henkan-v#{version}-macos.dmg"
   name "Henkan"
   desc "osu!mania to Etterna and StepMania converter"
-  homepage "https://henkan.app/"
+  homepage "https://henkan.kaanreal.me/"
 
   livecheck do
     url :url

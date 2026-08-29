@@ -6,9 +6,9 @@
     <title>Henkan</title>
     <authors>kaanreal</authors>
     <owners>kaanreal</owners>
-    <projectUrl>https://henkan.app/</projectUrl>
+    <projectUrl>https://henkan.kaanreal.me/</projectUrl>
     <packageSourceUrl>https://github.com/kaanreal/henkan/tree/main/packaging/chocolatey</packageSourceUrl>
-    <iconUrl>https://henkan.app/logo.png</iconUrl>
+    <iconUrl>https://henkan.kaanreal.me/logo.png</iconUrl>
     <licenseUrl>https://github.com/kaanreal/henkan/blob/main/LICENSE</licenseUrl>
     <projectSourceUrl>https://github.com/kaanreal/henkan</projectSourceUrl>
     <bugTrackerUrl>https://github.com/kaanreal/henkan/issues</bugTrackerUrl>
