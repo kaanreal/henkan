@@ -14,6 +14,8 @@ on:
         required: false
       HOMEBREW_TAP_TOKEN:
         required: false
+      MY_RELEASE_TOKEN:
+        required: false
       NIXPKGS_GITHUB_TOKEN:
         required: false
       WINGET_GITHUB_TOKEN:
@@ -35,7 +37,7 @@ jobs:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
       CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-      NIXPKGS_GITHUB_TOKEN: ${{ secrets.NIXPKGS_GITHUB_TOKEN }}
+      NIXPKGS_GITHUB_TOKEN: ${{ secrets.NIXPKGS_GITHUB_TOKEN || secrets.MY_RELEASE_TOKEN }}
       WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
