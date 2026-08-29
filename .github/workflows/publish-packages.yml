@@ -1,13 +1,29 @@
 name: Publish to Package Managers
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      version:
+        description: Release tag to publish
+        required: true
+        type: string
+    secrets:
+      AUR_SSH_PRIVATE_KEY:
+        required: false
+      CHOCOLATEY_API_KEY:
+        required: false
+      HOMEBREW_TAP_TOKEN:
+        required: false
+      NIXPKGS_GITHUB_TOKEN:
+        required: false
+      WINGET_GITHUB_TOKEN:
+        required: false
   workflow_dispatch:
     inputs:
       version:
-        description: "Version tag to publish (e.g. v1.2.3)"
+        description: Release tag to publish (for example v1.6.1)
         required: true
+        type: string
 
 permissions:
   contents: read
@@ -16,79 +32,47 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     env:
-      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-      WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
-      CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+      CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      NIXPKGS_GITHUB_TOKEN: ${{ secrets.NIXPKGS_GITHUB_TOKEN }}
+      WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Determine version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" == "release" ]; then
-            VER="${{ github.event.release.tag_name }}"
-          else
-            VER="${{ github.event.inputs.version }}"
-          fi
-          echo "VERSION=$VER" >> $GITHUB_ENV
-          echo "tag=$VER" >> "$GITHUB_OUTPUT"
-
-      - name: Compute checksums
-        id: checksums
+      - name: Resolve release and checksums
+        id: release
         shell: bash
+        env:
+          TAG: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          VER="${{ steps.version.outputs.tag }}"
-          V="${VER#v}"
-          checksum() {
-            curl --fail --location --silent --show-error "$1" | sha256sum | cut -d' ' -f1
-          }
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "source_sha256=$(checksum "https://github.com/kaanreal/henkan/archive/refs/tags/$VER.tar.gz")" >> "$GITHUB_OUTPUT"
-          echo "dmg_sha256=$(checksum "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan-v${V}-macos.dmg")" >> "$GITHUB_OUTPUT"
-          echo "installer_sha256=$(checksum "https://github.com/kaanreal/henkan/releases/download/$VER/Henkan-v${V}-windows-setup.exe")" >> "$GITHUB_OUTPUT"
+          version="${TAG#v}"
+          release="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          checksum() { curl -fsSL "$1" | sha256sum | cut -d' ' -f1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "source=$(checksum "https://github.com/${{ github.repository }}/archive/refs/tags/$TAG.tar.gz")" >> "$GITHUB_OUTPUT"
+          echo "dmg=$(checksum "$release/Henkan-v$version-macos.dmg")" >> "$GITHUB_OUTPUT"
+          echo "installer=$(checksum "$release/Henkan-v$version-windows-setup.exe")" >> "$GITHUB_OUTPUT"
+          echo "appimage=$(checksum "$release/Henkan-v$version-linux.AppImage")" >> "$GITHUB_OUTPUT"
 
-      - name: Publish to Homebrew
+      - name: Publish Homebrew tap
         if: env.HOMEBREW_TAP_TOKEN != ''
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          packaging/ci-publish.sh homebrew \
-            "${{ steps.version.outputs.tag }}" \
-            "${{ steps.checksums.outputs.source_sha256 }}" \
-            "${{ steps.checksums.outputs.dmg_sha256 }}" \
-            "${{ steps.checksums.outputs.installer_sha256 }}"
+        run: packaging/ci-publish.sh homebrew "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.source }}" "${{ steps.release.outputs.dmg }}" "${{ steps.release.outputs.installer }}" "${{ steps.release.outputs.appimage }}"
 
-      - name: Publish to Winget
+      - name: Submit winget manifest
         if: env.WINGET_GITHUB_TOKEN != ''
-        env:
-          WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
-        run: |
-          packaging/ci-publish.sh winget \
-            "${{ steps.version.outputs.tag }}" \
-            "${{ steps.checksums.outputs.source_sha256 }}" \
-            "${{ steps.checksums.outputs.dmg_sha256 }}" \
-            "${{ steps.checksums.outputs.installer_sha256 }}"
+        run: packaging/ci-publish.sh winget "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.source }}" "${{ steps.release.outputs.dmg }}" "${{ steps.release.outputs.installer }}" "${{ steps.release.outputs.appimage }}"
 
-      - name: Publish to Chocolatey
+      - name: Publish Chocolatey package
         if: env.CHOCOLATEY_API_KEY != ''
-        env:
-          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
-        run: |
-          packaging/ci-publish.sh choco \
-            "${{ steps.version.outputs.tag }}" \
-            "${{ steps.checksums.outputs.source_sha256 }}" \
-            "${{ steps.checksums.outputs.dmg_sha256 }}" \
-            "${{ steps.checksums.outputs.installer_sha256 }}"
+        run: packaging/ci-publish.sh chocolatey "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.source }}" "${{ steps.release.outputs.dmg }}" "${{ steps.release.outputs.installer }}" "${{ steps.release.outputs.appimage }}"
 
-      - name: Publish to AUR
+      - name: Publish AUR package
         if: env.AUR_SSH_PRIVATE_KEY != ''
-        env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-        run: |
-          packaging/ci-publish.sh aur \
-            "${{ steps.version.outputs.tag }}" \
-            "${{ steps.checksums.outputs.source_sha256 }}" \
-            "${{ steps.checksums.outputs.dmg_sha256 }}" \
-            "${{ steps.checksums.outputs.installer_sha256 }}"
+        run: packaging/ci-publish.sh aur "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.source }}" "${{ steps.release.outputs.dmg }}" "${{ steps.release.outputs.installer }}" "${{ steps.release.outputs.appimage }}"
+
+      - name: Submit nixpkgs update
+        if: env.NIXPKGS_GITHUB_TOKEN != ''
+        run: packaging/ci-publish.sh nixpkgs "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.source }}" "${{ steps.release.outputs.dmg }}" "${{ steps.release.outputs.installer }}" "${{ steps.release.outputs.appimage }}"

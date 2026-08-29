@@ -252,3 +252,11 @@ jobs:
                   TAG="${{ inputs.tag || needs.release-please.outputs.tag_name }}"
                   FILES=$(find bundles -type f \( -name '*.exe' -o -name '*.exe.sig' -o -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*.AppImage.tar.gz' -o -name '*.AppImage.tar.gz.sig' \))
                   gh release upload "$TAG" updater.json $FILES --clobber
+
+    publish-packages:
+        needs: [publish, release-please]
+        if: ${{ always() && needs.publish.result == 'success' }}
+        uses: ./.github/workflows/publish-packages.yml
+        with:
+            version: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+        secrets: inherit

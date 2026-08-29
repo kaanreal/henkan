@@ -41,6 +41,8 @@ jobs:
 
             - name: Build and test
               run: |
+                  npm run audit:assets
+                  npm run audit:packages
                   npm run build
                   npm run test:updater
                   cargo test --manifest-path src-tauri/Cargo.toml

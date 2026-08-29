@@ -1,11 +1,11 @@
 cask "henkan" do
-  version "1.1.0"
-  sha256 "CHANGE_ME" # replace with actual sha256 of .dmg
+  version "1.6.1"
+  sha256 "8789d60526ad99abe35cb6691e557d75dabbd9ed26735f5051e5800be17455e8"
 
-  url "https://github.com/kaanreal/henkan/releases/download/v#{version}/Henkan_#{version}_aarch64.dmg"
+  url "https://github.com/kaanreal/henkan/releases/download/v#{version}/Henkan-v#{version}-macos.dmg"
   name "Henkan"
-  desc "osu!mania ↔ Etterna/StepMania beatmap converter"
-  homepage "https://github.com/kaanreal/henkan"
+  desc "osu!mania to Etterna and StepMania converter"
+  homepage "https://henkan.app/"
 
   livecheck do
     url :url

@@ -1,6 +1,7 @@
 // Derives the small raster assets from the master public/logo.png:
 //   - public/logo32.png: 32px box-average downscale (legacy + OG image source)
 //   - public/favicon.svg: transparent PNG embed of the emblem (48px)
+//   - public/apple-touch-icon.png: 180px opaque icon for iOS home screens
 // The master stays untouched. Run with `npm run build:logo`.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -52,4 +53,19 @@ const b64 = Buffer.from(encode({ width: 48, height: 48, data: img48 })).toString
 const favicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><image href="data:image/png;base64,${b64}"/></svg>`
 writeFileSync(resolve(root, 'public/favicon.svg'), favicon)
 
-console.log('wrote public/logo32.png (32x32) and public/favicon.svg (48px embed)')
+// Apple recommends an opaque 180px touch icon. Composite the transparent
+// emblem over Henkan's app background so iOS never substitutes a black fill.
+const touch = downscale(180, 180)
+for (let i = 0; i < touch.length; i += 4) {
+  const alpha = touch[i + 3] / 255
+  touch[i] = Math.round(touch[i] * alpha + 2 * (1 - alpha))
+  touch[i + 1] = Math.round(touch[i + 1] * alpha + 6 * (1 - alpha))
+  touch[i + 2] = Math.round(touch[i + 2] * alpha + 23 * (1 - alpha))
+  touch[i + 3] = 255
+}
+writeFileSync(
+  resolve(root, 'public/apple-touch-icon.png'),
+  new Uint8Array(encode({ width: 180, height: 180, data: touch })),
+)
+
+console.log('wrote favicon, 32px logo, and 180px Apple touch icon')
