@@ -16,9 +16,9 @@ jobs:
         name: verify
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   node-version: 22
                   cache: npm
@@ -28,6 +28,10 @@ jobs:
                   rustup set profile minimal
                   rustup toolchain install stable
                   rustup default stable
+                  rustup target add wasm32-unknown-unknown
+
+            - name: Install wasm-pack
+              run: cargo install wasm-pack --locked --version 0.15.0
 
             - name: Install Linux dependencies
               run: |
@@ -38,6 +42,11 @@ jobs:
               run: cp src-tauri/.env.example src-tauri/.env
 
             - run: npm ci
+
+            - name: Verify committed WASM artifacts
+              run: |
+                  npm run build:wasm
+                  git diff --exit-code -- src/wasm
 
             - name: Build and test
               run: |
@@ -56,9 +65,9 @@ jobs:
                     - os: ubuntu-latest
         runs-on: ${{ matrix.os }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   node-version: 22
                   cache: npm

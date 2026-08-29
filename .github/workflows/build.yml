@@ -11,65 +11,26 @@ on:
                 required: false
                 type: string
 
+concurrency:
+    group: release-${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: false
+
 permissions:
-    contents: write
-    pull-requests: write
+    contents: read
 
 jobs:
-    build-wasm:
-        if: ${{ !inputs.tag }}
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: 22
-
-            - name: Install Rust
-              run: |
-                  rustup set profile minimal
-                  rustup toolchain install stable
-                  rustup default stable
-                  rustup target add wasm32-unknown-unknown
-
-            - name: Install wasm-pack
-              run: cargo install wasm-pack
-
-            - name: Build WASM
-              run: wasm-pack build --target web --release wasm-core
-
-            - name: Copy WASM artifacts
-              run: cp wasm-core/pkg/henkan_core_bg.wasm wasm-core/pkg/henkan_core.js wasm-core/pkg/henkan_core.d.ts wasm-core/pkg/henkan_core_bg.wasm.d.ts src/wasm/
-
-            - name: Check for changes
-              id: changes
-              run: |
-                  git add src/wasm/
-                  if git diff --cached --quiet; then
-                    echo "changed=false" >> $GITHUB_OUTPUT
-                  else
-                    echo "changed=true" >> $GITHUB_OUTPUT
-                  fi
-
-            - name: Commit updated WASM
-              if: steps.changes.outputs.changed == 'true'
-              run: |
-                  git config user.name "github-actions[bot]"
-                  git config user.email "github-actions[bot]@users.noreply.github.com"
-                  git commit -m "chore(wasm): rebuild WASM binaries 🫖"
-                  git push
-
     release-please:
         if: ${{ !inputs.tag }}
-        needs: build-wasm
         runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            pull-requests: write
         outputs:
             release_created: ${{ steps.release.outputs.release_created }}
             tag_name: ${{ steps.release.outputs.tag_name }}
             body: ${{ steps.release.outputs.body }}
         steps:
-            - uses: googleapis/release-please-action@v4
+            - uses: googleapis/release-please-action@v5
               id: release
               with:
                   token: ${{ secrets.MY_RELEASE_TOKEN }}
@@ -96,9 +57,9 @@ jobs:
 
         runs-on: ${{ matrix.os }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   node-version: 22
                   cache: npm
@@ -183,7 +144,7 @@ jobs:
                   find "$BUNDLE_DIR" -type f | sort
 
             - name: Upload bundle artifact
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: henkan-${{ matrix.platform-name }}
                   path: src-tauri/target/${{ matrix.target }}/release/bundle
@@ -193,10 +154,10 @@ jobs:
         if: ${{ always() && needs.build.result == 'success' }}
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - name: Download all platform bundles
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@v8
               with:
                   pattern: henkan-*
                   path: bundles
@@ -220,7 +181,7 @@ jobs:
                   cat updater.json
 
             - name: Upload updater.json
-              uses: actions/upload-artifact@v4
+              uses: actions/upload-artifact@v7
               with:
                   name: updater-json
                   path: updater.json
@@ -229,17 +190,19 @@ jobs:
         needs: [build, generate-updater-json, release-please]
         if: ${{ always() && needs.build.result == 'success' }}
         runs-on: ubuntu-latest
+        permissions:
+            contents: write
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - name: Download all platform bundles
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@v8
               with:
                   pattern: henkan-*
                   path: bundles
 
             - name: Download updater.json
-              uses: actions/download-artifact@v4
+              uses: actions/download-artifact@v8
               with:
                   name: updater-json
                   path: .
@@ -265,12 +228,14 @@ jobs:
         needs: [publish, release-please]
         if: ${{ always() && needs.publish.result == 'success' }}
         runs-on: ubuntu-latest
+        permissions:
+            contents: write
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
               with:
                   ref: main
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@v7
               with:
                   node-version: 22
 

@@ -57,7 +57,7 @@ jobs:
       NIXPKGS_GITHUB_TOKEN: ${{ secrets.NIXPKGS_GITHUB_TOKEN || secrets.MY_RELEASE_TOKEN }}
       WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve release and checksums
         id: release
