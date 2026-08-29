@@ -58,7 +58,7 @@ const hash = createHash("sha256");
 for (const path of inputs) {
   hash.update(path.slice(root.length).replaceAll("\\", "/"));
   hash.update("\0");
-  hash.update(readFileSync(path));
+  hash.update(readFileSync(path, "utf8").replaceAll("\r\n", "\n"));
   hash.update("\0");
 }
 writeFileSync(join(root, "src", "wasm", "source.sha256"), `${hash.digest("hex")}\n`);
