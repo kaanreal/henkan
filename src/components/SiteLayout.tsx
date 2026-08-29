@@ -21,7 +21,7 @@ export function SiteHeader() {
     <header className="border-b border-surface-800/50 bg-surface-950/80 backdrop-blur-md sticky top-0 z-40">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
         <Link to="/" className="flex items-center gap-2.5 text-surface-100 hover:text-white transition-colors shrink-0">
-          <img src="/logo32.png" alt="Henkan" className="w-7 h-7 rounded-lg" />
+          <img src="/logo.png" alt="Henkan" className="w-7 h-7 rounded-lg" />
           <span className="font-semibold text-sm">Henkan</span>
         </Link>
 
