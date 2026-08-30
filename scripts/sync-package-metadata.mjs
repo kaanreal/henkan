@@ -40,6 +40,7 @@ for (const path of ['packaging/winget/henkan.yaml', 'packaging/winget/henkan.ins
 }
 edit('packaging/winget/henkan.installer.yaml', (s) => s
   .replace(/^ReleaseDate: .*/m, `ReleaseDate: ${args.releaseDate}`)
+  .replace(/^(\s+DisplayVersion:) .*/m, `$1 ${version}`)
   .replace(/\/v[^/]+\/Henkan-v[^-]+-windows-setup\.exe/, `/${tag}/Henkan-v${version}-windows-setup.exe`)
   .replace(/^    InstallerSha256: .*/m, `    InstallerSha256: ${args.installerSha.toUpperCase()}`))
 edit('packaging/winget/henkan.locale.en-US.yaml', (s) => s
