@@ -33,7 +33,7 @@ for (const path of versioned) {
 
 const winget = read('packaging/winget/henkan.installer.yaml')
 check(winget.includes('ManifestVersion: 1.10.0'), 'winget: use the supported 1.10 schema')
-check(winget.includes(`Henkan-v${version}-windows-setup.exe`), 'winget: installer filename does not match the release workflow')
+check(winget.includes(`Henkan-v${snapshotVersion}-windows-setup.exe`), 'winget: installer filename does not match the package snapshot')
 
 const readme = read('README.md')
 for (const manager of ['AUR', 'Nix', 'Homebrew', 'winget', 'Chocolatey']) {
