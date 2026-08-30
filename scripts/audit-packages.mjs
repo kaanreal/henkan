@@ -34,6 +34,9 @@ for (const path of versioned) {
 const winget = read('packaging/winget/henkan.installer.yaml')
 check(winget.includes('ManifestVersion: 1.10.0'), 'winget: use the supported 1.10 schema')
 check(winget.includes(`Henkan-v${snapshotVersion}-windows-setup.exe`), 'winget: installer filename does not match the package snapshot')
+check(winget.includes(`DisplayVersion: ${snapshotVersion}`), 'winget: Apps & Features version is out of sync')
+check(winget.includes("DefaultInstallLocation: '%LOCALAPPDATA%\\Henkan'"), 'winget: missing default install location')
+check(winget.includes('RelativeFilePath: Henkan.exe'), 'winget: missing primary application metadata')
 
 const readme = read('README.md')
 for (const manager of ['AUR', 'Nix', 'Homebrew', 'winget', 'Chocolatey']) {
