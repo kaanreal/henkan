@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
 PackageIdentifier: kaanreal.Henkan
-PackageVersion: 1.6.1
+PackageVersion: 1.7.0
 PackageLocale: en-US
 Publisher: kaanreal
 PublisherUrl: https://github.com/kaanreal
@@ -22,6 +22,6 @@ Tags:
   - rhythm-game
   - stepmania
   - vsrg
-ReleaseNotesUrl: https://github.com/kaanreal/henkan/releases/tag/v1.6.1
+ReleaseNotesUrl: https://github.com/kaanreal/henkan/releases/tag/v1.7.0
 ManifestType: defaultLocale
 ManifestVersion: 1.10.0

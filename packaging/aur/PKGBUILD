@@ -1,7 +1,7 @@
 # Maintainer: kaanreal <kaanreal@users.noreply.github.com>
 
 pkgname=henkan-bin
-pkgver=1.6.1
+pkgver=1.7.0
 pkgrel=1
 pkgdesc='osu!mania to Etterna and StepMania converter (desktop and CLI)'
 arch=('x86_64')
@@ -15,7 +15,7 @@ source=(
   'LICENSE'
 )
 sha256sums=(
-  '4f7cceb9233c75a4455b723f91520346e187a34d803fe167f5ac56acd8b9e1c4'
+  '62b8cd9f69ae21425d65848262455c8659574830f12a13b6c6dbc7cfe2c4fd86'
   'ccaccd972ac49ea3ce4f6ca62056b2532631839bf5c92b6c2adc797d597de78b'
 )
 
