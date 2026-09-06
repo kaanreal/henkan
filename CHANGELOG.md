@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.7.0](https://github.com/kaanreal/henkan/compare/v1.6.1...v1.7.0) (2026-09-06)
+
+
+### Features
+
+* add link-preview og card, adopt the new emblem everywhere 🎨 ([d182c8d](https://github.com/kaanreal/henkan/commit/d182c8d1a5c43c424dedf7fe4a22306550c1e073))
+* **web:** make site pages mobile friendly 📱 ([a920cb2](https://github.com/kaanreal/henkan/commit/a920cb2c88b10ecbbbb61c3976b000da74209110))
+
+
+### Bug Fixes
+
+* **ci:** normalize WASM source fingerprints ([ae9bbb2](https://github.com/kaanreal/henkan/commit/ae9bbb2bfcf2555c0d2988a1d386475fb0085ce5))
+* **ci:** validate release package snapshots correctly ([537d60e](https://github.com/kaanreal/henkan/commit/537d60eafaa018a495ade0eb0929a7e4186a1cf5))
+* **converter:** match receptor height to note art 🎹 ([fc58737](https://github.com/kaanreal/henkan/commit/fc5873704b3d39e733e341a657395768532e50c2))
+* **metadata:** use the live canonical domain ([d6663d3](https://github.com/kaanreal/henkan/commit/d6663d3973ae8447766b739ff888f81c6afa7fa9))
+* **packaging:** declare winget installation metadata ([68f4eae](https://github.com/kaanreal/henkan/commit/68f4eaebd026d638a9d9a46dd9a5dfd8fea66fcc))
+* **packaging:** keep release snapshots synchronized ([0d20de5](https://github.com/kaanreal/henkan/commit/0d20de57bfa9e65ea177f88a4c1691392abb81d0))
+* **packaging:** reuse release token for nixpkgs ([c141653](https://github.com/kaanreal/henkan/commit/c141653c23c0b32bd8c832627293667eb46a158a))
+* **packaging:** support targeted manual publication ([a3a538f](https://github.com/kaanreal/henkan/commit/a3a538f80074453e0b43b465ac13bce1efdabd7f))
+
 ## [1.6.1](https://github.com/kaanreal/henkan/compare/v1.6.0...v1.6.1) (2026-08-23)
 
 
