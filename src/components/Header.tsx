@@ -1,9 +1,9 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { useT } from '../i18n'
-import { openUrl, getGithubStars } from '../services/platform'
-import { LanguageSwitcher } from './LanguageSwitcher'
+import { getGithubStars, openUrl } from '../services/platform'
 import type { ConvertDirection } from '../types/beatmap'
+import { LanguageSwitcher } from './LanguageSwitcher'
 
 const REPO = 'kaanreal/henkan'
 const GITHUB_URL = `https://github.com/${REPO}`
@@ -45,7 +45,8 @@ export function Header({
       .catch(() => {})
   }, [])
 
-  const versionClass = 'hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md border border-white/5 bg-white/[0.03] text-surface-500 text-[11px] font-mono font-medium'
+  const versionClass =
+    'hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md border border-white/5 bg-white/[0.03] text-surface-500 text-[11px] font-mono font-medium'
 
   return (
     <header className="app-header px-3 sm:px-6 py-3 border-b border-white/5 bg-black/20 backdrop-blur-md grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-3 items-center shrink-0 animate-fade-in gap-3">
@@ -79,27 +80,37 @@ export function Header({
       </div>
 
       <div className="flex justify-end md:justify-center">
-        {direction && onSetDirection && <div className="header-direction flex bg-white/[0.04] rounded-lg border border-white/5 p-0.5 gap-0.5" role="group" aria-label={directionAriaLabel ?? t('header.directionAria')}>
-          <button
-            onClick={() => onSetDirection('osu-to-etterna')}
-            aria-pressed={direction === 'osu-to-etterna'}
-            className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all duration-75 ${
-              direction === 'osu-to-etterna' ? 'bg-accent text-white shadow-sm' : 'text-surface-400 hover:text-surface-200'
-            }`}
+        {direction && onSetDirection && (
+          <div
+            className="header-direction flex bg-white/[0.04] rounded-lg border border-white/5 p-0.5 gap-0.5"
+            role="group"
+            aria-label={directionAriaLabel ?? t('header.directionAria')}
           >
-            {directionLabels[0]}
-          </button>
-          <span className="text-surface-600 self-center text-xs">→</span>
-          <button
-            onClick={() => onSetDirection('etterna-to-osu')}
-            aria-pressed={direction === 'etterna-to-osu'}
-            className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all duration-75 ${
-              direction === 'etterna-to-osu' ? 'bg-accent text-white shadow-sm' : 'text-surface-400 hover:text-surface-200'
-            }`}
-          >
-            {directionLabels[1]}
-          </button>
-        </div>}
+            <button
+              onClick={() => onSetDirection('osu-to-etterna')}
+              aria-pressed={direction === 'osu-to-etterna'}
+              className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all duration-75 ${
+                direction === 'osu-to-etterna'
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-surface-400 hover:text-surface-200'
+              }`}
+            >
+              {directionLabels[0]}
+            </button>
+            <span className="text-surface-600 self-center text-xs">→</span>
+            <button
+              onClick={() => onSetDirection('etterna-to-osu')}
+              aria-pressed={direction === 'etterna-to-osu'}
+              className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all duration-75 ${
+                direction === 'etterna-to-osu'
+                  ? 'bg-accent text-white shadow-sm'
+                  : 'text-surface-400 hover:text-surface-200'
+              }`}
+            >
+              {directionLabels[1]}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="hidden md:flex justify-end">
@@ -107,7 +118,7 @@ export function Header({
           onClick={() => openUrl(SUPPORTER_URL)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#FFDD00]/40 hover:border-[#FFDD00] bg-[#FFDD00]/[0.06] hover:bg-[#FFDD00]/[0.12] text-surface-300 hover:text-white text-xs font-medium transition-all duration-75 shrink-0"
         >
-          ☕ {t('header.buyMeACoffee')}
+          {t('header.buyMeACoffee')}
         </button>
       </div>
     </header>
