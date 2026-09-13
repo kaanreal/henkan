@@ -3,6 +3,7 @@ import { t } from '../i18n'
 import { isTauri } from './environment'
 import { readFileText, resolveMediaFile } from './files'
 import { getCachedFile } from './fileCache'
+import { diffInfoFromBeatmap, enrichBeatmapMsd } from './webMsd'
 import {
   wasmParseOsu,
   wasmParseSm,
@@ -127,14 +128,8 @@ async function extractOsz(path: string): Promise<OszData> {
   for (const entry of osuEntries) {
     if (entry.text) {
       try {
-        const bm = await wasmParseOsu(entry.text)
-        difficulties.push({
-          name: bm.difficulty_name,
-          keys: bm.keys,
-          note_count: bm.notes?.length || 0,
-          audio_filename: bm.audio_filename || null,
-          difficulty_rating: bm.difficulty_rating ?? null,
-        })
+        const bm = await enrichBeatmapMsd(await wasmParseOsu(entry.text))
+        difficulties.push(diffInfoFromBeatmap(bm))
       } catch { /* skip unparseable */ }
     }
   }
@@ -173,7 +168,7 @@ export async function parseFile(
     if (!osuEntries.length) throw new Error(t('services.noOsuInOsz'))
 
     // Parse first .osu as the main beatmap
-    const main = await wasmParseOsu(osuEntries[0].text)
+    const main = await enrichBeatmapMsd(await wasmParseOsu(osuEntries[0].text))
     main.source_dir = sourceDir
     main.source_file = pathOrContent
     main.available_difficulties = difficulties
@@ -185,25 +180,20 @@ export async function parseFile(
 
   let beatmap: Beatmap
   if (isOsu) {
-    beatmap = await wasmParseOsu(content)
+    beatmap = await enrichBeatmapMsd(await wasmParseOsu(content))
   } else {
     // For .sm files, parse all difficulties to populate available_difficulties
     try {
       const all = await wasmParseSmAll(content)
       if (all.length > 0) {
-        beatmap = all[0]
-        beatmap.available_difficulties = all.map(b => ({
-          name: b.difficulty_name,
-          keys: b.keys,
-          note_count: b.notes?.length || 0,
-          audio_filename: b.audio_filename || null,
-          difficulty_rating: b.difficulty_rating ?? null,
-        }))
+        const enriched = await Promise.all(all.map(enrichBeatmapMsd))
+        beatmap = enriched[0]
+        beatmap.available_difficulties = enriched.map(diffInfoFromBeatmap)
       } else {
-        beatmap = await wasmParseSm(content)
+        beatmap = await enrichBeatmapMsd(await wasmParseSm(content))
       }
     } catch {
-      beatmap = await wasmParseSm(content)
+      beatmap = await enrichBeatmapMsd(await wasmParseSm(content))
     }
   }
 
@@ -225,7 +215,7 @@ export async function selectDifficulty(
   if (isOsz(pathOrContent)) {
     const { osuEntries, sourceDir, difficulties } = await extractOsz(pathOrContent)
     if (index < 0 || index >= osuEntries.length) throw new Error(`Difficulty index ${index} out of range`)
-    const beatmap = await wasmParseOsu(osuEntries[index].text)
+    const beatmap = await enrichBeatmapMsd(await wasmParseOsu(osuEntries[index].text))
     beatmap.source_dir = sourceDir
     beatmap.source_file = pathOrContent
     beatmap.available_difficulties = difficulties.map(d => ({ ...d, difficulty_rating: d.difficulty_rating ?? null }))
@@ -242,17 +232,12 @@ export async function selectDifficulty(
     allBeatmaps = []
   }
 
-  const beatmap = await wasmParseSmDifficulty(content, index)
+  const beatmap = await enrichBeatmapMsd(await wasmParseSmDifficulty(content, index))
   beatmap.source_dir = sourceDirFromPath(pathOrContent)
   beatmap.source_file = pathOrContent
   if (allBeatmaps.length > 0) {
-    beatmap.available_difficulties = allBeatmaps.map(b => ({
-      name: b.difficulty_name,
-      keys: b.keys,
-      note_count: b.notes?.length || 0,
-      audio_filename: b.audio_filename || null,
-      difficulty_rating: b.difficulty_rating ?? null,
-    }))
+    const enriched = await Promise.all(allBeatmaps.map(enrichBeatmapMsd))
+    beatmap.available_difficulties = enriched.map(diffInfoFromBeatmap)
   }
   return beatmap
 }
@@ -275,11 +260,12 @@ export async function parseSmAll(pathOrContent: string): Promise<Beatmap[]> {
 
   const content = await readFileText(pathOrContent)
   const beatmaps = await wasmParseSmAll(content)
-  for (const bm of beatmaps) {
+  const enriched = await Promise.all(beatmaps.map(enrichBeatmapMsd))
+  for (const bm of enriched) {
     bm.source_dir = pathOrContent.split('/').slice(0, -1).join('/') || '.'
     bm.source_file = pathOrContent
   }
-  return beatmaps
+  return enriched
 }
 
 export async function convertBeatmap(
@@ -334,7 +320,7 @@ export async function expandDiffName(
     const { invoke } = await import('@tauri-apps/api/core')
     return await invoke<string>('expand_diff_name', { template, beatmap, config, rate })
   }
-  // Web fallback: use TS expansion (MSD won't be available without minacalc)
+  // Keep template expansion in TypeScript so the web path matches native output.
   const { expandDiffTemplate } = await import('../lib/diffTemplate')
   return expandDiffTemplate(template, beatmap, config, rate)
 }
