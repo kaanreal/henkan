@@ -4,6 +4,7 @@ pub mod parsers;
 pub mod cli_tui;
 #[cfg(feature = "minacalc")]
 pub mod msd;
+mod osu;
 
 #[cfg(feature = "minacalc")]
 fn try_compute_msd(bm: &Beatmap) -> Option<f64> {
@@ -2401,6 +2402,7 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_background_color(Some(tauri::window::Color(2, 6, 23, 255)));
             }
+            osu::spawn_watcher(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2430,7 +2432,11 @@ pub fn run() {
             download_mirror_osz,
             search_mirror,
             lookup_beatmap_set,
-            extract_osz_media
+            extract_osz_media,
+            osu::osu_status,
+            osu::osu_live,
+            osu::osu_read_map,
+            osu::osu_map_background
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -48,6 +48,12 @@ crossterm = "0.28"
 rand = "0.8"
 minacalc-rs = { version = "0.4", optional = true }
 
+[target.'cfg(windows)'.dependencies]
+rosu-mem = "3"
+winreg = "0.56"
+# Must match rosu-mem's HANDLE type so the watcher can close attachments.
+windows = { version = "0.48", features = ["Win32_Foundation"] }
+
 [profile.release]
 lto = true
 strip = true

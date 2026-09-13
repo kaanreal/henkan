@@ -19,6 +19,7 @@ import { MirrorDownloadWarning } from '../components/MirrorDownloadWarning'
 import { BulkConvertDialog } from '../components/BulkConvertDialog'
 import { PackBrowser } from '../components/PackBrowser'
 import { FallingArrows } from '../components/FallingArrows'
+import { OsuBackground, OsuMapPrompt } from '../components/OsuMapPrompt'
 import { PackSettingsDialog } from '../components/PackSettingsDialog'
 import { DiffPresetManager } from '../components/DiffPresetManager'
 import { UpdateDialog } from '../components/UpdateDialog'
@@ -44,6 +45,9 @@ import {
   type SkinInput,
 } from '../services/skinInput'
 import { detectSkinArchive } from '../services/skinConverter'
+import { useOsuLive } from '../hooks/useOsuLive'
+import { useOsuMapBackground } from '../hooks/useOsuMapBackground'
+import { osuReadMap } from '../lib/osuDesktop'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
@@ -238,6 +242,10 @@ export default function ConverterPage() {
   const [mirrorProgress, setMirrorProgress] = useState<MirrorProgress | null>(null)
   const [packConvertAllMode, setPackConvertAllMode] = useState(false)
   const [queueLoading, setQueueLoading] = useState(false)
+  const [osuHookBusy, setOsuHookBusy] = useState(false)
+  const { live: osuLive } = useOsuLive(isTauri())
+  const osuSelected = osuLive.connected ? osuLive.map : null
+  const osuBackgroundUrl = useOsuMapBackground(osuSelected)
 
   const routeSkinInput = useCallback(async (input: SkinInput): Promise<boolean> => {
     try {
@@ -571,6 +579,20 @@ export default function ConverterPage() {
     }
     await handleFilesSelected(paths)
   }, [handleFilesSelected, routeSkinInput, setError, t])
+
+  const handleConvertOsuMap = useCallback(async () => {
+    if (!osuSelected || osuHookBusy) return
+    setOsuHookBusy(true)
+    setError(null)
+    try {
+      const path = await osuReadMap(osuSelected.folder)
+      await handleMainFilesSelected([path])
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('converter.failedToParseFile'))
+    } finally {
+      setOsuHookBusy(false)
+    }
+  }, [handleMainFilesSelected, osuHookBusy, osuSelected, setError, t])
 
   const handleQueueSelect = useCallback(async (item: QueueItem) => {
     if (item.id === queueActiveId || !item.beatmap) return
@@ -1655,19 +1677,15 @@ export default function ConverterPage() {
           if (filePaths.length > 0) handleMainFilesSelected(filePaths)
         }}
       >
-        {mediaUrls.background && (
+        {(mediaUrls.background || osuBackgroundUrl) && (
           <div className="absolute inset-0 -z-10 overflow-hidden animate-bg-fade-in">
-            <div
-              className="w-full h-full bg-cover bg-center"
-              style={{
-                backgroundImage: `url(${mediaUrls.background})`,
-                filter: 'blur(20px) brightness(0.5) saturate(0.5)',
-              }}
-            />
+            {mediaUrls.background ? (
+              <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${mediaUrls.background})`, filter: 'blur(20px) brightness(0.5) saturate(0.5)' }} />
+            ) : <OsuBackground url={osuBackgroundUrl} />}
             <div className="absolute inset-0 bg-[#0c1a35]/45" />
           </div>
         )}
-        {!mediaUrls.background && (
+        {!mediaUrls.background && !osuBackgroundUrl && (
           <div className="absolute inset-0 -z-10 bg-surface-950" />
         )}
 
@@ -1747,6 +1765,9 @@ export default function ConverterPage() {
 
             {!packFolder && queueItems.length === 0 && !beatmap && !packLoading && (
               <>
+              {osuSelected && (
+                <OsuMapPrompt map={osuSelected} busy={osuHookBusy} onConvert={() => void handleConvertOsuMap()} />
+              )}
               <FallingArrows />
               <div className="flex flex-col items-center gap-4 w-full max-w-lg my-auto relative z-10">
                 <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
@@ -2147,5 +2168,3 @@ export default function ConverterPage() {
     </ErrorBoundary>
   )
 }
-
-
