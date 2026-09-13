@@ -8,3 +8,7 @@ export function buildTauriArgs(args) {
 
   return args;
 }
+
+export function buildTauriSpawnOptions(platform = process.platform) {
+  return { shell: platform === "win32" };
+}

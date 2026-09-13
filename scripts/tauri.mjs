@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildTauriArgs } from "./tauriCommand.mjs";
+import { buildTauriArgs, buildTauriSpawnOptions } from "./tauriCommand.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = buildTauriArgs(process.argv.slice(2));
@@ -14,7 +14,12 @@ if (process.platform === "darwin" && process.arch === "arm64") {
 }
 
 const command = process.platform === "win32" ? "tauri.cmd" : "tauri";
-const result = spawnSync(command, args, { cwd: root, env, stdio: "inherit" });
+const result = spawnSync(command, args, {
+  ...buildTauriSpawnOptions(process.platform),
+  cwd: root,
+  env,
+  stdio: "inherit",
+});
 
 if (result.error) throw result.error;
 process.exit(result.status ?? 1);
