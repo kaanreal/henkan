@@ -58,6 +58,15 @@ function getBpm(beatmap: Beatmap): string {
   return min === max ? String(min) : `${min}-${max}`
 }
 
+function getDifficultyRating(beatmap: Beatmap): number | null {
+  if (beatmap.difficulty_rating != null) return beatmap.difficulty_rating
+
+  const activeDifficulty = beatmap.available_difficulties.find(
+    difficulty => difficulty.name === beatmap.difficulty_name,
+  )
+  return activeDifficulty?.difficulty_rating ?? null
+}
+
 export function expandDiffTemplate(
   template: string,
   beatmap: Beatmap,
@@ -68,6 +77,7 @@ export function expandDiffTemplate(
 
   const rate = conversionRate ?? config.conversion_rate ?? 1
   const rateLabel = Math.abs(rate - 1) < 0.01 ? '' : `${rate.toFixed(2).replace(/\.?0+$/, '')}x`
+  const difficultyRating = getDifficultyRating(beatmap)
 
   const vars: Record<string, string> = {
     '<diff>': config.difficulty_name || beatmap.difficulty_name || '',
@@ -76,10 +86,10 @@ export function expandDiffTemplate(
     '<artist>': config.artist || beatmap.artist || '',
     '<bpm>': getBpm(beatmap),
     '<rate>': rateLabel,
-    '<msd>': beatmap.difficulty_rating != null
-      ? (beatmap.difficulty_rating % 1 === 0
-          ? String(Math.round(beatmap.difficulty_rating))
-          : beatmap.difficulty_rating.toFixed(2))
+    '<msd>': difficultyRating != null
+      ? (difficultyRating % 1 === 0
+          ? String(Math.round(difficultyRating))
+          : difficultyRating.toFixed(2))
       : '',
   }
 

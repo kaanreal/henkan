@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, relative } from 'node:path'
+import { encode as encodePng } from 'fast-png'
 import JSZip from 'jszip'
 
 const PNG = await readFile(join(process.cwd(), 'public', 'logo32.png'))
@@ -12,6 +13,8 @@ const profile = join(workspace, 'edge-profile')
 const osuPath = join(workspace, 'Fixture.osk')
 const etternaPath = join(workspace, 'FixtureEtterna.zip')
 const realOsuPath = join(workspace, 'RealOsu.osk')
+const issueSkinPath = process.env.HENKAN_ISSUE_SKIN || ''
+const issueSkinName = basename(issueSkinPath).replace(/\.(osk|zip)$/i, '')
 const realEtternaPath = join(workspace, "Kori'sPick.zip")
 const realClairPath = join(workspace, 'RealClair.zip')
 const realMyukaPath = join(workspace, 'RealMyuka.zip')
@@ -30,6 +33,20 @@ const realTekkitoSource = 'C:\\Users\\Kaan\\Downloads\\# - tekkito2 ft jb the vo
 const appUrl = 'http://127.0.0.1:4178/skin-converter'
 const debugPort = 9338
 
+function ellipsePng(width, height, centerX, centerY, radiusX, radiusY, outline) {
+  const data = new Uint8Array(width * height * 4)
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const distance = ((x + 0.5 - centerX) / radiusX) ** 2 + ((y + 0.5 - centerY) / radiusY) ** 2
+    if (distance > 1 || (outline && distance < 0.72)) continue
+    data.set([255, 255, 255, 255], (y * width + x) * 4)
+  }
+  return encodePng({ width, height, data, channels: 4, depth: 8 })
+}
+
+function emptyPng(width, height) {
+  return encodePng({ width, height, data: new Uint8Array(width * height * 4), channels: 4, depth: 8 })
+}
+
 async function makeFixtures() {
   const osu = new JSZip()
   osu.file('skin.ini', `[General]\nName: Fixture\nAuthor: Henkan test\nVersion: 2.5\n\n[Mania]\nKeys: 4\nColumnWidth: 64,64,64,64\n${[0, 1, 2, 3].flatMap((lane) => [
@@ -47,7 +64,7 @@ async function makeFixtures() {
   const etterna = new JSZip()
   etterna.file('NoteSkin.lua', `local ret = ... or {}
 ret.RedirTable = { Left = "Down", Down = "Down", Up = "Down", Right = "Down" }
-ret.PartsToRotate = { ["Tap Note"] = true, ["Hold Head Active"] = true, ["Receptor"] = true }
+ret.PartsToRotate = { ["Tap Note"] = true, ["Hold Head Active"] = true }
 ret.Rotate = { Left = 90, Down = 0, Up = 180, Right = -90 }
 if string.find(sElement, "Head") then sElement = "Tap Note" end
 return ret
@@ -55,10 +72,11 @@ return ret
   etterna.file('metrics.ini', '[Global]\nFallbackNoteSkin=common\n')
   etterna.file('Down Tap Note.lua', 'return Def.Sprite { Texture = "_arrow" }\n')
   etterna.file('Down Receptor.lua', 'return Def.Sprite { Texture = "_receptor" }\n')
-  etterna.file('_arrow 1x8.png', PNG)
-  etterna.file('_receptor.png', PNG)
+  etterna.file('_arrow.png', ellipsePng(150, 146, 75, 73, 69, 67, false))
+  etterna.file('_receptor.png', ellipsePng(128, 128, 64, 64, 44, 64, true))
   etterna.file('Down Hold Body Active.png', PNG)
-  etterna.file('Down Hold BottomCap Active.png', PNG)
+  etterna.file('Down Hold Topcap Active.png', ellipsePng(150, 73, 75, 72, 69, 36, false))
+  etterna.file('Down Hold BottomCap Active.png', emptyPng(150, 73))
   await writeFile(etternaPath, await etterna.generateAsync({ type: 'nodebuffer' }))
 
   if (existsSync(realOsuSource)) await zipDirectory(realOsuSource, realOsuPath)
@@ -89,6 +107,8 @@ function findBrowser() {
     'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
     'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
   ]
   return candidates.find(existsSync)
 }
@@ -152,6 +172,30 @@ async function setFile(cdp, filePath) {
   await evaluate(cdp, `document.querySelector('input[type=file]').dispatchEvent(new Event('change', { bubbles: true }))`)
 }
 
+async function captureScreenshot(cdp, destination) {
+  if (!destination) return
+  await waitFor(async () => evaluate(cdp, `(() => {
+    const stage = document.querySelector('.skin-preview__stage')?.getBoundingClientRect()
+    return Boolean(stage && [...document.querySelectorAll('.skin-preview__note, .skin-preview__hold')].some((node) => {
+      const box = node.getBoundingClientRect()
+      return Number(getComputedStyle(node).opacity) > 0 && box.bottom > stage.top && box.top < stage.bottom
+    }))
+  })()`), 'visible gameplay event')
+  await evaluate(cdp, `Promise.all([...document.querySelectorAll('.skin-preview__stage img')].map((image) => image.decode().catch(() => undefined)))`)
+  const width = Number(process.env.HENKAN_SCREENSHOT_WIDTH)
+  const height = Number(process.env.HENKAN_SCREENSHOT_HEIGHT)
+  if (width > 0 || height > 0) {
+    await cdp.call('Emulation.setDeviceMetricsOverride', {
+      width: width > 0 ? width : 1100,
+      height: height > 0 ? height : 750,
+      deviceScaleFactor: 1,
+      mobile: false,
+    })
+  }
+  const result = await cdp.call('Page.captureScreenshot', { format: 'png' })
+  await writeFile(destination, Buffer.from(result.data, 'base64'))
+}
+
 async function dropEtternaFolder(cdp) {
   const pngBase64 = PNG.toString('base64')
   await evaluate(cdp, `(() => {
@@ -212,30 +256,133 @@ async function assertResponsive(cdp) {
   await cdp.call('Emulation.setDeviceMetricsOverride', { width: 1100, height: 750, deviceScaleFactor: 1, mobile: false })
 }
 
-async function assertPreview(cdp, expectedHitPosition = 420) {
-  const preview = await waitFor(async () => evaluate(cdp, `(() => {
+async function assertPreview(cdp, expectedHitPosition = 420, expectReceptorFootprint = false) {
+  const preview = await waitFor(async () => evaluate(cdp, `(async () => {
     const stage = document.querySelector('.skin-preview__stage')
     if (!stage) return null
+    if (!stage.querySelector('.skin-preview__note') || !stage.querySelector('.skin-preview__hold')) return null
+    if ([...stage.querySelectorAll('.skin-preview__note, .skin-preview__hold')].every((node) => Number(getComputedStyle(node).opacity) <= 0)) return null
+    if (![...stage.querySelectorAll('.skin-preview__hold')].some((node) => Number(getComputedStyle(node).opacity) > 0 && node.querySelector('[data-preview-part="body"]').getBoundingClientRect().height > 0)) return null
+    const activeHoldAtStart = [...stage.querySelectorAll('.skin-preview__hold')].find((node) => {
+      const body = node.querySelector('[data-preview-part="body"]')
+      return Number(getComputedStyle(node).opacity) > 0 && body && body.getBoundingClientRect().height > 0
+    })
+    if (!activeHoldAtStart) return null
+    const activeHoldParts = ['tail', 'body', 'head'].map((part) => {
+      const rect = activeHoldAtStart.querySelector('[data-preview-part="' + part + '"]').getBoundingClientRect()
+      return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), width: Math.round(rect.width) }
+    })
+    const images = [...stage.querySelectorAll('img')]
+    if (images.some((image) => !image.complete || image.naturalWidth < 1)) return null
+    await Promise.all(images.map((image) => image.decode()))
+    const visibleBounds = (image) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = image.naturalWidth
+      canvas.height = image.naturalHeight
+      const context = canvas.getContext('2d', { willReadFrequently: true })
+      context.drawImage(image, 0, 0)
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+      let minX = canvas.width
+      let minY = canvas.height
+      let maxX = -1
+      let maxY = -1
+      for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+        if (pixels[(y * canvas.width + x) * 4 + 3] <= 4) continue
+        minX = Math.min(minX, x)
+        minY = Math.min(minY, y)
+        maxX = Math.max(maxX, x)
+        maxY = Math.max(maxY, y)
+      }
+      return { width: maxX - minX + 1, height: maxY - minY + 1 }
+    }
+    const note = [...stage.querySelectorAll('.skin-preview__note')].find((node) => Number(getComputedStyle(node).opacity) > 0) || stage.querySelector('.skin-preview__note')
+    const receptor = stage.querySelector('.skin-preview__receptor')
+    const hold = activeHoldAtStart || stage.querySelector('.skin-preview__hold')
+    const holdTail = stage.querySelector('.skin-preview__hold-tail')
     return {
       hitPosition: Number(stage.dataset.hitPosition),
+      columnWidth: Number(stage.dataset.columnWidth),
+      stageWidth: Math.round(stage.getBoundingClientRect().width),
+      stageHeight: Math.round(stage.getBoundingClientRect().height),
+      stageBackground: getComputedStyle(stage).backgroundColor,
+      stageRadius: Number.parseFloat(getComputedStyle(stage).borderTopLeftRadius) || 0,
+      noteAnimation: note ? getComputedStyle(note).animationName : '',
+      holdAnimation: hold ? getComputedStyle(hold).animationName : '',
+      receptorGuideLine: getComputedStyle(stage, '::after').content,
+      visibleEventCounts: [...stage.querySelectorAll('.skin-preview__lane')].map((lane) => [...lane.querySelectorAll('.skin-preview__note, .skin-preview__hold')].filter((node) => Number(getComputedStyle(node).opacity) > 0).length),
+      laneWidth: Math.round(stage.querySelector('.skin-preview__lane').getBoundingClientRect().width),
       lanes: stage.querySelectorAll('.skin-preview__lane').length,
-      images: stage.querySelectorAll('img').length,
-      brokenImages: [...stage.querySelectorAll('img')].filter((node) => !node.complete || node.naturalWidth < 1).length,
+      images: images.length,
+      brokenImages: images.filter((node) => !node.complete || node.naturalWidth < 1).length,
+      noteNatural: note ? [note.naturalWidth, note.naturalHeight] : null,
+      receptorNatural: receptor ? [receptor.naturalWidth, receptor.naturalHeight] : null,
       receptorTops: [...stage.querySelectorAll('.skin-preview__receptor')].map((node) => Math.round(node.getBoundingClientRect().top)),
-      holdParts: ['tail', 'body', 'head'].map((part) => {
-        const rect = stage.querySelector('.skin-preview__hold-' + part).getBoundingClientRect()
-        return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), width: Math.round(rect.width) }
-      }),
+      noteBounds: note ? visibleBounds(note) : null,
+      receptorBounds: receptor ? visibleBounds(receptor) : null,
+      holdTailBounds: holdTail ? visibleBounds(holdTail) : null,
+      holdParts: activeHoldParts,
     }
   })()`), 'skin gameplay preview')
   const receptorSpread = Math.max(...preview.receptorTops) - Math.min(...preview.receptorTops)
   const holdWidthSpread = Math.max(...preview.holdParts.map((part) => part.width)) - Math.min(...preview.holdParts.map((part) => part.width))
-  const holdHasGapOrOverlap = Math.abs(preview.holdParts[0].bottom - preview.holdParts[1].top) > 1
-    || Math.abs(preview.holdParts[1].bottom - preview.holdParts[2].top) > 1
+  const holdBodyMissing = !preview.holdParts[1] || preview.holdParts[1].bottom <= preview.holdParts[1].top
+  const receptorSizeMismatch = expectReceptorFootprint && (!preview.noteBounds || !preview.receptorBounds
+    || Math.abs(preview.noteBounds.width - preview.receptorBounds.width) / preview.noteBounds.width > 0.08
+    || Math.abs(preview.noteBounds.height - preview.receptorBounds.height) / preview.noteBounds.height > 0.08)
+  const holdTailMissing = !preview.holdTailBounds || preview.holdTailBounds.width < 2 || preview.holdTailBounds.height < 2
+  const stablePlayfieldMismatch = preview.stageHeight < 360 || preview.stageHeight > 400
+    || preview.stageRadius > 1 || preview.stageBackground !== 'rgb(0, 0, 0)'
+    || preview.noteAnimation !== 'none' || preview.holdAnimation !== 'none'
+    || preview.receptorGuideLine !== 'none' || Math.max(...preview.visibleEventCounts) > 1
   if (preview.hitPosition !== expectedHitPosition || preview.lanes !== 4 || preview.images < 7 || preview.brokenImages
-    || receptorSpread > 1 || holdWidthSpread > 1 || holdHasGapOrOverlap) {
+    || receptorSpread > 1 || holdWidthSpread > 1 || holdBodyMissing || receptorSizeMismatch || holdTailMissing || stablePlayfieldMismatch) {
     throw new Error(`Skin preview is incomplete: ${JSON.stringify(preview)}`)
   }
+  return preview
+}
+
+async function assertHoldFinishes(cdp) {
+  const finished = await evaluate(cdp, `(async () => {
+    const stage = document.querySelector('.skin-preview__stage')
+    if (!stage) return false
+    const hold = [...stage.querySelectorAll('.skin-preview__hold')].find((node) => {
+      const body = node.querySelector('[data-preview-part="body"]')
+      return Number(getComputedStyle(node).opacity) > 0 && body && body.getBoundingClientRect().height > 0
+    })
+    if (!hold) return false
+    const deadline = performance.now() + 3000
+    while (performance.now() < deadline) {
+      if (Number(getComputedStyle(hold).opacity) <= 0) return true
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    return Number(getComputedStyle(hold).opacity) <= 0
+  })()`)
+  if (!finished) throw new Error('Skin preview hold did not finish within its tail duration')
+}
+
+async function assertHoldTailJoin(cdp) {
+  const join = await evaluate(cdp, `(async () => {
+    const deadline = performance.now() + 15000
+    while (performance.now() < deadline) {
+      const stage = document.querySelector('.skin-preview__stage')
+      if (!stage) return null
+      const stageBox = stage.getBoundingClientRect()
+      for (const hold of stage.querySelectorAll('.skin-preview__hold')) {
+        const body = hold.querySelector('[data-preview-part="body"]')
+        const tail = hold.querySelector('[data-preview-part="tail"]')
+        if (Number(getComputedStyle(hold).opacity) <= 0 || Number(getComputedStyle(tail).opacity) <= 0) continue
+        const bodyBox = body.getBoundingClientRect()
+        const tailBox = tail.getBoundingClientRect()
+        if (bodyBox.height > 2 && tailBox.top >= stageBox.top && tailBox.bottom <= stageBox.bottom) {
+          return { gap: Math.abs(tailBox.bottom - bodyBox.top), tailTop: tailBox.top, bodyTop: bodyBox.top }
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    return null
+  })()`)
+  if (!join) throw new Error('Skin preview never showed a complete long-note tail')
+  if (join.gap > 2) throw new Error(`Skin preview long-note tail is cut off from its body: ${JSON.stringify(join)}`)
 }
 
 async function setHitPosition(cdp, value) {
@@ -247,6 +394,17 @@ async function setHitPosition(cdp, value) {
     input.dispatchEvent(new Event('change', { bubbles: true }))
   })()`)
   await waitFor(async () => evaluate(cdp, `document.querySelector('.skin-preview__stage')?.dataset.hitPosition === '${value}'`), 'updated hit position preview')
+}
+
+async function setColumnWidth(cdp, value) {
+  await evaluate(cdp, `(() => {
+    const input = document.querySelector('[data-column-width-input]')
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+    setter.call(input, ${value})
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  })()`)
+  await waitFor(async () => evaluate(cdp, `document.querySelector('.skin-preview__stage')?.dataset.columnWidth === '${value}'`), 'updated column width preview')
 }
 
 async function waitForReport(cdp, expectedName) {
@@ -360,7 +518,7 @@ async function rowOpaquePixels(cdp, data, y) {
   })()`)
 }
 
-async function assertOsuArchive(cdp, filePath, { rotated = false, kori = false, clairpis = false, myuka = false, splitHolds = false, expectedHitPosition = 420 } = {}) {
+async function assertOsuArchive(cdp, filePath, { rotated = false, kori = false, clairpis = false, myuka = false, splitHolds = false, expectLongNoteCap = false, expectedHitPosition = 420 } = {}) {
   const archive = await assertArchive(filePath, [
     'skin.ini', '_blank.png', 'mania/notes/1/1.png', 'mania/notes/4/4.png',
     splitHolds ? 'mania/notes/ln/ln1-1.png' : 'mania/notes/ln/ln1.png',
@@ -413,10 +571,32 @@ async function assertOsuArchive(cdp, filePath, { rotated = false, kori = false, 
     throw new Error('Generated osu! skin retained template gameplay assets that should have been replaced.')
   }
   const notes = await Promise.all([1, 2, 3, 4].map((lane) => archive.file(`mania/notes/${lane}/${lane}.png`).async('uint8array')))
+  const firstNoteSize = pngSize(notes[0])
+  const firstNoteBounds = await alphaBounds(cdp, notes[0])
+  const firstReceptor = await archive.file('mania/receptors/left.png').async('uint8array')
+  const firstReceptorSize = pngSize(firstReceptor)
+  const firstReceptorBounds = await alphaBounds(cdp, firstReceptor)
+  const noteWidthRatio = (firstNoteBounds.maxX - firstNoteBounds.minX + 1) / firstNoteSize.width
+  const noteHeightRatio = (firstNoteBounds.maxY - firstNoteBounds.minY + 1) / firstNoteSize.height
+  const receptorWidthRatio = (firstReceptorBounds.maxX - firstReceptorBounds.minX + 1) / firstReceptorSize.width
+  // osu!'s key image has a tall 284px canvas, but only its 102px gameplay
+  // artwork band is scaled against the note footprint.
+  const receptorHeightRatio = (firstReceptorBounds.maxY - firstReceptorBounds.minY + 1) / 102
+  if (Math.abs(noteWidthRatio - receptorWidthRatio) > 0.025 || Math.abs(noteHeightRatio - receptorHeightRatio) > 0.025) {
+    throw new Error(`Exported receptor does not share the note footprint: note=${JSON.stringify({ width: noteWidthRatio, height: noteHeightRatio })}, receptor=${JSON.stringify({ width: receptorWidthRatio, height: receptorHeightRatio })}`)
+  }
   for (let lane = 0; lane < 4; lane++) {
     const headPath = ini.match(new RegExp(`^NoteImage${lane}H:\\s*(.+)$`, 'm'))?.[1].trim()
     if (!headPath || !archive.file(`${headPath}.png`)) {
       throw new Error(`Etterna hold head is missing in osu! lane ${lane + 1}.`)
+    }
+  }
+  if (expectLongNoteCap) {
+    const tailPath = ini.match(/^NoteImage0T:\s*(.+)$/m)?.[1].trim()
+    const tail = tailPath ? await archive.file(`${tailPath}.png`)?.async('uint8array') : null
+    const tailBounds = tail ? await alphaBounds(cdp, tail) : null
+    if (!tailBounds || tailBounds.maxX < tailBounds.minX || tailBounds.maxY < tailBounds.minY) {
+      throw new Error('Converted long note is missing its visible release cap.')
     }
   }
   if (rotated && Buffer.from(notes[0]).equals(Buffer.from(notes[1]))) {
@@ -659,6 +839,14 @@ async function assertSheepEtterna(cdp, filePath) {
 
 async function killTree(process) {
   if (!process?.pid) return
+  if (globalThis.process.platform !== 'win32') {
+    try {
+      globalThis.process.kill(-process.pid, 'SIGTERM')
+    } catch {
+      try { globalThis.process.kill(process.pid, 'SIGTERM') } catch { /* already exited */ }
+    }
+    return
+  }
   await new Promise((resolve) => {
     const killer = spawn('taskkill.exe', ['/PID', String(process.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
     killer.once('close', resolve)
@@ -669,7 +857,9 @@ async function killTree(process) {
 await makeFixtures()
 const browserPath = findBrowser()
 if (!browserPath) throw new Error('Edge or Chrome is required for this test.')
-const server = spawn('cmd.exe', ['/d', '/s', '/c', 'npm.cmd run dev -- --host 127.0.0.1 --port 4178'], { cwd: process.cwd(), stdio: 'ignore', windowsHide: true })
+const server = process.platform === 'win32'
+  ? spawn('cmd.exe', ['/d', '/s', '/c', 'npm.cmd run dev -- --host 127.0.0.1 --port 4178'], { cwd: process.cwd(), stdio: 'ignore', windowsHide: true })
+  : spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '4178'], { cwd: process.cwd(), stdio: 'ignore', detached: true })
 let browser
 let cdp
 try {
@@ -697,7 +887,15 @@ try {
     throw new Error('Skin converter must not expose a manual direction switch.')
   }
 
-  if (process.env.HENKAN_ONLY_TEKKITO) {
+  if (issueSkinPath) {
+    await setFile(cdp, issueSkinPath)
+    await waitForReport(cdp, issueSkinName)
+    await assertPreview(cdp, 420, true)
+    await captureScreenshot(cdp, process.env.HENKAN_SCREENSHOT)
+    await clickConvert(cdp)
+    const convertedIssueSkin = await newestDownload('.osk', issueSkinName)
+    await assertOsuArchive(cdp, convertedIssueSkin, { expectLongNoteCap: true, expectedHitPosition: 420 })
+  } else if (process.env.HENKAN_ONLY_TEKKITO) {
     if (!existsSync(realTekkitoPath)) throw new Error('The tekkito regression skin is unavailable.')
     await setFile(cdp, realTekkitoPath)
     await waitForReport(cdp, '# - tekkito2 ft jb the voice tu perfume a chanel')
@@ -718,10 +916,22 @@ try {
 
   await setFile(cdp, etternaPath)
   await waitForReport(cdp, 'FixtureEtterna')
-  await assertPreview(cdp)
+  const defaultColumnPreview = await assertPreview(cdp, 420, true)
+  await assertHoldFinishes(cdp)
+  await assertHoldTailJoin(cdp)
+  await setColumnWidth(cdp, 40)
+  const narrowColumnPreview = await assertPreview(cdp, 420, true)
+  await setColumnWidth(cdp, 140)
+  const wideColumnPreview = await assertPreview(cdp, 420, true)
+  if (narrowColumnPreview.stageWidth >= defaultColumnPreview.stageWidth - 2
+    || wideColumnPreview.stageWidth <= defaultColumnPreview.stageWidth + 2) {
+    throw new Error(`Column width did not resize the gameplay preview: ${JSON.stringify({ default: defaultColumnPreview.stageWidth, narrow: narrowColumnPreview.stageWidth, wide: wideColumnPreview.stageWidth })}`)
+  }
+  await setColumnWidth(cdp, 70)
+  await assertPreview(cdp, 420, true)
   await assertResponsive(cdp)
   await setHitPosition(cdp, 360)
-  await assertPreview(cdp, 360)
+  await assertPreview(cdp, 360, true)
   await clickConvert(cdp)
   const fixtureOsu = await newestDownload('.osk')
   if (basename(fixtureOsu) !== 'FixtureEtterna.osk') throw new Error(`Unexpected osu! output name: ${basename(fixtureOsu)}`)
@@ -826,7 +1036,9 @@ try {
   await waitForReport(cdp, 'DroppedEtterna')
   }
 
-  console.log(process.env.HENKAN_ONLY_TEKKITO
+  console.log(issueSkinPath
+    ? 'Skin converter issue regression passed: receptor and note footprints match through preview and export'
+    : process.env.HENKAN_ONLY_TEKKITO
     ? 'Skin converter tekkito regression passed: tall PNG decode, preview, and osu!mania to Etterna conversion'
     : process.env.HENKAN_SKIP_INSTALLED
     ? 'Skin converter E2E passed: synthetic fixtures, auto-routing, preview, HitPosition, naming, and responsive layouts'

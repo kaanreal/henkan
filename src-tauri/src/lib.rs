@@ -30,6 +30,16 @@ use std::path::{Path, PathBuf};
 use tauri::{Emitter, Manager};
 use tauri_plugin_aptabase::EventTracker;
 
+fn diff_info_from_beatmap(beatmap: &Beatmap) -> DiffInfo {
+    DiffInfo {
+        name: beatmap.difficulty_name.clone(),
+        keys: beatmap.keys,
+        note_count: beatmap.notes.len(),
+        audio_filename: Some(beatmap.audio_filename.clone()),
+        difficulty_rating: beatmap.difficulty_rating,
+    }
+}
+
 // ── Public CLI API ─────────────────────────────────────────
 
 pub fn cli_parse_file(path: &str, direction: &str) -> Result<Beatmap, String> {
@@ -53,13 +63,8 @@ pub fn cli_parse_file(path: &str, direction: &str) -> Result<Beatmap, String> {
                 .map_err(|e| format!("Parse error: {}", e))?;
             beatmap.source_dir = dir;
             beatmap.source_file = path.to_string();
-            beatmap.available_difficulties.push(DiffInfo {
-                name: beatmap.difficulty_name.clone(),
-                keys: beatmap.keys,
-                note_count: beatmap.notes.len(),
-                audio_filename: Some(beatmap.audio_filename.clone()),
-                difficulty_rating: None,
-            });
+            beatmap.available_difficulties
+                .push(diff_info_from_beatmap(&beatmap));
             beatmap.compute_duration();
             Ok(beatmap)
         }
@@ -275,13 +280,10 @@ pub fn extract_osz_all(path: &str) -> Result<OszResult, String> {
     let sorted_entries: Vec<(String, String)> = parsed.iter().map(|p| (p.0.clone(), p.1.clone())).collect();
 
     // Collect all difficulties (1:1 with sorted_entries)
-    let diffs: Vec<DiffInfo> = parsed.iter().map(|p| DiffInfo {
-        name: p.2.difficulty_name.clone(),
-        keys: p.2.keys,
-        note_count: p.2.notes.len(),
-        audio_filename: Some(p.2.audio_filename.clone()),
-        difficulty_rating: None,
-    }).collect();
+    let diffs: Vec<DiffInfo> = parsed
+        .iter()
+        .map(|p| diff_info_from_beatmap(&p.2))
+        .collect();
 
     beatmap.available_difficulties = diffs;
     beatmap.source_file = path.to_string();
@@ -399,13 +401,8 @@ fn parse_file(path: String, direction: String) -> Result<Beatmap, String> {
                 .map_err(|e| format!("Parse error: {}", e))?;
             beatmap.source_dir = dir;
             beatmap.source_file = path.clone();
-            beatmap.available_difficulties.push(DiffInfo {
-                name: beatmap.difficulty_name.clone(),
-                keys: beatmap.keys,
-                note_count: beatmap.notes.len(),
-                audio_filename: Some(beatmap.audio_filename.clone()),
-                difficulty_rating: None,
-            });
+            beatmap.available_difficulties
+                .push(diff_info_from_beatmap(&beatmap));
             beatmap.compute_duration();
             Ok(beatmap)
         }
@@ -1256,6 +1253,7 @@ fn scan_songs_folder(folder: String) -> Result<Vec<PackEntry>, String> {
                     if let Ok(content) = fs::read_to_string(&path) {
                         match parsers::osu::parse_osu(&content) {
                             Ok(bm) => {
+                                let difficulty = diff_info_from_beatmap(&bm);
                                 let source_dir = path.parent()
                                     .unwrap_or(Path::new(""))
                                     .to_string_lossy()
@@ -1267,13 +1265,7 @@ fn scan_songs_folder(folder: String) -> Result<Vec<PackEntry>, String> {
                                     artist: bm.artist,
                                     background_filename: bm.background_filename,
                                     banner_filename: None,
-                                    available_difficulties: vec![DiffInfo {
-                                        name: bm.difficulty_name,
-                                        keys: bm.keys,
-                                        note_count: bm.notes.len(),
-                                        audio_filename: Some(bm.audio_filename),
-                                        difficulty_rating: None,
-                                    }],
+                                    available_difficulties: vec![difficulty],
                                 });
                             }
                             Err(e) => {
@@ -2496,6 +2488,19 @@ SliderTickRate:1
         assert_eq!(entries[0].available_difficulties[0].name, "EZ");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_diff_info_preserves_difficulty_rating() {
+        let mut beatmap = Beatmap::new(4);
+        beatmap.difficulty_name = "Hard".to_string();
+        beatmap.audio_filename = "audio.mp3".to_string();
+        beatmap.difficulty_rating = Some(47.97);
+
+        let info = diff_info_from_beatmap(&beatmap);
+
+        assert_eq!(info.name, "Hard");
+        assert_eq!(info.difficulty_rating, Some(47.97));
     }
 
     #[test]

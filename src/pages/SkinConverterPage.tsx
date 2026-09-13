@@ -28,6 +28,7 @@ import {
   MIN_OSU_COLUMN_WIDTH,
   MIN_OSU_HIT_POSITION,
 } from '../services/skinConverter'
+import { resolvePreviewEventWindow } from '../services/skinPreviewTiming'
 import type { SkinDirection, SkinInspection, SkinPreview } from '../types/skin'
 
 type SkinPreviewUrls = {
@@ -35,6 +36,19 @@ type SkinPreviewUrls = {
   hitPosition?: number
   columnWidth?: number
 }
+
+type PreviewEvent = {
+  id: string
+  lane: number
+  kind: 'tap' | 'hold'
+  timeMs: number
+  holdEndMs?: number
+}
+
+const SKIN_PREVIEW_CYCLE_MS = 12000
+const SKIN_PREVIEW_LOOK_AHEAD_MS = 500
+const SKIN_PREVIEW_SCROLL_H_RATIO = 1.25
+const SKIN_PREVIEW_BAR_H_RATIO = 0.3
 
 function previewObjectUrls(preview: SkinPreview): SkinPreviewUrls {
   return {
@@ -95,9 +109,17 @@ export function SkinConverterPage() {
   const [dragging, setDragging] = useState(false)
   const [status, setStatus] = useState<'idle' | 'inspecting' | 'converting' | 'complete'>('idle')
   const [error, setError] = useState<string | null>(null)
+  const [previewEvents, setPreviewEvents] = useState<PreviewEvent[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+  const previewStageRef = useRef<HTMLDivElement>(null)
   const previewUrlsRef = useRef<SkinPreviewUrls | null>(null)
   const selectedInputRef = useRef<SkinInput | null>(null)
+  const previewEventElementsRef = useRef(new Map<string, HTMLElement>())
+
+  const registerPreviewEventElement = useCallback((id: string, element: HTMLElement | null) => {
+    if (element) previewEventElementsRef.current.set(id, element)
+    else previewEventElementsRef.current.delete(id)
+  }, [])
 
   const replacePreview = useCallback((nextPreview: SkinPreview | null) => {
     revokePreviewObjectUrls(previewUrlsRef.current)
@@ -231,6 +253,44 @@ export function SkinConverterPage() {
     }
   }, [loadInput, t])
 
+  useEffect(() => {
+    let cancelled = false
+    previewEventElementsRef.current.clear()
+
+    if (!previewUrls) {
+      window.setTimeout(() => {
+        if (!cancelled) setPreviewEvents([])
+      }, 0)
+      return () => { cancelled = true }
+    }
+
+    const events: PreviewEvent[] = []
+    for (let lane = 0; lane < 4; lane++) {
+      let timeMs = 400 + Math.random() * 500
+      let eventIndex = 0
+      while (timeMs < SKIN_PREVIEW_CYCLE_MS - 1800) {
+        const kind = eventIndex === 0 || Math.random() < 0.28 ? 'hold' : 'tap'
+        const holdLength = kind === 'hold' ? 700 + Math.random() * 900 : 0
+        events.push({
+          id: `preview-${lane}-${eventIndex}`,
+          lane,
+          kind,
+          timeMs,
+          holdEndMs: kind === 'hold' ? timeMs + holdLength : undefined,
+        })
+        timeMs += holdLength + 500 + Math.random() * 650
+        eventIndex++
+    }
+    }
+    const updateTimer = window.setTimeout(() => {
+      if (!cancelled) setPreviewEvents(events)
+    }, 0)
+    return () => {
+      cancelled = true
+      window.clearTimeout(updateTimer)
+    }
+  }, [previewUrls])
+
   const mapped = inspection?.mappings.filter((item) => item.status === 'mapped').length || 0
   const fallbacks = inspection?.mappings.filter((item) => item.status === 'fallback').length || 0
   const missing = inspection?.mappings.filter((item) => item.status === 'missing').length || 0
@@ -238,7 +298,79 @@ export function SkinConverterPage() {
   const previewHitPosition = direction === 'etterna-to-osu'
     ? hitPosition
     : previewUrls?.hitPosition || DEFAULT_OSU_HIT_POSITION
-  const previewStyle = { '--hit-y': `${previewHitPosition / 480 * 100}%` } as CSSProperties
+  const previewColumnWidth = direction === 'etterna-to-osu'
+    ? columnWidth
+    : previewUrls?.columnWidth || DEFAULT_OSU_COLUMN_WIDTH
+  const previewStyle = {
+    '--hit-y': `${previewHitPosition / 480 * 100}%`,
+    '--column-scale': previewColumnWidth / DEFAULT_OSU_COLUMN_WIDTH,
+  } as CSSProperties
+
+  useEffect(() => {
+    if (!previewUrls || !previewEvents.length) return
+    const startedAt = performance.now()
+    let frame = 0
+
+    const update = () => {
+      const stage = previewStageRef.current
+      if (!stage) {
+        frame = requestAnimationFrame(update)
+        return
+      }
+      const stageWidth = stage.clientWidth
+      const stageHeight = stage.clientHeight
+      const hitY = stageHeight * (previewHitPosition / 480)
+      const columnWidth = stageWidth / 4
+      const barHeight = columnWidth * SKIN_PREVIEW_BAR_H_RATIO
+      const scrollHeight = Math.max(
+        Math.min(stageHeight * SKIN_PREVIEW_SCROLL_H_RATIO, stageWidth * 1.8),
+        hitY + barHeight,
+      )
+      const elapsedMs = performance.now() - startedAt
+
+      for (const event of previewEvents) {
+        const root = previewEventElementsRef.current.get(event.id)
+        if (!root) continue
+        const { headDelta, tailDelta } = resolvePreviewEventWindow(
+          event.timeMs,
+          event.holdEndMs,
+          elapsedMs,
+          SKIN_PREVIEW_CYCLE_MS,
+          SKIN_PREVIEW_LOOK_AHEAD_MS,
+        )
+        const headY = hitY - (headDelta / SKIN_PREVIEW_LOOK_AHEAD_MS) * scrollHeight
+
+        if (event.kind === 'tap') {
+          root.style.top = `${headY}px`
+          root.style.opacity = headDelta >= 0 && headDelta <= SKIN_PREVIEW_LOOK_AHEAD_MS ? '1' : '0'
+          continue
+        }
+
+        const tailY = hitY - (tailDelta / SKIN_PREVIEW_LOOK_AHEAD_MS) * scrollHeight
+        const bodyTop = Math.max(0, Math.min(headY, tailY))
+        const bodyBottom = Math.min(hitY, Math.max(headY, tailY))
+        const bodyHeight = Math.max(0, bodyBottom - bodyTop)
+        const head = root.querySelector<HTMLElement>('[data-preview-part="head"]')
+        const body = root.querySelector<HTMLElement>('[data-preview-part="body"]')
+        const tail = root.querySelector<HTMLElement>('[data-preview-part="tail"]')
+        root.style.opacity = tailDelta >= 0 && headDelta <= SKIN_PREVIEW_LOOK_AHEAD_MS && bodyHeight > 0 ? '1' : '0'
+        body?.style.setProperty('--hold-body-top', `${bodyTop}px`)
+        body?.style.setProperty('--hold-body-height', `${bodyHeight}px`)
+        if (head) {
+          head.style.top = `${headY}px`
+          head.style.opacity = headDelta >= 0 && headDelta <= SKIN_PREVIEW_LOOK_AHEAD_MS ? '1' : '0'
+        }
+        if (tail) {
+          tail.style.top = `${tailY}px`
+          tail.style.opacity = tailDelta >= 0 && tailDelta <= SKIN_PREVIEW_LOOK_AHEAD_MS ? '1' : '0'
+        }
+      }
+      frame = requestAnimationFrame(update)
+    }
+
+    frame = requestAnimationFrame(update)
+    return () => cancelAnimationFrame(frame)
+  }, [previewColumnWidth, previewEvents, previewHitPosition, previewUrls])
 
   return (
     <div className="skin-page h-full flex flex-col bg-surface-950 text-surface-100 overflow-hidden">
@@ -363,28 +495,36 @@ export function SkinConverterPage() {
 
                   <div
                     className="skin-preview__stage"
+                    ref={previewStageRef}
                     style={previewStyle}
                     data-hit-position={previewHitPosition}
+                    data-column-width={previewColumnWidth}
                     aria-label={t('skinConverter.previewAria', { position: previewHitPosition })}
                   >
                     {previewUrls.lanes.map((lane, index) => (
                       <div className="skin-preview__lane" key={index}>
-                        {index === 1 ? (
-                          <div className="skin-preview__hold" aria-hidden="true">
-                            <img src={lane.holdTail} className="skin-preview__hold-tail" alt="" draggable="false" />
-                            <img src={lane.holdBody} className="skin-preview__hold-body" alt="" draggable="false" />
-                            <img src={lane.holdHead} className="skin-preview__hold-head" alt="" draggable="false" />
+                        {previewEvents.filter((event) => event.lane === index).map((event) => event.kind === 'hold' ? (
+                          <div
+                            className="skin-preview__hold"
+                            key={event.id}
+                            ref={(element) => registerPreviewEventElement(event.id, element)}
+                            aria-hidden="true"
+                          >
+                            <img src={lane.holdTail} data-preview-part="tail" className="skin-preview__hold-tail" alt="" draggable="false" />
+                            <img src={lane.holdBody} data-preview-part="body" className="skin-preview__hold-body" alt="" draggable="false" />
+                            <img src={lane.holdHead} data-preview-part="head" className="skin-preview__hold-head" alt="" draggable="false" />
                           </div>
                         ) : (
                           <img
+                            key={event.id}
+                            ref={(element) => registerPreviewEventElement(event.id, element)}
                             src={lane.note}
                             className="skin-preview__note"
-                            style={{ '--note-y': `${Math.max(8, previewHitPosition / 480 * 100 - [32, 0, 24, 42][index])}%` } as CSSProperties}
                             alt=""
                             draggable="false"
                             aria-hidden="true"
                           />
-                        )}
+                        ))}
                         <img src={lane.receptor} className="skin-preview__receptor" alt="" draggable="false" aria-hidden="true" />
                       </div>
                     ))}
@@ -419,6 +559,7 @@ export function SkinConverterPage() {
                           value={columnWidth}
                           onChange={(event) => setColumnWidth(Number(event.target.value))}
                           aria-label={t('skinConverter.adjustColumnWidthAria')}
+                          data-column-width-input
                         />
                         <span aria-hidden="true">{MAX_OSU_COLUMN_WIDTH}</span>
                         {columnWidth !== DEFAULT_OSU_COLUMN_WIDTH && (

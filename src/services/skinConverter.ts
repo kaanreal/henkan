@@ -704,7 +704,9 @@ async function inspectEtterna(archive: LoadedArchive): Promise<{
       `${base} Hold Body Inactive`,
       'Fallback Hold Body active',
     ], ['Fallback Hold Body Active'], column)
-    const tail = await etternaAsset(archive.files, base, 'Hold BottomCap Active', [
+    const tail = await etternaAsset(archive.files, base, 'Hold TopCap Active', [
+      `${base} Hold TopCap Inactive`,
+      `${base} Hold BottomCap Active`,
       `${base} Hold BottomCap Inactive`,
       `${base} Hold Tail Active`,
       `${base} Hold Tail Inactive`,
@@ -940,6 +942,34 @@ async function visibleBounds(asset: RasterAsset): Promise<{ minX: number; minY: 
     : { minX: 0, minY: 0, width: asset.width, height: asset.height }
 }
 
+async function fitReceptorToNote(receptor: RasterAsset, note: RasterAsset): Promise<RasterAsset> {
+  const receptorBounds = await visibleBounds(receptor)
+  const noteBounds = await visibleBounds(note)
+  const image = await decodeImage(receptor.blob)
+  const canvas = document.createElement('canvas')
+  const canvasSize = Math.max(note.width, note.height)
+  canvas.width = canvasSize
+  canvas.height = canvasSize
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error(t('services.skin.canvasUnavailable'))
+  // osu! uses a square note footprint for the falling note and receptor. Fit
+  // the receptor artwork into that same visible box instead of preserving a
+  // tall Etterna receptor's aspect ratio.
+  context.drawImage(
+    image.source,
+    receptorBounds.minX, receptorBounds.minY, receptorBounds.width, receptorBounds.height,
+    noteBounds.minX + Math.floor((canvasSize - note.width) / 2),
+    noteBounds.minY + Math.floor((canvasSize - note.height) / 2),
+    noteBounds.width,
+    noteBounds.height,
+  )
+  image.close()
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((value) => value ? resolve(value) : reject(new Error(t('services.skin.cropFailed', { name: 'receptor' }))), 'image/png')
+  })
+  return { blob, width: canvas.width, height: canvas.height }
+}
+
 async function isTwoAxisSymmetric(asset: RasterAsset): Promise<boolean> {
   const image = await decodeImage(asset.blob)
   const canvas = document.createElement('canvas')
@@ -1026,18 +1056,16 @@ async function keyFromReceptor(
   const sourceHeight = receptorBounds.height
   // osu!mania scales KeyImage from its conventional 100px-wide canvas to
   // the configured column width, while notes are scaled from their own
-  // canvas. Compensate for both canvas scales so their visible widths meet
-  // in-game, without distorting the receptor's aspect ratio.
-  const targetArtworkWidth = Math.min(
+  // canvas. Use the note's visible footprint for both axes so an Etterna
+  // receptor cannot remain as a tall oval beside a square falling note.
+  const drawWidth = Math.min(
     OSU_RECEPTOR_LAYOUT.artworkWidth,
-    tapBounds.width * OSU_RECEPTOR_LAYOUT.width / tap.width,
+    Math.max(1, Math.round(tapBounds.width * OSU_RECEPTOR_LAYOUT.width / tap.width)),
   )
-  const scale = Math.min(
-    targetArtworkWidth / sourceWidth,
-    OSU_RECEPTOR_LAYOUT.artworkHeight / sourceHeight,
+  const drawHeight = Math.min(
+    OSU_RECEPTOR_LAYOUT.artworkHeight,
+    Math.max(1, Math.round(tapBounds.height * OSU_RECEPTOR_LAYOUT.artworkHeight / tap.height)),
   )
-  const drawWidth = Math.max(1, Math.round(sourceWidth * scale))
-  const drawHeight = Math.max(1, Math.round(sourceHeight * scale))
   const drawX = OSU_RECEPTOR_LAYOUT.artworkX + Math.round((OSU_RECEPTOR_LAYOUT.artworkWidth - drawWidth) / 2)
   // KeyImage itself stays anchored by osu!mania. Move the artwork inside its
   // transparent HD canvas by the same screen-space delta as HitPosition so
@@ -1759,15 +1787,19 @@ export async function buildSkinPreview(
     return {
       hitPosition: Number(mania.values.get('hitposition')) || DEFAULT_OSU_HIT_POSITION,
       columnWidth: Number(mania.values.get('columnwidth')?.split(',')[0]) || DEFAULT_OSU_COLUMN_WIDTH,
-      lanes: await Promise.all(assets.map(async (lane) => ({
-        note: await note(lane[0].entry, 'note'),
-        holdHead: await note(lane[1].entry || lane[0].entry, 'note'),
-        // A short repeating strip previews the same Etterna body without
-        // asking Chromium to display a 40,000px source image.
-        holdBody: await note(lane[2].entry || lane[0].entry, 'body', 0),
-        holdTail: await tail(lane[3].entry || lane[1].entry, lane[2].entry),
-        receptor: await receptor(lane[4].entry || lane[0].entry, lane[0].entry),
-      }))),
+      lanes: await Promise.all(assets.map(async (lane) => {
+        const noteAsset = await note(lane[0].entry, 'note')
+        const receptorAsset = await receptor(lane[4].entry || lane[0].entry, lane[0].entry)
+        return {
+          note: noteAsset,
+          holdHead: await note(lane[1].entry || lane[0].entry, 'note'),
+          // A short repeating strip previews the same Etterna body without
+          // asking Chromium to display a 40,000px source image.
+          holdBody: await note(lane[2].entry || lane[0].entry, 'body', 0),
+          holdTail: await tail(lane[3].entry || lane[1].entry, lane[2].entry),
+          receptor: await fitReceptorToNote(receptorAsset, noteAsset),
+        }
+      })),
     }
   }
 
@@ -1775,13 +1807,17 @@ export async function buildSkinPreview(
   const fallback = assets.flatMap((lane) => lane).find((asset) => asset.entry)
   if (!fallback) throw new Error(t('services.skin.notEnoughArtwork'))
   return {
-    lanes: await Promise.all(assets.map(async (lane, index) => ({
-      note: await previewAsset(lane[0], fallback, rotations[index].tap),
-      holdHead: await previewAsset(lane[1], lane[0].entry ? lane[0] : fallback, rotations[index].head),
-      holdBody: await previewAsset(lane[2], lane[0].entry ? lane[0] : fallback, 0, false),
-      holdTail: await previewAsset(lane[3], lane[1].entry ? lane[1] : fallback),
-      receptor: await previewAsset(lane[4], lane[0].entry ? lane[0] : fallback, rotations[index].receptor, false),
-    }))),
+    lanes: await Promise.all(assets.map(async (lane, index) => {
+      const note = await previewAsset(lane[0], fallback, rotations[index].tap)
+      const receptor = await previewAsset(lane[4], lane[0].entry ? lane[0] : fallback, rotations[index].receptor, false)
+      return {
+        note,
+        holdHead: await previewAsset(lane[1], lane[0].entry ? lane[0] : fallback, rotations[index].head),
+        holdBody: await previewAsset(lane[2], lane[0].entry ? lane[0] : fallback, 0, false),
+        holdTail: await previewAsset(lane[3], lane[1].entry ? lane[1] : fallback),
+        receptor: await fitReceptorToNote(receptor, note),
+      }
+    })),
   }
 }
 
