@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.0](https://github.com/kaanreal/henkan/compare/v1.7.0...v1.8.0) (2026-09-13)
+
+
+### Features
+
+* add browser MSD calculator 🌸 ([0743f42](https://github.com/kaanreal/henkan/commit/0743f42ba62f9ab0f86e7f5fe9bb6c2c33775537))
+
+
+### Bug Fixes
+
+* correct skin preview timing and MSD metadata 🐛 ([2e4926d](https://github.com/kaanreal/henkan/commit/2e4926d5904c4c9de873205121afb22c0002ad2e))
+
 ## [1.7.0](https://github.com/kaanreal/henkan/compare/v1.6.1...v1.7.0) (2026-09-06)
 
 
