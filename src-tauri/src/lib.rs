@@ -5,6 +5,7 @@ pub mod cli_tui;
 #[cfg(feature = "minacalc")]
 pub mod msd;
 mod osu;
+mod etterna;
 
 #[cfg(feature = "minacalc")]
 fn try_compute_msd(bm: &Beatmap) -> Option<f64> {
@@ -2403,6 +2404,7 @@ pub fn run() {
                 let _ = window.set_background_color(Some(tauri::window::Color(2, 6, 23, 255)));
             }
             osu::spawn_watcher(app.handle().clone());
+            etterna::spawn_watcher(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2436,7 +2438,10 @@ pub fn run() {
             osu::osu_status,
             osu::osu_live,
             osu::osu_read_map,
-            osu::osu_map_background
+            osu::osu_map_background,
+            etterna::etterna_live,
+            etterna::etterna_read_map,
+            etterna::etterna_map_background
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

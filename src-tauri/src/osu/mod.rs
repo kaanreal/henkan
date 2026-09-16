@@ -1,16 +1,15 @@
-#[cfg(windows)]
-mod background;
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) mod background;
 #[cfg(windows)]
 mod install;
+#[cfg(not(windows))]
+mod lazer;
 #[cfg(windows)]
 mod memory;
 
 use serde::Serialize;
 #[cfg(windows)]
 use std::path::{Path, PathBuf};
-
-#[cfg(not(windows))]
-const WINDOWS_ONLY: &str = "The osu! integration is only available on Windows.";
 
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -69,13 +68,20 @@ pub fn osu_status(app: tauri::AppHandle) -> OsuStatus {
     }
     #[cfg(not(windows))]
     {
-        let _ = app;
-        OsuStatus::default()
+        use tauri::Manager;
+        let root = lazer::discover_root();
+        let live = app.state::<lazer::Watcher>().poll();
+        OsuStatus {
+            supported: true,
+            installed: root.is_some(),
+            running: live.running,
+            root: root.and_then(|path| path.to_str().map(str::to_string)),
+            songs: None,
+        }
     }
 }
 
 /// Event emitted when osu! opens, closes, or changes its selected map.
-#[cfg(windows)]
 pub const LIVE_EVENT: &str = "henkan://osu-live";
 
 pub fn spawn_watcher(app: tauri::AppHandle) {
@@ -98,7 +104,20 @@ pub fn spawn_watcher(app: tauri::AppHandle) {
     }
     #[cfg(not(windows))]
     {
-        let _ = app;
+        use tauri::{Emitter, Manager};
+        app.manage(lazer::Watcher::default());
+        std::thread::spawn(move || {
+            let mut last: Option<lazer::Live> = None;
+            loop {
+                let live = app.state::<lazer::Watcher>().poll();
+                let pause = live.interval();
+                if last.as_ref() != Some(&live) {
+                    let _ = app.emit(LIVE_EVENT, &live);
+                    last = Some(live);
+                }
+                std::thread::sleep(pause);
+            }
+        });
     }
 }
 
@@ -110,13 +129,15 @@ pub fn osu_live(app: tauri::AppHandle) -> serde_json::Value {
     }
     #[cfg(not(windows))]
     {
-        let _ = app;
-        serde_json::json!({"running": false, "connected": false, "map": null, "problem": null})
+        use tauri::Manager;
+        serde_json::to_value(app.state::<lazer::Watcher>().poll())
+            .unwrap_or(serde_json::Value::Null)
     }
 }
 
-/// Packs the selected Songs folder into a temporary .osz so Henkan's existing
-/// queue can load it through the normal file path flow.
+/// Materializes the selected chart so Henkan's existing queue can load it
+/// through the normal file path flow. Both stable and Lazer maps return a
+/// complete temporary `.osz` whenever the set has a known online id.
 #[tauri::command]
 pub fn osu_read_map(app: tauri::AppHandle, folder: String) -> Result<String, String> {
     #[cfg(windows)]
@@ -140,8 +161,7 @@ pub fn osu_read_map(app: tauri::AppHandle, folder: String) -> Result<String, Str
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, folder);
-        Err(WINDOWS_ONLY.to_string())
+        lazer::read_map(&app, &folder)
     }
 }
 
@@ -185,8 +205,8 @@ pub fn osu_map_background(
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, folder, file);
-        Err(WINDOWS_ONLY.to_string())
+        let _ = app;
+        lazer::map_background(&folder, &file)
     }
 }
 

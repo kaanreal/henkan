@@ -35,7 +35,9 @@ async function invoker() {
 export async function osuLive(): Promise<OsuLive> {
   if (!isTauri()) return OSU_OFFLINE
   try {
-    return await (await invoker())<OsuLive>('osu_live')
+    return await (
+      await invoker()
+    )<OsuLive>('osu_live')
   } catch {
     return OSU_OFFLINE
   }
@@ -44,14 +46,19 @@ export async function osuLive(): Promise<OsuLive> {
 export async function watchOsuLive(onLive: (live: OsuLive) => void): Promise<() => void> {
   if (!isTauri()) return () => {}
   let stopped = false
-  void osuLive().then((live) => {
-    if (!stopped) onLive(live)
-  })
 
   const { listen } = await import('@tauri-apps/api/event')
   const unlisten = await listen<OsuLive>(OSU_LIVE_EVENT, (event) => {
     if (!stopped) onLive(event.payload)
   })
+
+  // Register the event first. If the native watcher sees osu! start between
+  // these two operations, taking the snapshot first can miss that transition
+  // entirely when Henkan launched before osu!.
+  void osuLive().then((live) => {
+    if (!stopped) onLive(live)
+  })
+
   return () => {
     stopped = true
     void unlisten()
@@ -60,7 +67,9 @@ export async function watchOsuLive(onLive: (live: OsuLive) => void): Promise<() 
 
 export async function osuReadMap(folder: string): Promise<string> {
   if (!isTauri()) throw new Error('The osu! integration only works in the desktop app.')
-  return await (await invoker())<string>('osu_read_map', { folder })
+  return await (
+    await invoker()
+  )<string>('osu_read_map', { folder })
 }
 
 export async function osuMapBackground(folder: string, file: string): Promise<Blob | null> {
@@ -81,6 +90,14 @@ function imageMime(bytes: Uint8Array): string | null {
   if (starts(0xff, 0xd8, 0xff)) return 'image/jpeg'
   if (starts(0x89, 0x50, 0x4e, 0x47)) return 'image/png'
   if (starts(0x42, 0x4d)) return 'image/bmp'
+  if (
+    starts(0x52, 0x49, 0x46, 0x46) &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  )
+    return 'image/webp'
   return null
 }
 
@@ -108,4 +125,8 @@ export function osuMapLabel(map: OsuSelectedMap): string {
   const song = [artist, title].filter(Boolean).join(' - ')
   const name = song || map.folder
   return map.difficulty ? `${name} [${map.difficulty}]` : name
+}
+
+export function osuClientName(map: Pick<OsuSelectedMap, 'folder'>): 'osu!lazer' | 'osu!stable' {
+  return map.folder.startsWith('lazer:') ? 'osu!lazer' : 'osu!stable'
 }

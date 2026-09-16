@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 /// What osu! accepts as a background image. The `[Events]` block also carries
 /// video and storyboard entries in the same shape, so the extension is what
 /// keeps a `.mp4` out of the banner.
-const IMAGE_EXTENSIONS: [&str; 4] = ["jpg", "jpeg", "png", "bmp"];
+const IMAGE_EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "bmp", "webp"];
 
 /// A background far larger than this is not a beatmap background, and pushing it
 /// through the IPC bridge would stall the window.

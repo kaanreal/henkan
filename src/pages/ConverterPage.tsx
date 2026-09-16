@@ -3,7 +3,14 @@ import { useCallback, useState, useEffect, useMemo, useRef, startTransition } fr
 import { Link, useNavigate } from 'react-router'
 import { useT } from '../i18n'
 import { useConverterStore } from '../stores/useConverterStore'
-import { useQueueStore, type QueueItem, buildConfig, emptyConfig, generateId, detectDirection } from '../stores/useQueueStore'
+import {
+  useQueueStore,
+  type QueueItem,
+  buildConfig,
+  emptyConfig,
+  generateId,
+  detectDirection,
+} from '../stores/useQueueStore'
 import type { FileWithPath } from '../services/fileCache'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { trackEvent } from '../services/analytics'
@@ -26,13 +33,24 @@ import { UpdateDialog } from '../components/UpdateDialog'
 import { BeatmapMirrorDialog } from '../components/BeatmapMirrorDialog'
 import { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { isTauri } from '../services/environment'
-import { openFiles as dialogOpenFiles, openDirectory as dialogOpenDirectory, saveFile as dialogSaveFile } from '../services/dialogs'
+import {
+  openFiles as dialogOpenFiles,
+  openDirectory as dialogOpenDirectory,
+  saveFile as dialogSaveFile,
+} from '../services/dialogs'
 import { fileInputCache, getCachedFile, clearFileCache } from '../services/fileCache'
 import { readFileAsDataUrl, resolveMediaFile, resolveAudioFallback, saveBlobToFile } from '../services/files'
 import { parseFile, selectDifficulty, convertBeatmap, expandDiffName, ensureOszMediaCached } from '../services/convert'
 import { fetchMissingMedia, type MirrorProgress, type FetchLookupInfo } from '../services/mirrorMedia'
 import { exportBeatmap, exportAllBeatmaps, zipFolder, addCdtitleToZip } from '../services/export'
-import { scanPack, scanSongsFolder, loadPackBannerUrl, createDummyDiff, cleanDir, generateDummyDiffContent } from '../services/pack'
+import {
+  scanPack,
+  scanSongsFolder,
+  loadPackBannerUrl,
+  createDummyDiff,
+  cleanDir,
+  generateDummyDiffContent,
+} from '../services/pack'
 import { openFile } from '../services/platform'
 import {
   archiveSkinFolderFiles,
@@ -48,6 +66,9 @@ import { detectSkinArchive } from '../services/skinConverter'
 import { useOsuLive } from '../hooks/useOsuLive'
 import { useOsuMapBackground } from '../hooks/useOsuMapBackground'
 import { osuReadMap } from '../lib/osuDesktop'
+import { useEtternaLive } from '../hooks/useEtternaLive'
+import { useEtternaMapBackground } from '../hooks/useEtternaMapBackground'
+import { etternaClientName, etternaReadMap } from '../lib/etternaDesktop'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
@@ -73,7 +94,12 @@ async function resolveUpdateBody(version: string, body: string | null): Promise<
 }
 
 function configFromEntry(entry: PackEntry): ExportConfig {
-  const fallback = entry.source_file.split(/[/\\]+/).filter(Boolean).pop()?.replace(/\.[^.]+$/, '') || 'Untitled'
+  const fallback =
+    entry.source_file
+      .split(/[/\\]+/)
+      .filter(Boolean)
+      .pop()
+      ?.replace(/\.[^.]+$/, '') || 'Untitled'
   return {
     title: entry.title || fallback,
     artist: entry.artist,
@@ -92,9 +118,16 @@ function configFromEntry(entry: PackEntry): ExportConfig {
     preview_time: 0,
     conversion_rate: 1,
     preserve_pitch: true,
-    subtitle: null, title_translit: null, subtitle_translit: null,
-    artist_translit: null, genre: null, credit: null,
-    display_bpm: null, sample_start: null, sample_length: null, selectable: null,
+    subtitle: null,
+    title_translit: null,
+    subtitle_translit: null,
+    artist_translit: null,
+    genre: null,
+    credit: null,
+    display_bpm: null,
+    sample_start: null,
+    sample_length: null,
+    selectable: null,
     diff_name_template: null,
   }
 }
@@ -111,13 +144,19 @@ async function loadMediaAsDataUrl(sourceDir: string, filename: string | null | u
 
 const _avatarCache = new Map<string, string>()
 
-async function loadCdtitleAsDataUrl(sourceDir: string, filename: string | null | undefined, creator?: string | null): Promise<string | null> {
+async function loadCdtitleAsDataUrl(
+  sourceDir: string,
+  filename: string | null | undefined,
+  creator?: string | null,
+): Promise<string | null> {
   try {
     if (filename) {
       const resolved = await resolveMediaFile(sourceDir, filename)
       if (resolved) return await readFileAsDataUrl(resolved)
     }
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
 
   if (creator) {
     const cached = _avatarCache.get(creator)
@@ -130,7 +169,9 @@ async function loadCdtitleAsDataUrl(sourceDir: string, filename: string | null |
         _avatarCache.set(creator, url)
         return url
       }
-    } catch { /* fall through */ }
+    } catch {
+      /* fall through */
+    }
   }
 
   try {
@@ -208,7 +249,7 @@ async function resolveBeatmapMedia(bm: Beatmap, opts: MediaLoadOptions = {}): Pr
     }
   }
 
-  const audioFile = audioPath ? getCachedFile(audioPath) ?? null : null
+  const audioFile = audioPath ? (getCachedFile(audioPath) ?? null) : null
   const [audio, background, banner, cdtitle, bgName] = await Promise.all([
     audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(sourceDir, audioFilename),
     loadMediaAsDataUrl(sourceDir, backgroundFilename),
@@ -223,11 +264,22 @@ export default function ConverterPage() {
   const navigate = useNavigate()
   const t = useT()
   const {
-    beatmap, config, direction, mediaUrls,
-    isConverting, exportPath, error, dragging,
-    setBeatmap, setMediaUrls, setDirection,
-    setConverting, setExportPath,
-    setError, setDragging, reset,
+    beatmap,
+    config,
+    direction,
+    mediaUrls,
+    isConverting,
+    exportPath,
+    error,
+    dragging,
+    setBeatmap,
+    setMediaUrls,
+    setDirection,
+    setConverting,
+    setExportPath,
+    setError,
+    setDragging,
+    reset,
   } = useConverterStore()
 
   const [lastExportPath, setLastExportPath] = useState<string | null>(null)
@@ -238,28 +290,45 @@ export default function ConverterPage() {
   const pendingIndicesRef = useRef<number[]>([])
   const [showBulkConvert, setShowBulkConvert] = useState(false)
   const [showPackSettings, setShowPackSettings] = useState(false)
-  const [mirrorFetchRequest, setMirrorFetchRequest] = useState<{ resolve: (ok: boolean) => void; title: string; artist: string; unmatched: boolean } | null>(null)
+  const [mirrorFetchRequest, setMirrorFetchRequest] = useState<{
+    resolve: (ok: boolean) => void
+    title: string
+    artist: string
+    unmatched: boolean
+  } | null>(null)
   const [mirrorProgress, setMirrorProgress] = useState<MirrorProgress | null>(null)
   const [packConvertAllMode, setPackConvertAllMode] = useState(false)
   const [queueLoading, setQueueLoading] = useState(false)
   const [osuHookBusy, setOsuHookBusy] = useState(false)
+  const [etternaHookBusy, setEtternaHookBusy] = useState(false)
   const { live: osuLive } = useOsuLive(isTauri())
   const osuSelected = osuLive.connected ? osuLive.map : null
   const osuBackgroundUrl = useOsuMapBackground(osuSelected)
+  const { live: etternaLive } = useEtternaLive(isTauri())
+  const etternaSelected = etternaLive.connected ? etternaLive.map : null
+  const etternaBackgroundUrl = useEtternaMapBackground(etternaSelected)
+  const liveBackgroundUrl = osuSelected ? osuBackgroundUrl : etternaBackgroundUrl
 
-  const routeSkinInput = useCallback(async (input: SkinInput): Promise<boolean> => {
-    try {
-      await detectSkinArchive(input)
-      setPendingSkinInput(input)
-      navigate('/skin-converter')
-      return true
-    } catch {
-      return false
-    }
-  }, [navigate])
+  const routeSkinInput = useCallback(
+    async (input: SkinInput): Promise<boolean> => {
+      try {
+        await detectSkinArchive(input)
+        setPendingSkinInput(input)
+        navigate('/skin-converter')
+        return true
+      } catch {
+        return false
+      }
+    },
+    [navigate],
+  )
 
   // Update checking state
-  const [pendingUpdate, setPendingUpdate] = useState<{ version: string; body: string | null; date: string | null } | null>(null)
+  const [pendingUpdate, setPendingUpdate] = useState<{
+    version: string
+    body: string | null
+    date: string | null
+  } | null>(null)
   const [showUpdateDialog, setShowUpdateDialog] = useState(false)
   const [installing, setInstalling] = useState(false)
 
@@ -273,14 +342,14 @@ export default function ConverterPage() {
   const [showMirror, setShowMirror] = useState(false)
 
   // Queue state
-  const queueItems = useQueueStore(s => s.items)
-  const queueActiveId = useQueueStore(s => s.activeId)
-  const queueAddItem = useQueueStore(s => s.addItem)
-  const queueRemoveItem = useQueueStore(s => s.removeItem)
-  const queueSetActiveId = useQueueStore(s => s.setActiveId)
-  const queueUpdateItem = useQueueStore(s => s.updateItem)
-  const queueClearCompleted = useQueueStore(s => s.clearCompleted)
-  const queueClearAll = useQueueStore(s => s.clearAll)
+  const queueItems = useQueueStore((s) => s.items)
+  const queueActiveId = useQueueStore((s) => s.activeId)
+  const queueAddItem = useQueueStore((s) => s.addItem)
+  const queueRemoveItem = useQueueStore((s) => s.removeItem)
+  const queueSetActiveId = useQueueStore((s) => s.setActiveId)
+  const queueUpdateItem = useQueueStore((s) => s.updateItem)
+  const queueClearCompleted = useQueueStore((s) => s.clearCompleted)
+  const queueClearAll = useQueueStore((s) => s.clearAll)
 
   // Pack browsing state
   const [packFolder, setPackFolder] = useState<string | null>(null)
@@ -340,7 +409,7 @@ export default function ConverterPage() {
       if (volumeToastTimer.current) clearTimeout(volumeToastTimer.current)
       setVolumeToast({ msg: t('converter.volume', { value: newVol }) })
       volumeToastTimer.current = window.setTimeout(() => {
-        setVolumeToast(v => v ? { ...v, leaving: true } : null)
+        setVolumeToast((v) => (v ? { ...v, leaving: true } : null))
         volumeToastTimer.current = window.setTimeout(() => setVolumeToast(null), 220)
       }, 1000)
     }
@@ -377,10 +446,14 @@ export default function ConverterPage() {
           date: update.date ?? null,
         })
         setShowUpdateDialog(true)
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     check()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Get app version (Tauri only)
@@ -391,7 +464,11 @@ export default function ConverterPage() {
     })
   }, [])
 
-  const handleCheckForUpdates = async (): Promise<{ version: string; body: string | null; date: string | null } | null> => {
+  const handleCheckForUpdates = async (): Promise<{
+    version: string
+    body: string | null
+    date: string | null
+  } | null> => {
     if (!isTauri()) return null
     try {
       const { check } = await import('@tauri-apps/plugin-updater')
@@ -424,7 +501,9 @@ export default function ConverterPage() {
         const { relaunch } = await import('@tauri-apps/plugin-process')
         await relaunch()
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setInstalling(false)
   }
 
@@ -432,7 +511,9 @@ export default function ConverterPage() {
     if (dontAskAgain && pendingUpdate) {
       try {
         localStorage.setItem(`henkan-update-dismissed-${pendingUpdate.version}`, 'true')
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     setShowUpdateDialog(false)
   }
@@ -494,9 +575,13 @@ export default function ConverterPage() {
 
   // ── Multi-file queue ─────────────────────────────────────────
 
-  const requestMirrorFetch = useCallback((bm: Beatmap, info: FetchLookupInfo) => new Promise<boolean>(resolve => {
-    setMirrorFetchRequest({ resolve, title: bm.title, artist: bm.artist, unmatched: info.status === 'unmatched' })
-  }), [])
+  const requestMirrorFetch = useCallback(
+    (bm: Beatmap, info: FetchLookupInfo) =>
+      new Promise<boolean>((resolve) => {
+        setMirrorFetchRequest({ resolve, title: bm.title, artist: bm.artist, unmatched: info.status === 'unmatched' })
+      }),
+    [],
+  )
 
   const reportMirrorProgress = useCallback((p: MirrorProgress) => {
     // 'done' only means "stop showing the warning"; no need to round-trip it through state
@@ -508,77 +593,104 @@ export default function ConverterPage() {
     }
   }, [])
 
-  const loadQueueMedia = useCallback(async (bm: Beatmap) => {
-    const result = await resolveBeatmapMedia(bm, { confirmFetch: requestMirrorFetch, onMirrorProgress: reportMirrorProgress })
-    // Tauri: point the active beatmap at the mirror-extracted media dir so
-    // later loads (difficulty switch, re-selection) don't re-download.
-    if (result.sourceDir !== bm.source_dir) {
-      const updated = { ...bm, source_dir: result.sourceDir }
-      const store = useConverterStore.getState()
-      store.setBeatmap(updated, store.direction)
-      const activeId = useQueueStore.getState().activeId
-      if (activeId) {
-        queueUpdateItem(activeId, { beatmap: updated })
-      }
-    }
-    audioFileRef.current = result.audioFile
-    setMediaUrls({ audio: result.audio, background: result.background, banner: result.banner, cdtitle: result.cdtitle })
-  }, [setMediaUrls, queueUpdateItem, requestMirrorFetch, reportMirrorProgress])
-
-  const handleFilesSelected = useCallback(async (paths: string[]) => {
-    const newIds: string[] = []
-    for (const path of paths) {
-      const id = generateId()
-      const fileName = path.split(/[/\\]+/).filter(Boolean).pop() || path
-      const dir = detectDirection(path)
-      newIds.push(id)
-      queueAddItem({
-        id, filePath: path, fileName, direction: dir,
-        beatmap: null, config: emptyConfig(),
-        status: 'parsing', error: null, exportPath: null,
+  const loadQueueMedia = useCallback(
+    async (bm: Beatmap) => {
+      const result = await resolveBeatmapMedia(bm, {
+        confirmFetch: requestMirrorFetch,
+        onMirrorProgress: reportMirrorProgress,
       })
-    }
-
-    // Parse files sequentially so each is ready as soon as possible
-    for (let i = 0; i < paths.length; i++) {
-      const path = paths[i]
-      const id = newIds[i]
-      try {
-        const dir = detectDirection(path)
-        const result = await parseFile(path, dir)
-        const cfg = buildConfig(result)
-        queueUpdateItem(id, { beatmap: result, config: cfg, status: 'ready' })
-
-        // Auto-activate the first newly added item
-        if (i === 0 && queueItems.length === 0) {
-          queueSetActiveId(id)
-          setDirection(dir)
-          setBeatmap(result, dir)
-          useConverterStore.getState().updateConfig(cfg)
-          try {
-            await loadQueueMedia(result)
-          } catch (e) {
-            console.error('[media] loadQueueMedia failed:', e)
-          }
+      // Tauri: point the active beatmap at the mirror-extracted media dir so
+      // later loads (difficulty switch, re-selection) don't re-download.
+      if (result.sourceDir !== bm.source_dir) {
+        const updated = { ...bm, source_dir: result.sourceDir }
+        const store = useConverterStore.getState()
+        store.setBeatmap(updated, store.direction)
+        const activeId = useQueueStore.getState().activeId
+        if (activeId) {
+          queueUpdateItem(activeId, { beatmap: updated })
         }
-      } catch (e: unknown) {
-        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToParseFile')
-        console.error('ParseFile error:', e)
-        queueUpdateItem(id, { status: 'error', error: msg })
       }
-    }
-  }, [queueAddItem, queueUpdateItem, queueSetActiveId, queueItems.length, setDirection, setBeatmap, loadQueueMedia, t])
+      audioFileRef.current = result.audioFile
+      setMediaUrls({
+        audio: result.audio,
+        background: result.background,
+        banner: result.banner,
+        cdtitle: result.cdtitle,
+      })
+    },
+    [setMediaUrls, queueUpdateItem, requestMirrorFetch, reportMirrorProgress],
+  )
 
-  const handleMainFilesSelected = useCallback(async (paths: string[]) => {
-    const skinPath = paths.find(isSkinArchiveName)
-    if (skinPath) {
-      const input = getCachedFile(skinPath) || skinPath
-      if (await routeSkinInput(input)) return
-      setError(t('converter.notReadableSkin'))
-      return
-    }
-    await handleFilesSelected(paths)
-  }, [handleFilesSelected, routeSkinInput, setError, t])
+  const handleFilesSelected = useCallback(
+    async (paths: string[]) => {
+      const newIds: string[] = []
+      for (const path of paths) {
+        const id = generateId()
+        const fileName =
+          path
+            .split(/[/\\]+/)
+            .filter(Boolean)
+            .pop() || path
+        const dir = detectDirection(path)
+        newIds.push(id)
+        queueAddItem({
+          id,
+          filePath: path,
+          fileName,
+          direction: dir,
+          beatmap: null,
+          config: emptyConfig(),
+          status: 'parsing',
+          error: null,
+          exportPath: null,
+        })
+      }
+
+      // Parse files sequentially so each is ready as soon as possible
+      for (let i = 0; i < paths.length; i++) {
+        const path = paths[i]
+        const id = newIds[i]
+        try {
+          const dir = detectDirection(path)
+          const result = await parseFile(path, dir)
+          const cfg = buildConfig(result)
+          queueUpdateItem(id, { beatmap: result, config: cfg, status: 'ready' })
+
+          // Auto-activate the first newly added item
+          if (i === 0 && queueItems.length === 0) {
+            queueSetActiveId(id)
+            setDirection(dir)
+            setBeatmap(result, dir)
+            useConverterStore.getState().updateConfig(cfg)
+            try {
+              await loadQueueMedia(result)
+            } catch (e) {
+              console.error('[media] loadQueueMedia failed:', e)
+            }
+          }
+        } catch (e: unknown) {
+          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToParseFile')
+          console.error('ParseFile error:', e)
+          queueUpdateItem(id, { status: 'error', error: msg })
+        }
+      }
+    },
+    [queueAddItem, queueUpdateItem, queueSetActiveId, queueItems.length, setDirection, setBeatmap, loadQueueMedia, t],
+  )
+
+  const handleMainFilesSelected = useCallback(
+    async (paths: string[]) => {
+      const skinPath = paths.find(isSkinArchiveName)
+      if (skinPath) {
+        const input = getCachedFile(skinPath) || skinPath
+        if (await routeSkinInput(input)) return
+        setError(t('converter.notReadableSkin'))
+        return
+      }
+      await handleFilesSelected(paths)
+    },
+    [handleFilesSelected, routeSkinInput, setError, t],
+  )
 
   const handleConvertOsuMap = useCallback(async () => {
     if (!osuSelected || osuHookBusy) return
@@ -594,41 +706,77 @@ export default function ConverterPage() {
     }
   }, [handleMainFilesSelected, osuHookBusy, osuSelected, setError, t])
 
-  const handleQueueSelect = useCallback(async (item: QueueItem) => {
-    if (item.id === queueActiveId || !item.beatmap) return
-    // Save current config to the previously active item
-    const curCfg = useConverterStore.getState().config
-    if (queueActiveId) {
-      queueUpdateItem(queueActiveId, { config: curCfg })
-    }
-    // Reset completed/errored items to ready when clicked for retry
-    if (item.status === 'completed' || item.status === 'error') {
-      queueUpdateItem(item.id, { status: 'ready', exportPath: null, error: null })
-    }
-    // Clear old content immediately to prevent flash
-    setQueueLoading(true)
-    setBeatmap(null)
-    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null, cdtitle: null })
-    audioFileRef.current = null
-    audioPlayerRef.current?.stop()
-    setAudioPlaying(false)
-    setLastExportPath(null)
+  const handleConvertEtternaMap = useCallback(async () => {
+    if (!etternaSelected || etternaHookBusy) return
+    setEtternaHookBusy(true)
     setError(null)
-    // Load the new item's data
-    queueSetActiveId(item.id)
-    setDirection(item.direction)
     try {
-      const result = await resolveBeatmapMedia(item.beatmap, { confirmFetch: requestMirrorFetch, onMirrorProgress: reportMirrorProgress })
-      audioFileRef.current = result.audioFile
-      useConverterStore.getState().setMediaUrls({ audio: result.audio, background: result.background, banner: result.banner, cdtitle: result.cdtitle })
-      setBeatmap(item.beatmap, item.direction)
-      useConverterStore.getState().updateConfig(item.config)
-    } catch {
-      setError(t('converter.failedToLoadMedia'))
+      const path = await etternaReadMap(etternaSelected.folder, etternaSelected.file)
+      await handleMainFilesSelected([path])
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t('converter.failedToParseFile'))
     } finally {
-      setQueueLoading(false)
+      setEtternaHookBusy(false)
     }
-  }, [queueActiveId, queueUpdateItem, queueSetActiveId, setDirection, setBeatmap, requestMirrorFetch, reportMirrorProgress, t])
+  }, [etternaHookBusy, etternaSelected, handleMainFilesSelected, setError, t])
+
+  const handleQueueSelect = useCallback(
+    async (item: QueueItem) => {
+      if (item.id === queueActiveId || !item.beatmap) return
+      // Save current config to the previously active item
+      const curCfg = useConverterStore.getState().config
+      if (queueActiveId) {
+        queueUpdateItem(queueActiveId, { config: curCfg })
+      }
+      // Reset completed/errored items to ready when clicked for retry
+      if (item.status === 'completed' || item.status === 'error') {
+        queueUpdateItem(item.id, { status: 'ready', exportPath: null, error: null })
+      }
+      // Clear old content immediately to prevent flash
+      setQueueLoading(true)
+      setBeatmap(null)
+      useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null, cdtitle: null })
+      audioFileRef.current = null
+      audioPlayerRef.current?.stop()
+      setAudioPlaying(false)
+      setLastExportPath(null)
+      setError(null)
+      // Load the new item's data
+      queueSetActiveId(item.id)
+      setDirection(item.direction)
+      try {
+        const result = await resolveBeatmapMedia(item.beatmap, {
+          confirmFetch: requestMirrorFetch,
+          onMirrorProgress: reportMirrorProgress,
+        })
+        audioFileRef.current = result.audioFile
+        useConverterStore
+          .getState()
+          .setMediaUrls({
+            audio: result.audio,
+            background: result.background,
+            banner: result.banner,
+            cdtitle: result.cdtitle,
+          })
+        setBeatmap(item.beatmap, item.direction)
+        useConverterStore.getState().updateConfig(item.config)
+      } catch {
+        setError(t('converter.failedToLoadMedia'))
+      } finally {
+        setQueueLoading(false)
+      }
+    },
+    [
+      queueActiveId,
+      queueUpdateItem,
+      queueSetActiveId,
+      setDirection,
+      setBeatmap,
+      requestMirrorFetch,
+      reportMirrorProgress,
+      t,
+    ],
+  )
 
   const handleQueueAddFiles = useCallback(async () => {
     const selected = await dialogOpenFiles({
@@ -640,28 +788,31 @@ export default function ConverterPage() {
     }
   }, [handleFilesSelected, t])
 
-  const handleQueueRemove = useCallback((id: string) => {
-    const idx = queueItems.findIndex(i => i.id === id)
-    if (id === queueActiveId) {
-      const remaining = queueItems.filter(i => i.id !== id)
-      const nextIdx = Math.min(idx, remaining.length - 1)
-      const next = remaining.length > 0 ? remaining[Math.max(0, nextIdx)] : null
-      queueRemoveItem(id)
-      if (next && next.beatmap) {
-        queueSetActiveId(next.id)
-        setDirection(next.direction)
-        setBeatmap(next.beatmap, next.direction)
-        useConverterStore.getState().updateConfig(next.config)
-        loadQueueMedia(next.beatmap)
+  const handleQueueRemove = useCallback(
+    (id: string) => {
+      const idx = queueItems.findIndex((i) => i.id === id)
+      if (id === queueActiveId) {
+        const remaining = queueItems.filter((i) => i.id !== id)
+        const nextIdx = Math.min(idx, remaining.length - 1)
+        const next = remaining.length > 0 ? remaining[Math.max(0, nextIdx)] : null
+        queueRemoveItem(id)
+        if (next && next.beatmap) {
+          queueSetActiveId(next.id)
+          setDirection(next.direction)
+          setBeatmap(next.beatmap, next.direction)
+          useConverterStore.getState().updateConfig(next.config)
+          loadQueueMedia(next.beatmap)
+        } else {
+          queueSetActiveId(null)
+          setBeatmap(null)
+          reset()
+        }
       } else {
-        queueSetActiveId(null)
-        setBeatmap(null)
-        reset()
+        queueRemoveItem(id)
       }
-    } else {
-      queueRemoveItem(id)
-    }
-  }, [queueItems, queueActiveId, queueRemoveItem, queueSetActiveId, setDirection, setBeatmap, loadQueueMedia, reset])
+    },
+    [queueItems, queueActiveId, queueRemoveItem, queueSetActiveId, setDirection, setBeatmap, loadQueueMedia, reset],
+  )
 
   const handleQueueClearAll = useCallback(() => {
     clearFileCache()
@@ -670,8 +821,8 @@ export default function ConverterPage() {
   }, [queueClearAll, reset])
 
   const handleQueueClearCompleted = useCallback(() => {
-    const hadActiveCompleted = queueActiveId !== null
-      && queueItems.find(i => i.id === queueActiveId)?.status === 'completed'
+    const hadActiveCompleted =
+      queueActiveId !== null && queueItems.find((i) => i.id === queueActiveId)?.status === 'completed'
     queueClearCompleted()
     if (hadActiveCompleted) {
       const fresh = useQueueStore.getState().items
@@ -688,7 +839,16 @@ export default function ConverterPage() {
         }
       }
     }
-  }, [queueActiveId, queueItems, queueClearCompleted, queueSetActiveId, setDirection, setBeatmap, loadQueueMedia, reset])
+  }, [
+    queueActiveId,
+    queueItems,
+    queueClearCompleted,
+    queueSetActiveId,
+    setDirection,
+    setBeatmap,
+    loadQueueMedia,
+    reset,
+  ])
 
   const handleResetAll = useCallback(() => {
     for (const item of queueItems) {
@@ -699,7 +859,7 @@ export default function ConverterPage() {
   }, [queueItems, queueUpdateItem])
 
   const doBatchConversion = useCallback(async () => {
-    const readyItems = queueItems.filter(i => i.status === 'ready' && i.beatmap)
+    const readyItems = queueItems.filter((i) => i.status === 'ready' && i.beatmap)
     if (readyItems.length === 0 || isConverting) return
 
     // Save active config before starting
@@ -713,7 +873,10 @@ export default function ConverterPage() {
     setLastExportPath(null)
 
     const baseDir = isTauri() ? await dialogOpenDirectory({ title: t('dialogs.titleExportAllFolder') }) : ''
-    if (baseDir === null) { setConverting(false); return }
+    if (baseDir === null) {
+      setConverting(false)
+      return
+    }
 
     const allPaths: string[] = []
 
@@ -742,10 +905,14 @@ export default function ConverterPage() {
             const { invoke } = await import('@tauri-apps/api/core')
             for (let i = 0; i < diffCount; i++) {
               const bm = await selectDifficulty(item.filePath, i)
-              const diffName = bm.difficulty_name || `Diff ${i+1}`
+              const diffName = bm.difficulty_name || `Diff ${i + 1}`
               const safeDiff = diffName.replace(/[/\\?%*:|"<>]/g, '_')
               const diffDir = `${baseDir}/${safeName}/${safeDiff}`
-              try { await invoke('clean_dir', { path: diffDir }) } catch { /* dir may not exist yet */ }
+              try {
+                await invoke('clean_dir', { path: diffDir })
+              } catch {
+                /* dir may not exist yet */
+              }
               const diffCfg = {
                 ...cfg,
                 audio_filename: bm.audio_filename || cfg.audio_filename,
@@ -766,7 +933,7 @@ export default function ConverterPage() {
           const addedMedia = new Set<string>()
           for (let i = 0; i < diffCount; i++) {
             const bm = await selectDifficulty(item.filePath, i)
-            const diffName = bm.difficulty_name || `Diff ${i+1}`
+            const diffName = bm.difficulty_name || `Diff ${i + 1}`
             const safeDiff = diffName.replace(/[/\\?%*:|"<>]/g, '_')
             const diffCfg = {
               ...cfg,
@@ -791,15 +958,25 @@ export default function ConverterPage() {
               const isBg = field === diffCfg.background_filename
               const isBn = field === bm.banner_filename
               const mediaName = isBg
-                ? (bm.source_format === 'OsuMania' ? 'bg.png' : 'bg.jpg')
-                : isBn ? 'banner.png' : originalName
+                ? bm.source_format === 'OsuMania'
+                  ? 'bg.png'
+                  : 'bg.jpg'
+                : isBn
+                  ? 'banner.png'
+                  : originalName
               const mediaPath = `${safeName}/${safeDiff}/${mediaName}`
               if (addedMedia.has(mediaPath)) continue
               addedMedia.add(mediaPath)
               zip.file(mediaPath, await file.arrayBuffer())
             }
             if (bm.source_format === 'OsuMania') {
-              await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, `${safeName}/${safeDiff}/cdtitle.png`, bm.creator)
+              await addCdtitleToZip(
+                zip,
+                bm.source_dir,
+                bm.cdtitle_filename,
+                `${safeName}/${safeDiff}/cdtitle.png`,
+                bm.creator,
+              )
             }
           }
           const blob = await zip.generateAsync({ type: 'blob' })
@@ -833,189 +1010,224 @@ export default function ConverterPage() {
     setShowConvertDialog(true)
   }, [beatmap])
 
-  const doConversion = useCallback(async (indices: number[], separateSongs: boolean) => {
-    if (!beatmap?.source_file || indices.length === 0) return
-    setConverting(true)
-    setError(null)
-    setLastExportPath(null)
+  const doConversion = useCallback(
+    async (indices: number[], separateSongs: boolean) => {
+      if (!beatmap?.source_file || indices.length === 0) return
+      setConverting(true)
+      setError(null)
+      setLastExportPath(null)
 
-    const cur = useConverterStore.getState().config
-    try {
-      let exportDir: string | null = null
+      const cur = useConverterStore.getState().config
+      try {
+        let exportDir: string | null = null
 
-      if (isTauri()) {
-        if (cur.output_format === 'osz') {
-          exportDir = await dialogSaveFile({
-            title: t('dialogs.titleExportOsz'),
-            defaultPath: `${cur.artist} - ${cur.title} (${cur.creator}).osz`,
-            filters: [{ name: t('dialogs.filterOsuPackage'), extensions: ['osz'] }],
-          })
-        } else {
-          exportDir = await dialogOpenDirectory({
-            title: t('dialogs.titleExportFolder'),
-          })
-        }
-      } else {
-        exportDir = ''
-      }
-
-      if (exportDir === null) { setConverting(false); return }
-
-      const allPaths: string[] = []
-
-      if (separateSongs) {
-        if (!isTauri() && indices.length > 1) {
-          // Web multi-diff: single zip with folder structure
-          const songName = cur.title || beatmap?.title || 'export'
-          const safeName = songName.replace(/[/\\?%*:|"<>]/g, '_')
-          const JSZip = (await import('jszip')).default
-          const zip = new JSZip()
-          const addedMedia = new Set<string>()
-          for (const idx of indices) {
-            const bm = await selectDifficulty(beatmap.source_file, idx)
-            const diffLabel = bm.difficulty_name || `Diff ${idx}`
-            const safeDiff = diffLabel.replace(/[/\\?%*:|"<>]/g, '_')
-            const diffCfg = {
-              ...cur,
-              audio_filename: bm.audio_filename || cur.audio_filename,
-              background_filename: bm.background_filename ?? cur.background_filename,
-              difficulty_name: diffNameTemplate ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate) : (cur.difficulty_name || bm.difficulty_name),
-              preview_time: bm.preview_time,
-            }
-            const content = await convertBeatmap(bm, diffCfg)
-            const ext = bm.source_format === 'OsuMania' ? '.sm' : '.osu'
-            const filename = `${safeName}${diffLabel ? ` [${diffLabel}]` : ''}${ext}`
-            zip.file(`${safeName}/${safeDiff}/${filename}`, content)
-            const mediaFields: string[] = [diffCfg.audio_filename]
-            if (diffCfg.background_filename) mediaFields.push(diffCfg.background_filename)
-            if (bm.banner_filename) mediaFields.push(bm.banner_filename)
-            for (const field of mediaFields) {
-              if (!field) continue
-              const key = await resolveMediaFile(bm.source_dir, field)
-              if (!key) continue
-              const file = getCachedFile(key)
-              if (!file) continue
-              const originalName = field.split('/').pop() || field
-              const isBg = field === diffCfg.background_filename
-              const isBn = field === bm.banner_filename
-              const mediaName = isBg
-                ? (bm.source_format === 'OsuMania' ? 'bg.png' : 'bg.jpg')
-                : isBn ? 'banner.png' : originalName
-              const mediaPath = `${safeName}/${safeDiff}/${mediaName}`
-              if (addedMedia.has(mediaPath)) continue
-              addedMedia.add(mediaPath)
-              zip.file(mediaPath, await file.arrayBuffer())
-            }
-            if (bm.source_format === 'OsuMania') {
-              await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, `${safeName}/${safeDiff}/cdtitle.png`, bm.creator)
-            }
+        if (isTauri()) {
+          if (cur.output_format === 'osz') {
+            exportDir = await dialogSaveFile({
+              title: t('dialogs.titleExportOsz'),
+              defaultPath: `${cur.artist} - ${cur.title} (${cur.creator}).osz`,
+              filters: [{ name: t('dialogs.filterOsuPackage'), extensions: ['osz'] }],
+            })
+          } else {
+            exportDir = await dialogOpenDirectory({
+              title: t('dialogs.titleExportFolder'),
+            })
           }
-          const blob = await zip.generateAsync({ type: 'blob' })
-          const zipName = `${safeName}.zip`
-          await saveBlobToFile(blob, zipName)
-          allPaths.push(zipName)
-        } else if (isTauri() && indices.length > 1) {
-          // Desktop multi-diff
-          for (const idx of indices) {
-            const bm = await selectDifficulty(beatmap.source_file, idx)
-            const diffLabel = bm.difficulty_name || `Diff ${idx}`
-            const diffCfg = {
-              ...cur,
-              audio_filename: bm.audio_filename || cur.audio_filename,
-              background_filename: bm.background_filename ?? cur.background_filename,
-              difficulty_name: diffNameTemplate ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate) : (cur.difficulty_name || bm.difficulty_name),
-              preview_time: bm.preview_time,
-            }
-            const content = await convertBeatmap(bm, diffCfg)
+        } else {
+          exportDir = ''
+        }
+
+        if (exportDir === null) {
+          setConverting(false)
+          return
+        }
+
+        const allPaths: string[] = []
+
+        if (separateSongs) {
+          if (!isTauri() && indices.length > 1) {
+            // Web multi-diff: single zip with folder structure
             const songName = cur.title || beatmap?.title || 'export'
             const safeName = songName.replace(/[/\\?%*:|"<>]/g, '_')
-            const safeDiff = diffLabel.replace(/[/\\?%*:|"<>]/g, '_')
-            const diffDir = `${exportDir}/${safeName}/${safeDiff}`
-            const { invoke } = await import('@tauri-apps/api/core')
-            try { await invoke('clean_dir', { path: diffDir }) } catch { /* dir may not exist yet */ }
-            const result = await exportBeatmap(bm, diffCfg, content, diffDir, diffLabel, true)
-            allPaths.push(result)
+            const JSZip = (await import('jszip')).default
+            const zip = new JSZip()
+            const addedMedia = new Set<string>()
+            for (const idx of indices) {
+              const bm = await selectDifficulty(beatmap.source_file, idx)
+              const diffLabel = bm.difficulty_name || `Diff ${idx}`
+              const safeDiff = diffLabel.replace(/[/\\?%*:|"<>]/g, '_')
+              const diffCfg = {
+                ...cur,
+                audio_filename: bm.audio_filename || cur.audio_filename,
+                background_filename: bm.background_filename ?? cur.background_filename,
+                difficulty_name: diffNameTemplate
+                  ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate)
+                  : cur.difficulty_name || bm.difficulty_name,
+                preview_time: bm.preview_time,
+              }
+              const content = await convertBeatmap(bm, diffCfg)
+              const ext = bm.source_format === 'OsuMania' ? '.sm' : '.osu'
+              const filename = `${safeName}${diffLabel ? ` [${diffLabel}]` : ''}${ext}`
+              zip.file(`${safeName}/${safeDiff}/${filename}`, content)
+              const mediaFields: string[] = [diffCfg.audio_filename]
+              if (diffCfg.background_filename) mediaFields.push(diffCfg.background_filename)
+              if (bm.banner_filename) mediaFields.push(bm.banner_filename)
+              for (const field of mediaFields) {
+                if (!field) continue
+                const key = await resolveMediaFile(bm.source_dir, field)
+                if (!key) continue
+                const file = getCachedFile(key)
+                if (!file) continue
+                const originalName = field.split('/').pop() || field
+                const isBg = field === diffCfg.background_filename
+                const isBn = field === bm.banner_filename
+                const mediaName = isBg
+                  ? bm.source_format === 'OsuMania'
+                    ? 'bg.png'
+                    : 'bg.jpg'
+                  : isBn
+                    ? 'banner.png'
+                    : originalName
+                const mediaPath = `${safeName}/${safeDiff}/${mediaName}`
+                if (addedMedia.has(mediaPath)) continue
+                addedMedia.add(mediaPath)
+                zip.file(mediaPath, await file.arrayBuffer())
+              }
+              if (bm.source_format === 'OsuMania') {
+                await addCdtitleToZip(
+                  zip,
+                  bm.source_dir,
+                  bm.cdtitle_filename,
+                  `${safeName}/${safeDiff}/cdtitle.png`,
+                  bm.creator,
+                )
+              }
+            }
+            const blob = await zip.generateAsync({ type: 'blob' })
+            const zipName = `${safeName}.zip`
+            await saveBlobToFile(blob, zipName)
+            allPaths.push(zipName)
+          } else if (isTauri() && indices.length > 1) {
+            // Desktop multi-diff
+            for (const idx of indices) {
+              const bm = await selectDifficulty(beatmap.source_file, idx)
+              const diffLabel = bm.difficulty_name || `Diff ${idx}`
+              const diffCfg = {
+                ...cur,
+                audio_filename: bm.audio_filename || cur.audio_filename,
+                background_filename: bm.background_filename ?? cur.background_filename,
+                difficulty_name: diffNameTemplate
+                  ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate)
+                  : cur.difficulty_name || bm.difficulty_name,
+                preview_time: bm.preview_time,
+              }
+              const content = await convertBeatmap(bm, diffCfg)
+              const songName = cur.title || beatmap?.title || 'export'
+              const safeName = songName.replace(/[/\\?%*:|"<>]/g, '_')
+              const safeDiff = diffLabel.replace(/[/\\?%*:|"<>]/g, '_')
+              const diffDir = `${exportDir}/${safeName}/${safeDiff}`
+              const { invoke } = await import('@tauri-apps/api/core')
+              try {
+                await invoke('clean_dir', { path: diffDir })
+              } catch {
+                /* dir may not exist yet */
+              }
+              const result = await exportBeatmap(bm, diffCfg, content, diffDir, diffLabel, true)
+              allPaths.push(result)
+            }
+          } else {
+            // Single-diff (both platforms)
+            for (const idx of indices) {
+              const bm = await selectDifficulty(beatmap.source_file, idx)
+              const diffLabel = bm.difficulty_name || `Diff ${idx}`
+              const diffCfg = {
+                ...cur,
+                audio_filename: bm.audio_filename || cur.audio_filename,
+                background_filename: bm.background_filename ?? cur.background_filename,
+                difficulty_name: diffNameTemplate
+                  ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate)
+                  : cur.difficulty_name || bm.difficulty_name,
+                preview_time: bm.preview_time,
+              }
+              const content = await convertBeatmap(bm, diffCfg)
+              const result = await exportBeatmap(bm, diffCfg, content, exportDir, diffLabel)
+              allPaths.push(result)
+            }
           }
         } else {
-          // Single-diff (both platforms)
-          for (const idx of indices) {
-            const bm = await selectDifficulty(beatmap.source_file, idx)
-            const diffLabel = bm.difficulty_name || `Diff ${idx}`
-            const diffCfg = {
-              ...cur,
-              audio_filename: bm.audio_filename || cur.audio_filename,
-              background_filename: bm.background_filename ?? cur.background_filename,
-              difficulty_name: diffNameTemplate ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate) : (cur.difficulty_name || bm.difficulty_name),
-              preview_time: bm.preview_time,
+          const allAtOne = Math.abs(cur.conversion_rate - 1) < 0.01
+          const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
+          if (isOsz && direction === 'osu-to-etterna' && indices.length > 1 && allAtOne) {
+            // Apply template to config before passing to exportAllBeatmaps
+            const cfgWithTemplate = diffNameTemplate
+              ? { ...cur, difficulty_name: await expandDiffName(diffNameTemplate, beatmap!, cur, cur.conversion_rate) }
+              : cur
+            const paths = await exportAllBeatmaps(beatmap.source_file, cfgWithTemplate, exportDir, indices)
+            allPaths.push(...paths)
+          } else {
+            for (const idx of indices) {
+              const bm = await selectDifficulty(beatmap.source_file, idx)
+              const cfg = {
+                ...cur,
+                difficulty_name: diffNameTemplate
+                  ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate)
+                  : cur.difficulty_name || bm.difficulty_name,
+              }
+              const content = await convertBeatmap(bm, cfg)
+              const result = await exportBeatmap(bm, cfg, content, exportDir)
+              allPaths.push(result)
             }
-            const content = await convertBeatmap(bm, diffCfg)
-            const result = await exportBeatmap(bm, diffCfg, content, exportDir, diffLabel)
-            allPaths.push(result)
           }
         }
-      } else {
-        const allAtOne = Math.abs(cur.conversion_rate - 1) < 0.01
-        const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
-        if (isOsz && direction === 'osu-to-etterna' && indices.length > 1 && allAtOne) {
-          // Apply template to config before passing to exportAllBeatmaps
-          const cfgWithTemplate = diffNameTemplate
-            ? { ...cur, difficulty_name: await expandDiffName(diffNameTemplate, beatmap!, cur, cur.conversion_rate) }
-            : cur
-          const paths = await exportAllBeatmaps(beatmap.source_file, cfgWithTemplate, exportDir, indices)
-          allPaths.push(...paths)
-        } else {
-          for (const idx of indices) {
-            const bm = await selectDifficulty(beatmap.source_file, idx)
-            const cfg = {
-              ...cur,
-              difficulty_name: diffNameTemplate ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate) : (cur.difficulty_name || bm.difficulty_name),
-            }
-            const content = await convertBeatmap(bm, cfg)
-            const result = await exportBeatmap(bm, cfg, content, exportDir)
-            allPaths.push(result)
-          }
-        }
-      }
 
-      setLastExportPath(allPaths.join('\n'))
-      setExportPath(exportDir)
-      if (queueActiveId) {
-        queueUpdateItem(queueActiveId, { status: 'completed', exportPath: allPaths.join('\n') || exportDir, config: cur })
-      }
-      trackEvent('conversion_completed', { count: String(indices.length), format: cur.output_format })
-    } catch (e: unknown) {
-      if (queueActiveId) {
+        setLastExportPath(allPaths.join('\n'))
+        setExportPath(exportDir)
+        if (queueActiveId) {
+          queueUpdateItem(queueActiveId, {
+            status: 'completed',
+            exportPath: allPaths.join('\n') || exportDir,
+            config: cur,
+          })
+        }
+        trackEvent('conversion_completed', { count: String(indices.length), format: cur.output_format })
+      } catch (e: unknown) {
+        if (queueActiveId) {
+          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.conversionFailed')
+          queueUpdateItem(queueActiveId, { status: 'error', error: msg, config: cur })
+        }
         const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.conversionFailed')
-        queueUpdateItem(queueActiveId, { status: 'error', error: msg, config: cur })
+        setError(msg)
+        trackEvent('conversion_failed', { error: msg })
+      } finally {
+        setConverting(false)
       }
-      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.conversionFailed')
-      setError(msg)
-      trackEvent('conversion_failed', { error: msg })
-    } finally {
-      setConverting(false)
-    }
-  }, [beatmap, direction, diffNameTemplate, queueActiveId, queueUpdateItem, setConverting, setError, setExportPath, t])
+    },
+    [beatmap, direction, diffNameTemplate, queueActiveId, queueUpdateItem, setConverting, setError, setExportPath, t],
+  )
 
-  const handleConvertDialogConfirm = useCallback(async (indices: number[]) => {
-    if (!beatmap?.source_file || indices.length === 0) return
-    setShowConvertDialog(false)
+  const handleConvertDialogConfirm = useCallback(
+    async (indices: number[]) => {
+      if (!beatmap?.source_file || indices.length === 0) return
+      setShowConvertDialog(false)
 
-    const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
-    const curRate = useConverterStore.getState().config.conversion_rate
-    const allAtOne = Math.abs(curRate - 1) < 0.01
-    if (isOsz && direction === 'osu-to-etterna' && indices.length > 1 && allAtOne) {
-      const audioFiles = new Set(
-        indices.map(i => beatmap.available_difficulties[i]?.audio_filename).filter(Boolean)
-      )
-      if (audioFiles.size > 1) {
-        pendingIndicesRef.current = indices
-        setShowMultiAudioWarning(true)
-        return
+      const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
+      const curRate = useConverterStore.getState().config.conversion_rate
+      const allAtOne = Math.abs(curRate - 1) < 0.01
+      if (isOsz && direction === 'osu-to-etterna' && indices.length > 1 && allAtOne) {
+        const audioFiles = new Set(
+          indices.map((i) => beatmap.available_difficulties[i]?.audio_filename).filter(Boolean),
+        )
+        if (audioFiles.size > 1) {
+          pendingIndicesRef.current = indices
+          setShowMultiAudioWarning(true)
+          return
+        }
       }
-    }
 
-    await doConversion(indices, false)
-  }, [beatmap, direction, doConversion])
+      await doConversion(indices, false)
+    },
+    [beatmap, direction, doConversion],
+  )
 
   const handleSeparateSongs = useCallback(() => {
     setShowMultiAudioWarning(false)
@@ -1034,135 +1246,147 @@ export default function ConverterPage() {
 
   // ── Pack browsing ──────────────────────────────────────────
 
-  const handleOpenPack = useCallback(async (folder?: string) => {
-    if (!folder) {
-      clearFileCache()
-      const picked = await dialogOpenDirectory({ title: t('dialogs.titleSelectPackFolder') })
-      if (!picked) return
-      folder = picked
-    }
+  const handleOpenPack = useCallback(
+    async (folder?: string) => {
+      if (!folder) {
+        clearFileCache()
+        const picked = await dialogOpenDirectory({ title: t('dialogs.titleSelectPackFolder') })
+        if (!picked) return
+        folder = picked
+      }
 
-    // Try scanning for .sm files first (existing etterna pack behavior)
-    let entries: PackEntry[]
-    let detectedType: 'sm' | 'osu' = 'sm'
-    try {
-      entries = await scanPack(folder)
-    } catch {
-      entries = []
-    }
-
-    // If no sm files found, try scanning for .osu files
-    if (entries.length === 0) {
+      // Try scanning for .sm files first (existing etterna pack behavior)
+      let entries: PackEntry[]
+      let detectedType: 'sm' | 'osu' = 'sm'
       try {
-        entries = await scanSongsFolder(folder)
-        detectedType = 'osu'
-      } catch (e: unknown) {
-        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToScanFolder')
-        console.error('[handleOpenPack] scanSongsFolder error:', msg)
+        entries = await scanPack(folder)
+      } catch {
+        entries = []
+      }
+
+      // If no sm files found, try scanning for .osu files
+      if (entries.length === 0) {
+        try {
+          entries = await scanSongsFolder(folder)
+          detectedType = 'osu'
+        } catch (e: unknown) {
+          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToScanFolder')
+          console.error('[handleOpenPack] scanSongsFolder error:', msg)
+          setError(msg)
+          setPackFolder(null)
+          setPackLoading(false)
+          return
+        }
+      }
+
+      if (entries.length === 0) {
+        const msg = t('converter.noBeatmapsFound', { folder })
+        console.error('[handleOpenPack]', msg)
         setError(msg)
         setPackFolder(null)
         setPackLoading(false)
         return
       }
-    }
 
-    if (entries.length === 0) {
-      const msg = t('converter.noBeatmapsFound', { folder })
-      console.error('[handleOpenPack]', msg)
-      setError(msg)
-      setPackFolder(null)
-      setPackLoading(false)
-      return
-    }
-
-    // Single file in folder - load directly as a single map, not a pack
-    if (entries.length === 1) {
-      setPackFolder(null)
-      setPackLoading(false)
-      handleFilesSelected([entries[0].source_file])
-      return
-    }
-
-    setPackFolder(folder)
-    setPackEditing(null)
-    setPackSelected(new Set())
-    setPackLoading(true)
-    setError(null)
-    setPackBannerUrl(null)
-    setPackBannerPath(null)
-    packBannerFileRef.current = null
-
-    setPackType(detectedType)
-    setPackEntries(entries)
-    if (detectedType === 'osu' && direction !== 'osu-to-etterna') {
-      setDirection('osu-to-etterna')
-    }
-
-    // Load pack banner separately so a failure doesn't undo the pack
-    try {
-      const result = await loadPackBannerUrl(folder)
-      if (result) {
-        setPackBannerPath(result.filePath)
-        setPackBannerUrl(result.url)
-        packBannerFileRef.current = result.file ?? null
-      }
-    } catch {
-      // banner is optional
-    } finally {
-      setPackLoading(false)
-    }
-  }, [handleFilesSelected, setDirection, setError, t])
-
-  const handlePackEditSong = useCallback(async (index: number) => {
-    const entry = packEntries[index]
-    if (!entry) return
-
-    // Save current config if switching from another song
-    if (packEditing !== null) {
-      const cur = useConverterStore.getState().config
-      packConfigsRef.current.set(packEditing, { ...cur })
-    }
-
-    setPackEditing(index)
-    setError(null)
-
-    // Clear previous song immediately to prevent flash
-    useConverterStore.getState().setBeatmap(null)
-    useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null, cdtitle: null })
-    audioFileRef.current = null
-    const audio = audioPlayerRef.current
-    if (audio) {
-      audio.stop()
-    }
-    setAudioPlaying(false)
-
-    try {
-      const direction = packType === 'osu' ? 'osu-to-etterna' : 'etterna-to-osu'
-      const bm = await parseFile(entry.source_file, direction)
-
-      // Load media
-      const result = await resolveBeatmapMedia(bm, { resolveBgName: true, confirmFetch: requestMirrorFetch, onMirrorProgress: reportMirrorProgress })
-      audioFileRef.current = result.audioFile
-      useConverterStore.getState().setMediaUrls({ audio: result.audio, background: result.background, banner: null, cdtitle: result.cdtitle })
-      useConverterStore.getState().setBeatmap(bm, direction)
-
-      // Restore any saved config for this song (after setBeatmap resets it)
-      const saved = packConfigsRef.current.get(index)
-      if (saved) {
-        useConverterStore.getState().updateConfig(saved)
+      // Single file in folder - load directly as a single map, not a pack
+      if (entries.length === 1) {
+        setPackFolder(null)
+        setPackLoading(false)
+        handleFilesSelected([entries[0].source_file])
+        return
       }
 
-      // If background was auto-discovered, update config so the FilePicker
-      // shows the actual filename instead of "auto"
-      const finalConfig = useConverterStore.getState().config
-      if (result.bgName && !finalConfig.background_filename) {
-        useConverterStore.getState().updateConfig({ background_filename: result.bgName })
-      }
-    } catch (e: unknown) {
-      setError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToLoadSong'))
+      setPackFolder(folder)
       setPackEditing(null)
-    }
-  }, [packEntries, packEditing, setAudioPlaying, setError, requestMirrorFetch, reportMirrorProgress, t])
+      setPackSelected(new Set())
+      setPackLoading(true)
+      setError(null)
+      setPackBannerUrl(null)
+      setPackBannerPath(null)
+      packBannerFileRef.current = null
+
+      setPackType(detectedType)
+      setPackEntries(entries)
+      if (detectedType === 'osu' && direction !== 'osu-to-etterna') {
+        setDirection('osu-to-etterna')
+      }
+
+      // Load pack banner separately so a failure doesn't undo the pack
+      try {
+        const result = await loadPackBannerUrl(folder)
+        if (result) {
+          setPackBannerPath(result.filePath)
+          setPackBannerUrl(result.url)
+          packBannerFileRef.current = result.file ?? null
+        }
+      } catch {
+        // banner is optional
+      } finally {
+        setPackLoading(false)
+      }
+    },
+    [handleFilesSelected, setDirection, setError, t],
+  )
+
+  const handlePackEditSong = useCallback(
+    async (index: number) => {
+      const entry = packEntries[index]
+      if (!entry) return
+
+      // Save current config if switching from another song
+      if (packEditing !== null) {
+        const cur = useConverterStore.getState().config
+        packConfigsRef.current.set(packEditing, { ...cur })
+      }
+
+      setPackEditing(index)
+      setError(null)
+
+      // Clear previous song immediately to prevent flash
+      useConverterStore.getState().setBeatmap(null)
+      useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null, cdtitle: null })
+      audioFileRef.current = null
+      const audio = audioPlayerRef.current
+      if (audio) {
+        audio.stop()
+      }
+      setAudioPlaying(false)
+
+      try {
+        const direction = packType === 'osu' ? 'osu-to-etterna' : 'etterna-to-osu'
+        const bm = await parseFile(entry.source_file, direction)
+
+        // Load media
+        const result = await resolveBeatmapMedia(bm, {
+          resolveBgName: true,
+          confirmFetch: requestMirrorFetch,
+          onMirrorProgress: reportMirrorProgress,
+        })
+        audioFileRef.current = result.audioFile
+        useConverterStore
+          .getState()
+          .setMediaUrls({ audio: result.audio, background: result.background, banner: null, cdtitle: result.cdtitle })
+        useConverterStore.getState().setBeatmap(bm, direction)
+
+        // Restore any saved config for this song (after setBeatmap resets it)
+        const saved = packConfigsRef.current.get(index)
+        if (saved) {
+          useConverterStore.getState().updateConfig(saved)
+        }
+
+        // If background was auto-discovered, update config so the FilePicker
+        // shows the actual filename instead of "auto"
+        const finalConfig = useConverterStore.getState().config
+        if (result.bgName && !finalConfig.background_filename) {
+          useConverterStore.getState().updateConfig({ background_filename: result.bgName })
+        }
+      } catch (e: unknown) {
+        setError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToLoadSong'))
+        setPackEditing(null)
+      }
+    },
+    [packEntries, packEditing, setAudioPlaying, setError, requestMirrorFetch, reportMirrorProgress, t],
+  )
 
   const handlePackBack = useCallback(() => {
     // Save current config
@@ -1198,15 +1422,18 @@ export default function ConverterPage() {
     reset()
   }, [packEditing, queueClearAll, reset])
 
-  const handleSelectAll = useCallback((select: boolean) => {
-    startTransition(() => {
-      if (select) {
-        setPackSelected(new Set(packEntries.map((_, i) => i)))
-      } else {
-        setPackSelected(new Set())
-      }
-    })
-  }, [packEntries])
+  const handleSelectAll = useCallback(
+    (select: boolean) => {
+      startTransition(() => {
+        if (select) {
+          setPackSelected(new Set(packEntries.map((_, i) => i)))
+        } else {
+          setPackSelected(new Set())
+        }
+      })
+    },
+    [packEntries],
+  )
 
   const handlePackConvert = useCallback(async () => {
     if (packSelected.size === 0 || isConverting) return
@@ -1220,299 +1447,364 @@ export default function ConverterPage() {
     setShowPackSettings(true)
   }, [packEntries, isConverting])
 
-  const runPackConversion = useCallback(async (settings: { mode: string; creator: string; hp_drain: number; overall_difficulty: number; diff_name_template: string }) => {
-    const indices = packConvertAllMode
-      ? packEntries.map((_, i) => i)
-      : [...packSelected]
+  const runPackConversion = useCallback(
+    async (settings: {
+      mode: string
+      creator: string
+      hp_drain: number
+      overall_difficulty: number
+      diff_name_template: string
+    }) => {
+      const indices = packConvertAllMode ? packEntries.map((_, i) => i) : [...packSelected]
 
-    if (indices.length === 0) return
-    setConverting(true)
-    setError(null)
-    try {
-      const packFolderName = packFolder ? packFolder.split(/[/\\]+/).filter(Boolean).pop() || 'pack' : 'pack'
-      const useOsz = settings.mode === 'osz'
+      if (indices.length === 0) return
+      setConverting(true)
+      setError(null)
+      try {
+        const packFolderName = packFolder
+          ? packFolder
+              .split(/[/\\]+/)
+              .filter(Boolean)
+              .pop() || 'pack'
+          : 'pack'
+        const useOsz = settings.mode === 'osz'
 
-      if (!isTauri()) {
-        // Web path: single .osz matching desktop pack output
-        const JSZip = (await import('jszip')).default
-        const zip = new JSZip()
-        const { parseSmAll, parseFile } = await import('../services/convert')
-        const addedMedia = new Set<string>()
+        if (!isTauri()) {
+          // Web path: single .osz matching desktop pack output
+          const JSZip = (await import('jszip')).default
+          const zip = new JSZip()
+          const { parseSmAll, parseFile } = await import('../services/convert')
+          const addedMedia = new Set<string>()
 
-        for (const idx of indices) {
-          const entry = packEntries[idx]
-          if (!entry) continue
+          for (const idx of indices) {
+            const entry = packEntries[idx]
+            if (!entry) continue
 
-          const savedCfg = packConfigsRef.current.get(idx)
-          const baseCfg = savedCfg || configFromEntry(entry)
-          const safeTitle = (baseCfg.title || entry.title).replace(/[/\\?%*:|"<>]/g, '_') || `song_${idx}`
+            const savedCfg = packConfigsRef.current.get(idx)
+            const baseCfg = savedCfg || configFromEntry(entry)
+            const safeTitle = (baseCfg.title || entry.title).replace(/[/\\?%*:|"<>]/g, '_') || `song_${idx}`
 
-          const cfg = {
-            ...baseCfg,
-            output_format: 'folder' as const,
-            creator: settings.creator || baseCfg.creator,
-            hp_drain: settings.hp_drain,
-            overall_difficulty: settings.overall_difficulty,
-            diff_name_template: settings.diff_name_template || null,
-          }
-
-          if (packType === 'osu') {
-            // Osu pack: each entry is a single .osu file, convert directly to .sm
-            const bm = await parseFile(entry.source_file, 'osu-to-etterna')
-            const osuCfg = settings.diff_name_template
-              ? { ...cfg, difficulty_name: await expandDiffName(settings.diff_name_template, bm, { ...cfg, creator: bm.creator || cfg.creator }, cfg.conversion_rate) }
-              : cfg
-            const smContent = await convertBeatmap(bm, osuCfg)
-
-            // Audio
-            const audioOrig = entry.available_difficulties[0]?.audio_filename
-            if (audioOrig) {
-              const ext = audioOrig.split('.').pop() || 'mp3'
-              const renamed = `${safeTitle}.${ext}`
-              const key = await resolveMediaFile(entry.source_dir, audioOrig)
-              if (key && !addedMedia.has(renamed)) {
-                const file = getCachedFile(key)
-                if (file) {
-                  addedMedia.add(renamed)
-                  zip.file(renamed, await file.arrayBuffer())
-                }
-              }
-              // Replace audio filename reference in sm content
-              const fixed = smContent.replace(audioOrig, renamed)
-              zip.file(`${safeTitle}.sm`, fixed)
-            } else {
-              zip.file(`${safeTitle}.sm`, smContent)
+            const cfg = {
+              ...baseCfg,
+              output_format: 'folder' as const,
+              creator: settings.creator || baseCfg.creator,
+              hp_drain: settings.hp_drain,
+              overall_difficulty: settings.overall_difficulty,
+              diff_name_template: settings.diff_name_template || null,
             }
 
-            // Background
-            if (entry.background_filename) {
-              const bgOrig = entry.background_filename.split('/').pop() || entry.background_filename
-              const ext = bgOrig.split('.').pop() || 'png'
-              const renamed = `${safeTitle}.${ext}`
-              const key = await resolveMediaFile(entry.source_dir, entry.background_filename)
-              if (key && !addedMedia.has(renamed)) {
-                const file = getCachedFile(key)
-                if (file) {
-                  addedMedia.add(renamed)
-                  zip.file(renamed, await file.arrayBuffer())
-                }
-              }
-            }
-          } else {
-            // SM pack (existing behavior)
-            const beatmaps = await parseSmAll(entry.source_file)
-
-            // Build rename map: original filename → song-prefixed name (matching desktop pack mode)
-            const renameMap = new Map<string, string>()
-            const audioOrig = entry.available_difficulties[0]?.audio_filename
-            if (audioOrig) {
-              const ext = audioOrig.split('.').pop() || 'mp3'
-              renameMap.set(audioOrig, `${safeTitle}.${ext}`)
-            }
-            let bgOrig: string | null = null
-            if (entry.background_filename) {
-              const resolved = await resolveMediaFile(entry.source_dir, entry.background_filename)
-              if (resolved) bgOrig = resolved.split('/').pop() || entry.background_filename
-            }
-            if (!bgOrig) {
-              bgOrig = await resolveMediaFile(entry.source_dir, '').then(r => r?.split('/').pop() || null)
-            }
-            if (bgOrig) {
-              const ext = bgOrig.split('.').pop() || 'jpg'
-              renameMap.set(bgOrig, `${safeTitle}.${ext}`)
-            }
-
-            for (let bi = 0; bi < beatmaps.length; bi++) {
-              const bm = beatmaps[bi]
-              if (!bm) continue
-              const bmCfg = settings.diff_name_template
-                ? { ...cfg, difficulty_name: await expandDiffName(settings.diff_name_template, bm, { ...cfg, creator: bm.creator || cfg.creator }, cfg.conversion_rate) }
+            if (packType === 'osu') {
+              // Osu pack: each entry is a single .osu file, convert directly to .sm
+              const bm = await parseFile(entry.source_file, 'osu-to-etterna')
+              const osuCfg = settings.diff_name_template
+                ? {
+                    ...cfg,
+                    difficulty_name: await expandDiffName(
+                      settings.diff_name_template,
+                      bm,
+                      { ...cfg, creator: bm.creator || cfg.creator },
+                      cfg.conversion_rate,
+                    ),
+                  }
                 : cfg
-              let content = await convertBeatmap(bm, bmCfg)
-              // Fix hardcoded "bg.jpg" reference to the actual background filename
+              const smContent = await convertBeatmap(bm, osuCfg)
+
+              // Audio
+              const audioOrig = entry.available_difficulties[0]?.audio_filename
+              if (audioOrig) {
+                const ext = audioOrig.split('.').pop() || 'mp3'
+                const renamed = `${safeTitle}.${ext}`
+                const key = await resolveMediaFile(entry.source_dir, audioOrig)
+                if (key && !addedMedia.has(renamed)) {
+                  const file = getCachedFile(key)
+                  if (file) {
+                    addedMedia.add(renamed)
+                    zip.file(renamed, await file.arrayBuffer())
+                  }
+                }
+                // Replace audio filename reference in sm content
+                const fixed = smContent.replace(audioOrig, renamed)
+                zip.file(`${safeTitle}.sm`, fixed)
+              } else {
+                zip.file(`${safeTitle}.sm`, smContent)
+              }
+
+              // Background
+              if (entry.background_filename) {
+                const bgOrig = entry.background_filename.split('/').pop() || entry.background_filename
+                const ext = bgOrig.split('.').pop() || 'png'
+                const renamed = `${safeTitle}.${ext}`
+                const key = await resolveMediaFile(entry.source_dir, entry.background_filename)
+                if (key && !addedMedia.has(renamed)) {
+                  const file = getCachedFile(key)
+                  if (file) {
+                    addedMedia.add(renamed)
+                    zip.file(renamed, await file.arrayBuffer())
+                  }
+                }
+              }
+            } else {
+              // SM pack (existing behavior)
+              const beatmaps = await parseSmAll(entry.source_file)
+
+              // Build rename map: original filename → song-prefixed name (matching desktop pack mode)
+              const renameMap = new Map<string, string>()
+              const audioOrig = entry.available_difficulties[0]?.audio_filename
+              if (audioOrig) {
+                const ext = audioOrig.split('.').pop() || 'mp3'
+                renameMap.set(audioOrig, `${safeTitle}.${ext}`)
+              }
+              let bgOrig: string | null = null
+              if (entry.background_filename) {
+                const resolved = await resolveMediaFile(entry.source_dir, entry.background_filename)
+                if (resolved) bgOrig = resolved.split('/').pop() || entry.background_filename
+              }
+              if (!bgOrig) {
+                bgOrig = await resolveMediaFile(entry.source_dir, '').then((r) => r?.split('/').pop() || null)
+              }
+              if (bgOrig) {
+                const ext = bgOrig.split('.').pop() || 'jpg'
+                renameMap.set(bgOrig, `${safeTitle}.${ext}`)
+              }
+
+              for (let bi = 0; bi < beatmaps.length; bi++) {
+                const bm = beatmaps[bi]
+                if (!bm) continue
+                const bmCfg = settings.diff_name_template
+                  ? {
+                      ...cfg,
+                      difficulty_name: await expandDiffName(
+                        settings.diff_name_template,
+                        bm,
+                        { ...cfg, creator: bm.creator || cfg.creator },
+                        cfg.conversion_rate,
+                      ),
+                    }
+                  : cfg
+                let content = await convertBeatmap(bm, bmCfg)
+                // Fix hardcoded "bg.jpg" reference to the actual background filename
+                for (const [orig, renamed] of renameMap) {
+                  content = content.replaceAll(orig, renamed)
+                }
+                if (bgOrig && renameMap.get(bgOrig)) {
+                  content = content.replaceAll('"bg.jpg"', `"${renameMap.get(bgOrig)}"`)
+                }
+                const safeDiff = (bmCfg.difficulty_name || bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
+                const ext = '.osu'
+                const filename = safeDiff ? `${safeTitle} [${safeDiff}]${ext}` : `${safeTitle}${ext}`
+                zip.file(filename, content)
+              }
+
               for (const [orig, renamed] of renameMap) {
-                content = content.replaceAll(orig, renamed)
+                if (addedMedia.has(renamed)) continue
+                const key = await resolveMediaFile(entry.source_dir, orig)
+                if (!key) continue
+                const file = getCachedFile(key)
+                if (!file) continue
+                addedMedia.add(renamed)
+                zip.file(renamed, await file.arrayBuffer())
               }
-              if (bgOrig && renameMap.get(bgOrig)) {
-                content = content.replaceAll('"bg.jpg"', `"${renameMap.get(bgOrig)}"`)
-              }
-              const safeDiff = (bmCfg.difficulty_name || bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
-              const ext = '.osu'
-              const filename = safeDiff ? `${safeTitle} [${safeDiff}]${ext}` : `${safeTitle}${ext}`
-              zip.file(filename, content)
-            }
-
-            for (const [orig, renamed] of renameMap) {
-              if (addedMedia.has(renamed)) continue
-              const key = await resolveMediaFile(entry.source_dir, orig)
-              if (!key) continue
-              const file = getCachedFile(key)
-              if (!file) continue
-              addedMedia.add(renamed)
-              zip.file(renamed, await file.arrayBuffer())
             }
           }
-        }
 
-        // Add cdtitle.png (default fallback) - only for osu→etterna (SM destination)
-        if (packType === 'osu') {
-          await addCdtitleToZip(zip, '', null, 'cdtitle.png')
-        }
-
-        // Only add dummy diff for SM packs (osu→etterna direction doesn't need it)
-        if (packType !== 'osu') {
-          const bannerFile = packBannerFileRef.current || (packBannerPath ? getCachedFile(packBannerPath) : null)
-          const bannerName = bannerFile?.name || packBannerPath?.split(/[/\\]+/).pop()
-          const dummyContent = generateDummyDiffContent(packFolderName, settings.creator, bannerName)
-          zip.file(`${packFolderName}.osu`, dummyContent)
-
-          // Add pack banner at root
-          if (bannerFile && bannerName) {
-            zip.file(bannerName, await bannerFile.arrayBuffer())
-          }
-        }
-
-        const blob = await zip.generateAsync({ type: 'blob' })
-        await saveBlobToFile(blob, `${packFolderName}.osz`)
-        setLastExportPath(`${packFolderName}.osz`)
-        if (packType === 'osu') {
-          trackEvent('songs_folder_conversion_completed', { count: String(indices.length), mode: 'osz' })
-        } else {
-          trackEvent('pack_conversion_completed', { count: String(indices.length), mode: 'osz' })
-        }
-      } else {
-        // Tauri path
-        const exportDir = await dialogOpenDirectory({
-          title: useOsz ? t('dialogs.titleChooseOszFolder') : t('dialogs.titleExportFolder'),
-        })
-        if (!exportDir) { setConverting(false); return }
-
-        const workDir = useOsz
-          ? `${exportDir}/__henkan_pack_${packFolderName}`
-          : `${exportDir}/${packFolderName}`
-
-        await cleanDir(workDir)
-
-        const allPaths: string[] = []
-
-        for (const idx of indices) {
-          const entry = packEntries[idx]
-          if (!entry) continue
-          const savedCfg = packConfigsRef.current.get(idx)
-          const cfg = {
-            ...(savedCfg || configFromEntry(entry)),
-            output_format: 'folder' as const,
-            creator: settings.creator || (savedCfg || configFromEntry(entry)).creator,
-            hp_drain: settings.hp_drain,
-            overall_difficulty: settings.overall_difficulty,
-            diff_name_template: settings.diff_name_template || null,
-          }
+          // Add cdtitle.png (default fallback) - only for osu→etterna (SM destination)
           if (packType === 'osu') {
-            // Osu pack: each entry is a single .osu file, convert directly to .sm
-            const bm = await parseFile(entry.source_file, 'osu-to-etterna')
-            const osuCfg = settings.diff_name_template
-              ? { ...cfg, difficulty_name: await expandDiffName(settings.diff_name_template, bm, { ...cfg, creator: bm.creator || cfg.creator }, cfg.conversion_rate) }
-              : cfg
-            const smContent = await convertBeatmap(bm, osuCfg)
-            const result = await exportBeatmap(bm, osuCfg, smContent, workDir, bm.difficulty_name, false)
-            allPaths.push(result)
-          } else {
-            const paths = await exportAllBeatmaps(entry.source_file, cfg, workDir, undefined, packFolderName)
-            allPaths.push(...paths)
+            await addCdtitleToZip(zip, '', null, 'cdtitle.png')
           }
-        }
 
-        if (packType !== 'osu') {
-          const firstEntry = packEntries[indices[0]]
-          const firstCfg = packConfigsRef.current.get(indices[0]) || configFromEntry(firstEntry)
-          await createDummyDiff(packFolderName, settings.creator || firstCfg.creator, packBannerPath, workDir)
-        }
+          // Only add dummy diff for SM packs (osu→etterna direction doesn't need it)
+          if (packType !== 'osu') {
+            const bannerFile = packBannerFileRef.current || (packBannerPath ? getCachedFile(packBannerPath) : null)
+            const bannerName = bannerFile?.name || packBannerPath?.split(/[/\\]+/).pop()
+            const dummyContent = generateDummyDiffContent(packFolderName, settings.creator, bannerName)
+            zip.file(`${packFolderName}.osu`, dummyContent)
 
-        if (useOsz) {
-          const oszPath = `${exportDir}/${packFolderName}.osz`
-          await zipFolder(workDir, oszPath)
-          setLastExportPath(oszPath)
-          setExportPath(oszPath)
+            // Add pack banner at root
+            if (bannerFile && bannerName) {
+              zip.file(bannerName, await bannerFile.arrayBuffer())
+            }
+          }
+
+          const blob = await zip.generateAsync({ type: 'blob' })
+          await saveBlobToFile(blob, `${packFolderName}.osz`)
+          setLastExportPath(`${packFolderName}.osz`)
+          if (packType === 'osu') {
+            trackEvent('songs_folder_conversion_completed', { count: String(indices.length), mode: 'osz' })
+          } else {
+            trackEvent('pack_conversion_completed', { count: String(indices.length), mode: 'osz' })
+          }
         } else {
-          setLastExportPath(allPaths.join('\n'))
-          setExportPath(exportDir)
+          // Tauri path
+          const exportDir = await dialogOpenDirectory({
+            title: useOsz ? t('dialogs.titleChooseOszFolder') : t('dialogs.titleExportFolder'),
+          })
+          if (!exportDir) {
+            setConverting(false)
+            return
+          }
+
+          const workDir = useOsz ? `${exportDir}/__henkan_pack_${packFolderName}` : `${exportDir}/${packFolderName}`
+
+          await cleanDir(workDir)
+
+          const allPaths: string[] = []
+
+          for (const idx of indices) {
+            const entry = packEntries[idx]
+            if (!entry) continue
+            const savedCfg = packConfigsRef.current.get(idx)
+            const cfg = {
+              ...(savedCfg || configFromEntry(entry)),
+              output_format: 'folder' as const,
+              creator: settings.creator || (savedCfg || configFromEntry(entry)).creator,
+              hp_drain: settings.hp_drain,
+              overall_difficulty: settings.overall_difficulty,
+              diff_name_template: settings.diff_name_template || null,
+            }
+            if (packType === 'osu') {
+              // Osu pack: each entry is a single .osu file, convert directly to .sm
+              const bm = await parseFile(entry.source_file, 'osu-to-etterna')
+              const osuCfg = settings.diff_name_template
+                ? {
+                    ...cfg,
+                    difficulty_name: await expandDiffName(
+                      settings.diff_name_template,
+                      bm,
+                      { ...cfg, creator: bm.creator || cfg.creator },
+                      cfg.conversion_rate,
+                    ),
+                  }
+                : cfg
+              const smContent = await convertBeatmap(bm, osuCfg)
+              const result = await exportBeatmap(bm, osuCfg, smContent, workDir, bm.difficulty_name, false)
+              allPaths.push(result)
+            } else {
+              const paths = await exportAllBeatmaps(entry.source_file, cfg, workDir, undefined, packFolderName)
+              allPaths.push(...paths)
+            }
+          }
+
+          if (packType !== 'osu') {
+            const firstEntry = packEntries[indices[0]]
+            const firstCfg = packConfigsRef.current.get(indices[0]) || configFromEntry(firstEntry)
+            await createDummyDiff(packFolderName, settings.creator || firstCfg.creator, packBannerPath, workDir)
+          }
+
+          if (useOsz) {
+            const oszPath = `${exportDir}/${packFolderName}.osz`
+            await zipFolder(workDir, oszPath)
+            setLastExportPath(oszPath)
+            setExportPath(oszPath)
+          } else {
+            setLastExportPath(allPaths.join('\n'))
+            setExportPath(exportDir)
+          }
+          trackEvent('pack_conversion_completed', { count: String(indices.length), mode: settings.mode })
         }
-        trackEvent('pack_conversion_completed', { count: String(indices.length), mode: settings.mode })
+      } catch (e: unknown) {
+        const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.packConversionFailed')
+        setError(msg)
+        trackEvent('pack_conversion_failed', { error: msg })
+      } finally {
+        setConverting(false)
       }
-    } catch (e: unknown) {
-      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.packConversionFailed')
-      setError(msg)
-      trackEvent('pack_conversion_failed', { error: msg })
-    } finally {
-      setConverting(false)
-    }
-  }, [packEntries, packSelected, packConvertAllMode, packFolder, packBannerPath, packType, setConverting, setError, setExportPath, t])
+    },
+    [
+      packEntries,
+      packSelected,
+      packConvertAllMode,
+      packFolder,
+      packBannerPath,
+      packType,
+      setConverting,
+      setError,
+      setExportPath,
+      t,
+    ],
+  )
 
   const handlePackSettingsCancel = useCallback(() => {
     setShowPackSettings(false)
   }, [])
 
-  const handleSelectDifficulty = useCallback(async (index: number) => {
-    if (!beatmap?.source_file) return
-    setError(null)
-    setSwitchingDifficulty(true)
-    try {
-      const bm = await selectDifficulty(beatmap.source_file, index)
+  const handleSelectDifficulty = useCallback(
+    async (index: number) => {
+      if (!beatmap?.source_file) return
+      setError(null)
+      setSwitchingDifficulty(true)
+      try {
+        const bm = await selectDifficulty(beatmap.source_file, index)
 
-      // Update beatmap + config first (preserves user-customized fields, syncs rest from new beatmap)
-      useConverterStore.getState().updateBeatmapDifficulty(bm)
-      if (queueActiveId) {
-        queueUpdateItem(queueActiveId, { beatmap: bm })
-      }
+        // Update beatmap + config first (preserves user-customized fields, syncs rest from new beatmap)
+        useConverterStore.getState().updateBeatmapDifficulty(bm)
+        if (queueActiveId) {
+          queueUpdateItem(queueActiveId, { beatmap: bm })
+        }
 
-      // Load media using config values - now correctly reflects user customizations
-      // while falling back to the new difficulty's defaults for non-customized fields
-      const cfg = useConverterStore.getState().config
-      const result = await resolveBeatmapMedia(bm, {
-        audioFilename: cfg.audio_filename || bm.audio_filename,
-        backgroundFilename: cfg.background_filename || bm.background_filename,
-        bannerFilename: cfg.banner_filename || bm.banner_filename,
-        cdtitleFilename: cfg.cdtitle_filename || bm.cdtitle_filename,
-        creator: cfg.creator || bm.creator,
-        confirmFetch: requestMirrorFetch,
-        onMirrorProgress: reportMirrorProgress,
-      })
-      audioFileRef.current = result.audioFile
-      useConverterStore.getState().setMediaUrls({ audio: result.audio, background: result.background, banner: result.banner, cdtitle: result.cdtitle })
+        // Load media using config values - now correctly reflects user customizations
+        // while falling back to the new difficulty's defaults for non-customized fields
+        const cfg = useConverterStore.getState().config
+        const result = await resolveBeatmapMedia(bm, {
+          audioFilename: cfg.audio_filename || bm.audio_filename,
+          backgroundFilename: cfg.background_filename || bm.background_filename,
+          bannerFilename: cfg.banner_filename || bm.banner_filename,
+          cdtitleFilename: cfg.cdtitle_filename || bm.cdtitle_filename,
+          creator: cfg.creator || bm.creator,
+          confirmFetch: requestMirrorFetch,
+          onMirrorProgress: reportMirrorProgress,
+        })
+        audioFileRef.current = result.audioFile
+        useConverterStore
+          .getState()
+          .setMediaUrls({
+            audio: result.audio,
+            background: result.background,
+            banner: result.banner,
+            cdtitle: result.cdtitle,
+          })
       } catch (e: unknown) {
         setError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.failedToSelectDifficulty'))
       } finally {
         setSwitchingDifficulty(false)
       }
-  }, [beatmap, setError, queueActiveId, queueUpdateItem, requestMirrorFetch, reportMirrorProgress, t])
+    },
+    [beatmap, setError, queueActiveId, queueUpdateItem, requestMirrorFetch, reportMirrorProgress, t],
+  )
 
-  const handleChangeFile = useCallback(async (field: string, _current: string | null): Promise<void> => {
-    try {
-      const selected = await dialogOpenFiles({
-        multiple: false,
-        filters: [
-          { name: t('dialogs.filterMediaFiles'), extensions: ['mp3', 'ogg', 'wav', 'jpg', 'jpeg', 'png', 'gif'] },
-        ],
-      })
-      if (selected && selected.length > 0) {
-        const path = selected[0]
-        const url = await readFileAsDataUrl(path)
-        const key = field === 'cdtitle' ? 'cdtitle_filename' : `${field}_filename`
-        const store = useConverterStore.getState()
-        store.updateConfig({ [key]: path })
-        if (url) {
-          store.setMediaUrls({ ...store.mediaUrls, [field]: url })
+  const handleChangeFile = useCallback(
+    async (field: string, _current: string | null): Promise<void> => {
+      try {
+        const selected = await dialogOpenFiles({
+          multiple: false,
+          filters: [
+            { name: t('dialogs.filterMediaFiles'), extensions: ['mp3', 'ogg', 'wav', 'jpg', 'jpeg', 'png', 'gif'] },
+          ],
+        })
+        if (selected && selected.length > 0) {
+          const path = selected[0]
+          const url = await readFileAsDataUrl(path)
+          const key = field === 'cdtitle' ? 'cdtitle_filename' : `${field}_filename`
+          const store = useConverterStore.getState()
+          store.updateConfig({ [key]: path })
+          if (url) {
+            store.setMediaUrls({ ...store.mediaUrls, [field]: url })
+          }
         }
+      } catch {
+        /* ignore */
       }
-    } catch { /* ignore */ }
-  }, [t])
+    },
+    [t],
+  )
 
   const handleOpenInOsu = useCallback(async () => {
     const path = exportPath || lastExportPath
     if (!path) return
     try {
       await openFile(path)
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [lastExportPath, exportPath])
 
   const handleReset = useCallback(() => {
@@ -1538,53 +1830,59 @@ export default function ConverterPage() {
     let cancelled = false
 
     if (isTauri()) {
-      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-        if (cancelled) return
-        getCurrentWindow().onDragDropEvent(async (evt) => {
+      import('@tauri-apps/api/window')
+        .then(({ getCurrentWindow }) => {
           if (cancelled) return
-          const { setDragging, handleMainFilesSelected, handleOpenPack, routeSkinInput } = dropHandlers.current
-          if (cancelled) return
-          if (evt.payload.type === 'enter') {
-            setDragging(true)
-          } else if (evt.payload.type === 'leave') {
-            setDragging(false)
-          } else if (evt.payload.type === 'drop') {
-            setDragging(false)
-            const now = Date.now()
-            if (now - lastDropRef.current < 500) return
-            lastDropRef.current = now
-            const seen = new Set<string>()
-            const files: string[] = []
-            let folderPath: string | null = null
-            for (const p of evt.payload.paths) {
-              if (seen.has(p)) continue
-              seen.add(p)
-              if (isSkinArchiveName(p) && await routeSkinInput(p)) return
-              const ext = p.match(/\.[^.]+$/)?.[0]?.toLowerCase()
-              if (!ext || !ACCEPTED_EXTS.includes(ext)) {
-                if (folderPath === null) folderPath = p
-              } else {
-                files.push(p)
-              }
-            }
-            if (folderPath) {
-              const { isDir } = await import('../services/platform')
-              const isDirectory = await isDir(folderPath)
-              if (isDirectory) {
-                if (await isSkinFolderPath(folderPath)) {
-                  const archive = await archiveSkinFolderPath(folderPath)
-                  if (await routeSkinInput(archive)) return
+          getCurrentWindow()
+            .onDragDropEvent(async (evt) => {
+              if (cancelled) return
+              const { setDragging, handleMainFilesSelected, handleOpenPack, routeSkinInput } = dropHandlers.current
+              if (cancelled) return
+              if (evt.payload.type === 'enter') {
+                setDragging(true)
+              } else if (evt.payload.type === 'leave') {
+                setDragging(false)
+              } else if (evt.payload.type === 'drop') {
+                setDragging(false)
+                const now = Date.now()
+                if (now - lastDropRef.current < 500) return
+                lastDropRef.current = now
+                const seen = new Set<string>()
+                const files: string[] = []
+                let folderPath: string | null = null
+                for (const p of evt.payload.paths) {
+                  if (seen.has(p)) continue
+                  seen.add(p)
+                  if (isSkinArchiveName(p) && (await routeSkinInput(p))) return
+                  const ext = p.match(/\.[^.]+$/)?.[0]?.toLowerCase()
+                  if (!ext || !ACCEPTED_EXTS.includes(ext)) {
+                    if (folderPath === null) folderPath = p
+                  } else {
+                    files.push(p)
+                  }
                 }
-                handleOpenPack(folderPath)
-              } else {
-                // Non-directory, non-accepted file - just ignore or try to add it anyway
-                console.log('[drop] skipping non-directory, non-accepted path:', folderPath)
+                if (folderPath) {
+                  const { isDir } = await import('../services/platform')
+                  const isDirectory = await isDir(folderPath)
+                  if (isDirectory) {
+                    if (await isSkinFolderPath(folderPath)) {
+                      const archive = await archiveSkinFolderPath(folderPath)
+                      if (await routeSkinInput(archive)) return
+                    }
+                    handleOpenPack(folderPath)
+                  } else {
+                    // Non-directory, non-accepted file - just ignore or try to add it anyway
+                    console.log('[drop] skipping non-directory, non-accepted path:', folderPath)
+                  }
+                }
+                if (files.length > 0) handleMainFilesSelected(files)
               }
-            }
-            if (files.length > 0) handleMainFilesSelected(files)
-          }
-        }).then(fn => { unlisten = fn })
-      }).catch(() => {})
+            })
+            .then((fn) => {
+              unlisten = fn
+            })
+        })
+        .catch(() => {})
     }
 
     return () => {
@@ -1594,16 +1892,22 @@ export default function ConverterPage() {
   }, [setDragging])
 
   const notes = beatmap?.notes
-  const tapCount = useMemo(() => notes?.filter(n => !n.hold).length ?? 0, [notes])
-  const holdCount = useMemo(() => notes?.filter(n => n.hold).length ?? 0, [notes])
+  const tapCount = useMemo(() => notes?.filter((n) => !n.hold).length ?? 0, [notes])
+  const holdCount = useMemo(() => notes?.filter((n) => n.hold).length ?? 0, [notes])
 
   return (
     <ErrorBoundary>
       <div
         className="h-full flex flex-col relative overflow-hidden animate-app-entrance select-none hide-scrollbar"
         onContextMenu={(e) => e.preventDefault()}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={(e) => { e.preventDefault(); setDragging(false) }}
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault()
+          setDragging(false)
+        }}
         onDrop={async (e) => {
           e.preventDefault()
           setDragging(false)
@@ -1641,7 +1945,7 @@ export default function ConverterPage() {
           }
 
           // Detect folder drop
-          const hasWebkitPath = files.some(f => !!f.webkitRelativePath)
+          const hasWebkitPath = files.some((f) => !!f.webkitRelativePath)
           if (hasWebkitPath) {
             const rootFolder = files[0].webkitRelativePath.split('/')[0]
             if (containsSkinMarker(files)) {
@@ -1653,8 +1957,8 @@ export default function ConverterPage() {
           }
 
           // Fallback heuristic: multiple .osu or .sm files = folder drop
-          const osuFiles = files.filter(f => f.name.toLowerCase().endsWith('.osu'))
-          const smFiles = files.filter(f => f.name.toLowerCase().endsWith('.sm'))
+          const osuFiles = files.filter((f) => f.name.toLowerCase().endsWith('.osu'))
+          const smFiles = files.filter((f) => f.name.toLowerCase().endsWith('.sm'))
           const isFolderDrop = files.length > 1 && (osuFiles.length > 0 || smFiles.length > 0)
 
           if (isFolderDrop) {
@@ -1677,20 +1981,38 @@ export default function ConverterPage() {
           if (filePaths.length > 0) handleMainFilesSelected(filePaths)
         }}
       >
-        {(mediaUrls.background || osuBackgroundUrl) && (
+        {(mediaUrls.background || liveBackgroundUrl) && (
           <div className="absolute inset-0 -z-10 overflow-hidden animate-bg-fade-in">
             {mediaUrls.background ? (
-              <div className="w-full h-full bg-cover bg-center" style={{ backgroundImage: `url(${mediaUrls.background})`, filter: 'blur(20px) brightness(0.5) saturate(0.5)' }} />
-            ) : <OsuBackground url={osuBackgroundUrl} />}
-            <div className="absolute inset-0 bg-[#0c1a35]/45" />
+              <div
+                className="w-full h-full bg-cover bg-center"
+                style={{
+                  backgroundImage: `url(${mediaUrls.background})`,
+                  filter: 'blur(20px) brightness(0.5) saturate(0.5)',
+                }}
+              />
+            ) : (
+              <OsuBackground url={liveBackgroundUrl} />
+            )}
+            <div className="absolute inset-0 bg-[#0c1a35]/18" />
           </div>
         )}
-        {!mediaUrls.background && !osuBackgroundUrl && (
-          <div className="absolute inset-0 -z-10 bg-surface-950" />
-        )}
+        {!mediaUrls.background && !liveBackgroundUrl && <div className="absolute inset-0 -z-10 bg-surface-950" />}
 
         <div className="relative z-10 flex flex-col h-full">
-          <Header direction={direction} onSetDirection={(dir) => { setDirection(dir); queueClearAll(); reset() }} appVersion={appVersion} onShowVersionDialog={() => { setShowVersionDialog(true); setCheckResult(null) }} />
+          <Header
+            direction={direction}
+            onSetDirection={(dir) => {
+              setDirection(dir)
+              queueClearAll()
+              reset()
+            }}
+            appVersion={appVersion}
+            onShowVersionDialog={() => {
+              setShowVersionDialog(true)
+              setCheckResult(null)
+            }}
+          />
 
           <ConversionQueue
             items={queueItems}
@@ -1705,13 +2027,13 @@ export default function ConverterPage() {
             onClearAll={handleQueueClearAll}
           />
 
-          <main className="flex-1 flex flex-col items-center p-4 sm:p-6 gap-3 sm:gap-5 overflow-auto hide-scrollbar">
+          <main className="min-h-0 min-w-0 flex-1 flex flex-col items-center p-4 sm:p-6 gap-3 sm:gap-5 overflow-auto hide-scrollbar">
             {packFolder && packEditing === null && (
               <PackBrowser
                 entries={packEntries}
                 selected={packSelected}
                 onToggleSelect={(i) => {
-                  setPackSelected(prev => {
+                  setPackSelected((prev) => {
                     const next = new Set(prev)
                     if (next.has(i)) next.delete(i)
                     else next.add(i)
@@ -1765,45 +2087,62 @@ export default function ConverterPage() {
 
             {!packFolder && queueItems.length === 0 && !beatmap && !packLoading && (
               <>
-              {osuSelected && (
-                <OsuMapPrompt map={osuSelected} busy={osuHookBusy} onConvert={() => void handleConvertOsuMap()} />
-              )}
-              <FallingArrows />
-              <div className="flex flex-col items-center gap-4 w-full max-w-lg my-auto relative z-10">
-                <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
-                <div className="flex items-center gap-3 w-full max-w-md">
-                  <div className="flex-1 h-px bg-white/5" />
-                  <span className="text-[11px] text-surface-500 tracking-widest uppercase">{t('common.or')}</span>
-                  <div className="flex-1 h-px bg-white/5" />
-                </div>
-                <button
-                  onClick={() => setShowMirror(true)}
-                  className="h-11 px-6 rounded-xl text-sm font-medium
+                {osuSelected && (
+                  <div className="w-full max-w-lg flex-none">
+                    <OsuMapPrompt map={osuSelected} busy={osuHookBusy} onConvert={() => void handleConvertOsuMap()} />
+                  </div>
+                )}
+                {etternaSelected && (
+                  <div className="w-full max-w-lg flex-none">
+                    <OsuMapPrompt
+                      map={etternaSelected}
+                      sourceLabel={etternaClientName()}
+                      backgroundUrl={etternaBackgroundUrl}
+                      busy={etternaHookBusy}
+                      onConvert={() => void handleConvertEtternaMap()}
+                    />
+                  </div>
+                )}
+                <FallingArrows />
+                <div className="flex flex-col items-center gap-4 w-full max-w-lg my-auto relative z-10">
+                  <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
+                  <div className="flex items-center gap-3 w-full max-w-md">
+                    <div className="flex-1 h-px bg-white/5" />
+                    <span className="text-[11px] text-surface-500 tracking-widest uppercase">{t('common.or')}</span>
+                    <div className="flex-1 h-px bg-white/5" />
+                  </div>
+                  <button
+                    onClick={() => setShowMirror(true)}
+                    className="h-11 px-6 rounded-xl text-sm font-medium
                     bg-white/[0.04] border border-white/8 text-surface-400
                     hover:bg-white/[0.07] hover:text-surface-200
                     transition-all duration-75 flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                  {t('converter.searchBeatmaps')}
-                </button>
-                <button
-                  onClick={() => handleOpenPack()}
-                  className="h-11 px-6 rounded-xl text-sm font-medium
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    {t('converter.searchBeatmaps')}
+                  </button>
+                  <button
+                    onClick={() => handleOpenPack()}
+                    className="h-11 px-6 rounded-xl text-sm font-medium
                     bg-white/[0.04] border border-white/8 text-surface-400
                     hover:bg-white/[0.07] hover:text-surface-200
                     transition-all duration-75"
-                >
-                  {t('converter.openPackFolder')}
-                </button>
-                <Link
-                  to="/skin-converter"
-                  className="text-xs text-surface-500 hover:text-surface-300 transition-colors duration-75"
-                >
-                  {t('converter.convertSkinInstead')} →
-                </Link>
-              </div>
+                  >
+                    {t('converter.openPackFolder')}
+                  </button>
+                  <Link
+                    to="/skin-converter"
+                    className="text-xs text-surface-500 hover:text-surface-300 transition-colors duration-75"
+                  >
+                    {t('converter.convertSkinInstead')} →
+                  </Link>
+                </div>
               </>
             )}
 
@@ -1817,7 +2156,7 @@ export default function ConverterPage() {
             {!packFolder && queueItems.length > 0 && (
               <div className="flex flex-col items-center w-full max-w-lg my-auto">
                 {(() => {
-                  const activeItem = queueItems.find(i => i.id === queueActiveId)
+                  const activeItem = queueItems.find((i) => i.id === queueActiveId)
                   if (queueLoading) {
                     return (
                       <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
@@ -1830,7 +2169,9 @@ export default function ConverterPage() {
                     return (
                       <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
                         <div className="w-8 h-8 rounded-xl border-2 border-accent/30 border-t-accent animate-spin" />
-                        <p className="text-sm text-surface-400">{t('converter.parsingFile', { fileName: activeItem.fileName })}</p>
+                        <p className="text-sm text-surface-400">
+                          {t('converter.parsingFile', { fileName: activeItem.fileName })}
+                        </p>
                       </div>
                     )
                   }
@@ -1838,7 +2179,9 @@ export default function ConverterPage() {
                     return (
                       <div className="flex flex-col items-center gap-6 animate-fade-in my-auto">
                         <div className="text-center">
-                          <p className="text-sm text-red-400 mb-1">{t('converter.failedToLoadFile', { fileName: activeItem.fileName })}</p>
+                          <p className="text-sm text-red-400 mb-1">
+                            {t('converter.failedToLoadFile', { fileName: activeItem.fileName })}
+                          </p>
                           <p className="text-xs text-surface-500">{activeItem.error}</p>
                         </div>
                         <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
@@ -1911,7 +2254,10 @@ export default function ConverterPage() {
             <>
               {audioLoading && (
                 <div className="absolute top-0 left-0 right-0 h-0.5 z-50 overflow-hidden pointer-events-none">
-                  <div className="h-full bg-accent/60 animate-pulse" style={{ animation: 'loading-bar 1.2s ease-in-out infinite', width: '40%' }} />
+                  <div
+                    className="h-full bg-accent/60 animate-pulse"
+                    style={{ animation: 'loading-bar 1.2s ease-in-out infinite', width: '40%' }}
+                  />
                 </div>
               )}
               <AudioPlayer
@@ -1926,7 +2272,16 @@ export default function ConverterPage() {
 
           {!beatmap && !packFolder && (
             <footer className="px-4 sm:px-6 py-2 sm:py-3 border-t border-surface-800/50 text-center text-[10px] sm:text-xs text-surface-500">
-              © {new Date().getFullYear()} {t('converter.madeBy')} <a href="https://github.com/kaanreal" target="_blank" rel="noopener noreferrer" className="text-accent-muted hover:text-accent transition-colors">Kaan</a> &#x2764;
+              © {new Date().getFullYear()} {t('converter.madeBy')}{' '}
+              <a
+                href="https://github.com/kaanreal"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent-muted hover:text-accent transition-colors"
+              >
+                Kaan
+              </a>{' '}
+              &#x2764;
             </footer>
           )}
         </div>
@@ -1940,7 +2295,7 @@ export default function ConverterPage() {
               duration={audioDuration}
               notes={beatmap.notes}
               keys={beatmap.keys}
-              bpm={Math.round(60000 / (beatmap.timing_points.find(tp => tp.uninherited)?.beat_length ?? 600))}
+              bpm={Math.round(60000 / (beatmap.timing_points.find((tp) => tp.uninherited)?.beat_length ?? 600))}
               backgroundUrl={mediaUrls.background}
               previewTime={beatmap.preview_time}
               sourceFormat={beatmap.source_format}
@@ -1955,7 +2310,7 @@ export default function ConverterPage() {
           <ConvertDialog
             open={showConvertDialog}
             difficulties={beatmap.available_difficulties}
-            currentIndex={beatmap.available_difficulties.findIndex(d => d.name === beatmap.difficulty_name)}
+            currentIndex={beatmap.available_difficulties.findIndex((d) => d.name === beatmap.difficulty_name)}
             onConfirm={handleConvertDialogConfirm}
             onCancel={() => setShowConvertDialog(false)}
           />
@@ -1963,10 +2318,7 @@ export default function ConverterPage() {
 
         {/* Bulk convert dialog */}
         {direction === 'etterna-to-osu' && (
-          <BulkConvertDialog
-            open={showBulkConvert}
-            onCancel={() => setShowBulkConvert(false)}
-          />
+          <BulkConvertDialog open={showBulkConvert} onCancel={() => setShowBulkConvert(false)} />
         )}
 
         {/* Multi-audio warning dialog */}
@@ -1999,7 +2351,14 @@ export default function ConverterPage() {
         {/* Pack settings dialog */}
         <PackSettingsDialog
           open={showPackSettings}
-          packName={packFolder ? packFolder.split(/[/\\]+/).filter(Boolean).pop() || 'pack' : 'pack'}
+          packName={
+            packFolder
+              ? packFolder
+                  .split(/[/\\]+/)
+                  .filter(Boolean)
+                  .pop() || 'pack'
+              : 'pack'
+          }
           isConverting={isConverting}
           defaultSettings={{
             mode: 'osz',
@@ -2027,8 +2386,14 @@ export default function ConverterPage() {
 
         {/* Version info dialog */}
         {showVersionDialog && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowVersionDialog(false)}>
-            <div className="bg-surface-900 border border-surface-700/50 rounded-2xl shadow-2xl max-w-sm w-full mx-4 animate-scale-in p-6" onClick={e => e.stopPropagation()}>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+            onClick={() => setShowVersionDialog(false)}
+          >
+            <div
+              className="bg-surface-900 border border-surface-700/50 rounded-2xl shadow-2xl max-w-sm w-full mx-4 animate-scale-in p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center gap-3 mb-4">
                 <img src="/logo.png" alt="Henkan" className="w-10 h-10 rounded-xl" />
                 <div>
@@ -2048,14 +2413,22 @@ export default function ConverterPage() {
                       <>
                         <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                          />
                         </svg>
                         {t('converter.checking')}
                       </>
                     ) : (
                       <>
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                          />
                         </svg>
                         {t('converter.checkForUpdates')}
                       </>
@@ -2065,7 +2438,13 @@ export default function ConverterPage() {
 
                 {checkResult === 'up-to-date' && (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs font-medium">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                     {t('converter.upToDate')}
@@ -2075,7 +2454,11 @@ export default function ConverterPage() {
                 {checkResult === 'error' && (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-medium">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                     {t('converter.updateCheckFailed')}
                   </div>
@@ -2122,14 +2505,22 @@ export default function ConverterPage() {
             <div className="bg-surface-900 border border-surface-700/50 rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 animate-scale-in">
               <div className="text-center">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg
+                    className="w-8 h-8 text-emerald-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
                 <h2 className="text-xl font-semibold text-surface-100 mb-1">{t('converter.exportComplete')}</h2>
                 <div className="text-xs text-surface-400 mb-6 space-y-1 max-h-24 overflow-y-auto custom-scrollbar">
                   {lastExportPath.split('\n').map((p, i) => (
-                    <p key={i} className="break-all">{p}</p>
+                    <p key={i} className="break-all">
+                      {p}
+                    </p>
                   ))}
                 </div>
                 <div className="flex gap-3 justify-center">
