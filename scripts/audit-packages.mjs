@@ -7,8 +7,13 @@ const version = JSON.parse(read('package.json')).version
 const failures = []
 const check = (condition, message) => { if (!condition) failures.push(message) }
 
+const packageLock = JSON.parse(read('package-lock.json'))
+check(packageLock.version === version, 'package-lock.json top-level version is out of sync')
+check(packageLock.packages?.['']?.version === version, 'package-lock.json root package version is out of sync')
+check(JSON.parse(read('src/wasm/package.json')).version === version, 'src/wasm/package.json version is out of sync')
 check(JSON.parse(read('src-tauri/tauri.conf.json')).version === version, 'tauri.conf.json version is out of sync')
 check(new RegExp(`^version = "${version.replaceAll('.', '\\.') }"$`, 'm').test(read('src-tauri/Cargo.toml')), 'Cargo.toml version is out of sync')
+check(new RegExp(`^\\[\\[package\\]\\]\\s+name = "henkan"\\s+version = "${version.replaceAll('.', '\\.') }"$`, 'm').test(read('src-tauri/Cargo.lock')), 'Cargo.lock version is out of sync')
 
 const versioned = [
   'packaging/aur/PKGBUILD',

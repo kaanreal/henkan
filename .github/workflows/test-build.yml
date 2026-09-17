@@ -1,6 +1,9 @@
 name: Test Build
 
 on:
+    push:
+        branches:
+            - main
     pull_request:
     workflow_dispatch:
 
@@ -57,7 +60,7 @@ jobs:
                   npm run audit:assets
                   npm run audit:packages
                   npm run build
-                  npm run test:updater
+                  npm run test:release
                   cargo test --manifest-path src-tauri/Cargo.toml
 
     build:

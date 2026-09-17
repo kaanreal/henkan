@@ -4,7 +4,7 @@ Briefly describe the user-visible change and the reason for it.
 
 ## Checks
 
-- [ ] I used a conventional PR title (`feat:`, `fix:`, `docs:`, and so on).
+- [ ] I gave the PR a concise, descriptive title.
 - [ ] I ran the relevant tests or checks.
 - [ ] I added a screenshot for visible UI changes.
 - [ ] I updated docs when behaviour or setup changed.

@@ -1,0 +1,117 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact stable version to prepare (for example 1.8.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ secrets.MY_RELEASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Require the main branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "Prepare Release must be run from main, not $GITHUB_REF_NAME." >&2
+            exit 1
+          fi
+
+      - name: Validate version and release availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Invalid version: $VERSION. Use a stable version such as 1.8.0." >&2
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+          if git ls-remote --exit-code origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "The tag $TAG already exists." >&2
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "A GitHub release for $TAG already exists." >&2
+            exit 1
+          fi
+
+          latest_tag=""
+          while IFS= read -r candidate; do
+            latest_tag="$candidate"
+            break
+          done < <(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 100 --json tagName,publishedAt --jq 'sort_by(.publishedAt) | reverse | .[].tagName')
+
+          if [ -n "$latest_tag" ]; then
+            latest_version="${latest_tag#v}"
+            greatest="$(printf '%s\n' "$latest_version" "$VERSION" | sort -V | tail -n1)"
+            if [ "$greatest" != "$VERSION" ] || [ "$VERSION" = "$latest_version" ]; then
+              echo "$VERSION must be greater than the latest published version $latest_version." >&2
+              exit 1
+            fi
+          fi
+
+          echo "Preparing $TAG after ${latest_tag:-the existing release history}."
+
+      - name: Update synchronized version files
+        run: node scripts/prepare-release.mjs "$VERSION"
+
+      - name: Commit version preparation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json src/wasm/package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+          if git diff --cached --quiet; then
+            echo "The requested version is already prepared on main."
+          else
+            git commit -m "🌸 prepare v$VERSION"
+            git push origin HEAD:main
+          fi
+
+      - name: Create draft GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+          commit="$(git rev-parse HEAD)"
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          ## What's new
+
+          -
+
+          ## Fixed
+
+          -
+          EOF
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$commit" \
+            --draft \
+            --title "$TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"

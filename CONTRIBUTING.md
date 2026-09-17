@@ -25,10 +25,26 @@ npm run dev            # run the app in development
 npm run build          # type-check and build the web bundle
 npm run lint           # lint TypeScript and React
 npm run test:updater   # test release-manifest generation
+npm run test:release   # test release-manifest and changelog generation
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 If you change Rust formatting, also run `cargo fmt --check` from `src-tauri`.
+
+## Releasing
+
+Releases are deliberately separate from everyday commits. From the `main`
+branch, run the **Prepare Release** workflow and enter the exact stable version
+you want, such as `1.8.0`. The workflow updates the synchronized application
+version files, commits `prepare v1.8.0`, and creates a draft GitHub Release.
+
+Edit the draft body yourself, then publish it. Publishing starts the signed
+Windows, macOS, and Linux builds, uploads the bundles and updater manifest, and
+publishes the package-manager updates. The same release body is copied into the
+updater manifest and the top of `CHANGELOG.md`.
+
+The release workflow never infers a version or release notes from commit
+subjects.
 
 ## A calm contribution flow
 
@@ -40,25 +56,23 @@ If you change Rust formatting, also run `cargo fmt --check` from `src-tauri`.
 
 ## Commit messages
 
-Henkan uses Conventional Commits because Release Please reads the **start** of
-the commit subject to decide versions and changelog entries. Keep that part
-plain; put one small mood emoji at the beginning of the human description if it
-suits the change.
+Write concise, human-readable commit subjects. There is no required prefix or
+commit format, and an emoji at the beginning is welcome when it helps set the
+mood.
 
 ```text
-feat: 🌷 add pack banner preview
-fix(parser): 🫖 preserve negative beat offsets
-docs: 📚 clarify Linux installation
-chore(wasm): rebuild bindings
+🌸 add pack banner preview
+🐛 fix preview timing
+🧹 simplify converter state
 ```
 
-Useful types are `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci`, and
-`chore`. Use `feat!:` or a `BREAKING CHANGE:` footer only for a deliberate
-breaking change. Avoid emoji-only, vague subjects such as `✨ update stuff`.
+Choose a subject that makes sense in the project history. Releases are prepared
+manually from GitHub Actions, so commit messages do not control versions,
+changelogs, or release notes.
 
-For pull requests, use **Squash and merge** and make the squash title the final
-conventional commit. It leaves `main` readable and gives Release Please one
-clear entry to process.
+For pull requests, use **Squash and merge** when a single tidy commit makes the
+history easier to follow, but do not rewrite a commit just to fit a release
+convention.
 
 ## Where things live
 
