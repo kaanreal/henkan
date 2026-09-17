@@ -807,6 +807,41 @@ fn locate_ffmpeg() -> Option<PathBuf> {
     None
 }
 
+fn parse_ffmpeg_audio_bitrate(output: &str) -> Option<u32> {
+    for line in output.lines() {
+        let Some(audio_start) = line.find("Audio:") else {
+            continue;
+        };
+
+        let tokens: Vec<&str> = line[audio_start..].split_whitespace().collect();
+        for pair in tokens.windows(2) {
+            if !pair[1].eq_ignore_ascii_case("kb/s") {
+                continue;
+            }
+
+            let Ok(kbps) = pair[0].parse::<f64>() else {
+                continue;
+            };
+            if kbps.is_finite() && kbps > 0.0 {
+                return Some((kbps * 1000.0).round() as u32);
+            }
+        }
+    }
+
+    None
+}
+
+fn detect_audio_bitrate(ffmpeg: &Path, input: &Path) -> Option<u32> {
+    let probe = std::process::Command::new(ffmpeg)
+        .arg("-hide_banner")
+        .arg("-i")
+        .arg(input)
+        .output()
+        .ok()?;
+
+    parse_ffmpeg_audio_bitrate(&String::from_utf8_lossy(&probe.stderr))
+}
+
 pub fn speed_up_audio_ffmpeg(
     ffmpeg: &Path,
     input: &Path,
@@ -816,7 +851,7 @@ pub fn speed_up_audio_ffmpeg(
 ) -> Result<String, String> {
     let output_str = output.to_string_lossy().to_string();
 
-    if preserve_pitch {
+    let filter = if preserve_pitch {
         // atempo filter is limited to 0.5–2.0; chain for rates outside that range
         let mut filters: Vec<String> = Vec::new();
         let mut r = rate;
@@ -829,49 +864,39 @@ pub fn speed_up_audio_ffmpeg(
             r /= 0.5;
         }
         filters.push(format!("atempo={:.6}", r));
-        let filter_str = filters.join(",");
-
-        let status = std::process::Command::new(ffmpeg)
-            .arg("-y")
-            .arg("-i")
-            .arg(input)
-            .arg("-af")
-            .arg(&filter_str)
-            .arg("-codec:a")
-            .arg("libmp3lame")
-            .arg("-b:a")
-            .arg("192k")
-            .arg(&output_str)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
-        if !status.success() {
-            return Err(format!("ffmpeg exited with status {:?}", status.code()));
-        }
+        filters.join(",")
     } else {
         // No pitch preservation: change sample rate directly (chipmunk/tape effect)
         let target_rate = (44100.0 * rate) as u32;
-        let setrate = format!("asetrate={},aresample=44100", target_rate);
+        format!("asetrate={},aresample=44100", target_rate)
+    };
 
-        let status = std::process::Command::new(ffmpeg)
-            .arg("-y")
-            .arg("-i")
-            .arg(input)
-            .arg("-af")
-            .arg(&setrate)
-            .arg("-codec:a")
-            .arg("libmp3lame")
+    let mut command = std::process::Command::new(ffmpeg);
+    command
+        .arg("-y")
+        .arg("-i")
+        .arg(input)
+        .arg("-af")
+        .arg(filter)
+        .arg("-codec:a")
+        .arg("libmp3lame");
+
+    // Audio filters require re-encoding. Keep the source stream's reported
+    // bitrate so changing the rate does not silently force every export to one fixed default.
+    if let Some(bitrate) = detect_audio_bitrate(ffmpeg, input) {
+        command
             .arg("-b:a")
-            .arg("192k")
-            .arg(&output_str)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
-        if !status.success() {
-            return Err(format!("ffmpeg exited with status {:?}", status.code()));
-        }
+            .arg(format!("{}k", (bitrate + 500) / 1000));
+    }
+
+    let status = command
+        .arg(&output_str)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+    if !status.success() {
+        return Err(format!("ffmpeg exited with status {:?}", status.code()));
     }
 
     Ok(output_str)
@@ -2467,6 +2492,20 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_ffmpeg_audio_bitrate() {
+        let output = "Stream #0:0: Video: h264, 500 kb/s\nStream #0:1: Audio: mp3, 44100 Hz, stereo, fltp, 320 kb/s";
+
+        assert_eq!(parse_ffmpeg_audio_bitrate(output), Some(320_000));
+    }
+
+    #[test]
+    fn test_parse_ffmpeg_audio_bitrate_ignores_missing_bitrate() {
+        let output = "Stream #0:0: Audio: flac, 44100 Hz, stereo, s16";
+
+        assert_eq!(parse_ffmpeg_audio_bitrate(output), None);
+    }
 
     #[test]
     fn test_scan_songs_folder_finds_osu_files() {
