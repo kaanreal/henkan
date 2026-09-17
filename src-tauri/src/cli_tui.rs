@@ -1,4 +1,6 @@
-﻿use std::cell::Cell;
+use crate as henkan_lib;
+use serde::{Deserialize, Serialize};
+use std::cell::Cell;
 use std::env;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -6,15 +8,15 @@ use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize};
-use crate as henkan_lib;
 
 use crossterm::cursor::{Hide, Show};
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, MouseButton,
     MouseEventKind,
 };
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use crossterm::ExecutableCommand;
 use rand::Rng;
 use ratatui::prelude::*;
@@ -22,7 +24,9 @@ use ratatui::widgets::*;
 
 pub fn run(args: &[String]) -> io::Result<()> {
     if args.len() > 1 && matches!(args[1].as_str(), "-h" | "--help") {
-        splash_stdout(); help_stdout(); return Ok(());
+        splash_stdout();
+        help_stdout();
+        return Ok(());
     }
     if args.len() > 1 && matches!(args[1].as_str(), "parse" | "convert" | "export") {
         if let Err(e) = non_interactive(&args[1], &args) {
@@ -70,9 +74,13 @@ fn disable_quickedit() {
     unsafe {
         let h = GetStdHandle(STD_INPUT_HANDLE);
         let invalid: HANDLE = -1isize as *mut std::ffi::c_void;
-        if h == invalid || h.is_null() { return; }
+        if h == invalid || h.is_null() {
+            return;
+        }
         let mut mode: DWORD = 0;
-        if GetConsoleMode(h, &mut mode) == 0 { return; }
+        if GetConsoleMode(h, &mut mode) == 0 {
+            return;
+        }
         mode |= ENABLE_EXTENDED_FLAGS;
         mode &= !ENABLE_QUICK_EDIT;
         SetConsoleMode(h, mode);
@@ -94,7 +102,9 @@ fn interactive_tui() -> io::Result<()> {
     io::stdout().execute(Show)?;
     io::stdout().execute(DisableMouseCapture)?;
     io::stdout().execute(LeaveAlternateScreen)?;
-    if let Err(e) = &res { eprintln!("Error: {}", e); }
+    if let Err(e) = &res {
+        eprintln!("Error: {}", e);
+    }
     res
 }
 
@@ -144,7 +154,11 @@ struct DiffMetaOverride {
 }
 
 struct Star {
-    x: u16, y: i32, speed: u16, brightness: u8, size: u8,
+    x: u16,
+    y: i32,
+    speed: u16,
+    brightness: u8,
+    size: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -253,7 +267,10 @@ const COMMANDS: &[&str] = &[
 ];
 
 const COMMAND_DESCS: &[(&str, &str)] = &[
-    ("quick", "Open temp folder - drop files & press Enter to convert"),
+    (
+        "quick",
+        "Open temp folder - drop files & press Enter to convert",
+    ),
     ("results", "Switch to results screen"),
     ("open", "Open export folder in file manager"),
     ("clear", "Clear output history and results list"),
@@ -265,9 +282,7 @@ const COMMAND_DESCS: &[(&str, &str)] = &[
     ("quit", "Exit the program"),
 ];
 
-const SETTING_KEYS: &[&str] = &[
-    "avatar", "format", "dir",
-];
+const SETTING_KEYS: &[&str] = &["avatar", "format", "dir"];
 
 impl App {
     fn new() -> Self {
@@ -328,7 +343,10 @@ impl App {
     }
 
     fn run(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
-        if let Ok(s) = terminal.size() { self.term_w = s.width; self.term_h = s.height; }
+        if let Ok(s) = terminal.size() {
+            self.term_w = s.width;
+            self.term_h = s.height;
+        }
         self.spawn_stars();
         loop {
             // Check if quick folder was closed (macOS background thread)
@@ -348,7 +366,9 @@ impl App {
             if event::poll(Duration::from_millis(50))? {
                 match event::read()? {
                     Event::Key(key) => {
-                        if key.kind != KeyEventKind::Press { continue; }
+                        if key.kind != KeyEventKind::Press {
+                            continue;
+                        }
                         match self.screen {
                             Screen::Drop => self.handle_drop_key(key),
                             Screen::Results => self.handle_results_key(key),
@@ -361,7 +381,8 @@ impl App {
                         self.paste_buf.push_str(&text);
                     }
                     Event::Resize(w, h) => {
-                        self.term_w = w; self.term_h = h;
+                        self.term_w = w;
+                        self.term_h = h;
                         self.stars.clear();
                         self.spawn_stars();
                     }
@@ -386,22 +407,20 @@ impl App {
         if let Some(after_set) = search.strip_prefix("set ") {
             let after = after_set.trim();
             if after.is_empty() {
-                self.completions = SETTING_KEYS.iter()
-                    .map(|k| format!("set {} ", k))
-                    .collect();
+                self.completions = SETTING_KEYS.iter().map(|k| format!("set {} ", k)).collect();
             } else {
-                self.completions = SETTING_KEYS.iter()
+                self.completions = SETTING_KEYS
+                    .iter()
                     .filter(|k| k.starts_with(after))
                     .map(|k| format!("set {} ", k))
                     .collect();
             }
         } else if search.is_empty() {
             // Just "/" shows all commands
-            self.completions = COMMANDS.iter()
-                .map(|c| c.to_string())
-                .collect();
+            self.completions = COMMANDS.iter().map(|c| c.to_string()).collect();
         } else {
-            self.completions = COMMANDS.iter()
+            self.completions = COMMANDS
+                .iter()
                 .filter(|c| c.starts_with(search))
                 .map(|c| c.to_string())
                 .collect();
@@ -410,7 +429,9 @@ impl App {
     }
 
     fn check_paste_buf(&mut self) {
-        if self.paste_buf.is_empty() { return; }
+        if self.paste_buf.is_empty() {
+            return;
+        }
         let content = std::mem::take(&mut self.paste_buf);
         if self.screen == Screen::Drop {
             self.cmd_input.push_str(&content);
@@ -451,7 +472,8 @@ impl App {
             let _ = Command::new("explorer").args([&path_str]).spawn();
             let (tx, rx) = mpsc::channel();
             let script_path = path_str.clone();
-            let script = format!(r##"$path = '{path}'
+            let script = format!(
+                r##"$path = '{path}'
 try {{
     $shell = New-Object -ComObject Shell.Application
     do {{
@@ -471,7 +493,9 @@ try {{
         }}
     }} while ($found)
 }} catch {{}}
-"##, path = script_path.replace('\'', "''"));
+"##,
+                path = script_path.replace('\'', "''")
+            );
             thread::spawn(move || {
                 let _ = Command::new("powershell")
                     .args(["-NoProfile", "-NonInteractive", "-Command", &script])
@@ -484,7 +508,8 @@ try {{
         #[cfg(target_os = "macos")]
         {
             let (tx, rx) = mpsc::channel();
-            let script = format!(r#"tell application "Finder"
+            let script = format!(
+                r#"tell application "Finder"
     activate
     set theWindow to make new Finder window to folder POSIX file "{}"
     repeat
@@ -495,7 +520,9 @@ try {{
         end try
         delay 0.5
     end repeat
-end tell"#, path_str);
+end tell"#,
+                path_str
+            );
             thread::spawn(move || {
                 let _ = Command::new("osascript").args(["-e", &script]).status();
                 let _ = tx.send(());
@@ -551,7 +578,8 @@ if ($res -eq 'OK') { $d.FileNames -join "`n" }
                 .map_err(|e| format!("Failed to run dialog: {}", e))?;
             if output.status.success() {
                 let text = String::from_utf8_lossy(&output.stdout);
-                let files: Vec<String> = text.lines()
+                let files: Vec<String> = text
+                    .lines()
                     .map(|l| l.trim().to_string())
                     .filter(|l| !l.is_empty())
                     .collect();
@@ -573,8 +601,11 @@ return output"#;
                 .map_err(|e| format!("Failed to run dialog: {}", e))?;
             if output.status.success() {
                 let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if text.is_empty() { return Ok(None); }
-                let files: Vec<String> = text.lines()
+                if text.is_empty() {
+                    return Ok(None);
+                }
+                let files: Vec<String> = text
+                    .lines()
                     .map(|l| l.trim().to_string())
                     .filter(|l| !l.is_empty())
                     .collect();
@@ -585,12 +616,18 @@ return output"#;
 
         if cfg!(target_os = "linux") {
             let zenity = Command::new("zenity")
-                .args(["--file-selection", "--multiple", "--title=Select beatmap files", "--file-filter=Beatmap files *.osu *.osz *.sm"])
+                .args([
+                    "--file-selection",
+                    "--multiple",
+                    "--title=Select beatmap files",
+                    "--file-filter=Beatmap files *.osu *.osz *.sm",
+                ])
                 .output();
             if let Ok(out) = zenity {
                 if out.status.success() {
                     let text = String::from_utf8_lossy(&out.stdout);
-                    let files: Vec<String> = text.split('|')
+                    let files: Vec<String> = text
+                        .split('|')
                         .map(|l| l.trim().to_string())
                         .filter(|l| !l.is_empty())
                         .collect();
@@ -598,12 +635,19 @@ return output"#;
                 }
             }
             let kdialog = Command::new("kdialog")
-                .args(["--title=Select beatmap files", "--multiple", "--open", ".", "--file-filter=*.osu *.osz *.sm"])
+                .args([
+                    "--title=Select beatmap files",
+                    "--multiple",
+                    "--open",
+                    ".",
+                    "--file-filter=*.osu *.osz *.sm",
+                ])
                 .output();
             if let Ok(out) = kdialog {
                 if out.status.success() {
                     let text = String::from_utf8_lossy(&out.stdout);
-                    let files: Vec<String> = text.lines()
+                    let files: Vec<String> = text
+                        .lines()
                         .map(|l| l.trim().to_string())
                         .filter(|l| !l.is_empty())
                         .collect();
@@ -628,7 +672,9 @@ if theFolder is not "" then return POSIX path of theFolder"#;
                 .map_err(|e| format!("Failed to run dialog: {}", e))?;
             if output.status.success() {
                 let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if text.is_empty() { return Ok(None); }
+                if text.is_empty() {
+                    return Ok(None);
+                }
                 return Ok(Some(text));
             }
             return Ok(None);
@@ -636,12 +682,18 @@ if theFolder is not "" then return POSIX path of theFolder"#;
 
         if cfg!(target_os = "linux") {
             let output = Command::new("zenity")
-                .args(["--file-selection", "--directory", "--title=Select output directory"])
+                .args([
+                    "--file-selection",
+                    "--directory",
+                    "--title=Select output directory",
+                ])
                 .output();
             if let Ok(out) = output {
                 if out.status.success() {
                     let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    if !text.is_empty() { return Ok(Some(text)); }
+                    if !text.is_empty() {
+                        return Ok(Some(text));
+                    }
                 }
             }
             return Err("No folder dialog available (install zenity)".into());
@@ -662,7 +714,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 .map_err(|e| format!("Failed to run dialog: {}", e))?;
             if output.status.success() {
                 let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if text.is_empty() { return Ok(None); }
+                if text.is_empty() {
+                    return Ok(None);
+                }
                 return Ok(Some(text));
             }
             return Ok(None);
@@ -692,7 +746,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
         match key.code {
             KeyCode::Enter => {
                 if has_comps && self.completion_idx < self.completions.len() {
-                    self.cmd_input.clone_from(&self.completions[self.completion_idx]);
+                    self.cmd_input
+                        .clone_from(&self.completions[self.completion_idx]);
                     self.cmd_cursor = self.cmd_input.chars().count();
                     self.completions.clear();
                     self.completion_idx = 0;
@@ -703,7 +758,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
             }
             KeyCode::Tab => self.tab_complete(),
             KeyCode::F(1) => {
-                if !self.results.is_empty() { self.go_to_results(); }
+                if !self.results.is_empty() {
+                    self.go_to_results();
+                }
             }
             KeyCode::Esc => {
                 if has_comps {
@@ -829,7 +886,11 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let trimmed = trimmed.strip_prefix('/').unwrap_or(&trimmed).to_string();
 
         // Save to history (skip if same as last)
-        if self.cmd_history.last().map_or(true, |last| last != &trimmed) {
+        if self
+            .cmd_history
+            .last()
+            .map_or(true, |last| last != &trimmed)
+        {
             self.cmd_history.push(trimmed.clone());
         }
 
@@ -839,7 +900,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
         match cmd {
             "quick" => self.quick_files_via_folder(),
             "results" | "exports" => {
-                if !self.results.is_empty() { self.go_to_results(); }
+                if !self.results.is_empty() {
+                    self.go_to_results();
+                }
             }
             "open" => self.open_folder(),
             "clear" => {
@@ -860,7 +923,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
             "reset" => {
                 self.settings = CliSettings::default();
                 self.settings.save();
-                self.output_lines.push("  \u{2713} Settings reset to defaults".into());
+                self.output_lines
+                    .push("  \u{2713} Settings reset to defaults".into());
                 self.output_scroll = self.output_lines.len().saturating_sub(1);
             }
             "set" => self.handle_set(rest),
@@ -874,7 +938,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let parts: Vec<&str> = args.split_whitespace().collect();
         if parts.len() < 2 {
             self.output_lines.push("  Usage: set <key> <value>".into());
-            self.output_lines.push("  Keys: avatar (on/off), format (osz/folder), dir <path>".into());
+            self.output_lines
+                .push("  Keys: avatar (on/off), format (osz/folder), dir <path>".into());
             self.output_scroll = self.output_lines.len().saturating_sub(1);
             return;
         }
@@ -885,21 +950,35 @@ if ($res -eq 'OK') { $d.SelectedPath }
             "avatar" => parse_onoff(&rest).map(|v| self.settings.fetch_avatar = v),
             "format" => {
                 let v = rest.to_lowercase();
-                if v == "osz" { self.settings.export_format_osz = true; Ok(()) }
-                else if v == "folder" { self.settings.export_format_osz = false; Ok(()) }
-                else { Err("Use 'osz' or 'folder'".into()) }
+                if v == "osz" {
+                    self.settings.export_format_osz = true;
+                    Ok(())
+                } else if v == "folder" {
+                    self.settings.export_format_osz = false;
+                    Ok(())
+                } else {
+                    Err("Use 'osz' or 'folder'".into())
+                }
             }
             "dir" => {
                 let trimmed = rest.trim();
-                if trimmed.is_empty() { Err("Path cannot be empty".into()) }
-                else { self.settings.output_dir = trimmed.to_string(); Ok(()) }
+                if trimmed.is_empty() {
+                    Err("Path cannot be empty".into())
+                } else {
+                    self.settings.output_dir = trimmed.to_string();
+                    Ok(())
+                }
             }
             _ => Err(format!("Unknown key: {}", key)),
         };
-        if result.is_ok() { self.settings.save(); }
+        if result.is_ok() {
+            self.settings.save();
+        }
 
         match result {
-            Ok(_) => self.output_lines.push(format!("  \u{2713} {} = {}", key, rest)),
+            Ok(_) => self
+                .output_lines
+                .push(format!("  \u{2713} {} = {}", key, rest)),
             Err(e) => self.output_lines.push(format!("  \u{2717} {}", e)),
         }
         self.output_scroll = self.output_lines.len().saturating_sub(1);
@@ -911,47 +990,85 @@ if ($res -eq 'OK') { $d.SelectedPath }
         self.output_lines.push("".into());
         self.output_lines.push("  \u{2502} commands".into());
         self.output_lines.push("".into());
-        self.output_lines.push("  \u{2192} quick           Open temp folder - drop files & press Enter to convert".into());
-        self.output_lines.push("  \u{2192} convert <path>   Convert a beatmap file".into());
-        self.output_lines.push("  \u{2192} results         Switch to results screen".into());
-        self.output_lines.push("  \u{2192} open            Open last export folder in file manager".into());
-        self.output_lines.push("  \u{2192} clear           Clear output & results".into());
-        self.output_lines.push("  \u{2192} settings        Show current settings".into());
-        self.output_lines.push("  \u{2192} set <k> <v>     Change a setting (avatar, format, dir)".into());
-        self.output_lines.push("  \u{2192} reset           Reset settings to defaults".into());
-        self.output_lines.push("  \u{2192} help            Show this help".into());
-        self.output_lines.push("  \u{2192} exit / quit     Exit the program".into());
+        self.output_lines.push(
+            "  \u{2192} quick           Open temp folder - drop files & press Enter to convert"
+                .into(),
+        );
+        self.output_lines
+            .push("  \u{2192} convert <path>   Convert a beatmap file".into());
+        self.output_lines
+            .push("  \u{2192} results         Switch to results screen".into());
+        self.output_lines
+            .push("  \u{2192} open            Open last export folder in file manager".into());
+        self.output_lines
+            .push("  \u{2192} clear           Clear output & results".into());
+        self.output_lines
+            .push("  \u{2192} settings        Show current settings".into());
+        self.output_lines
+            .push("  \u{2192} set <k> <v>     Change a setting (avatar, format, dir)".into());
+        self.output_lines
+            .push("  \u{2192} reset           Reset settings to defaults".into());
+        self.output_lines
+            .push("  \u{2192} help            Show this help".into());
+        self.output_lines
+            .push("  \u{2192} exit / quit     Exit the program".into());
         self.output_lines.push("".into());
         self.output_lines.push("  \u{2502} settings keys".into());
         self.output_lines.push("".into());
-        self.output_lines.push("  \u{2192} avatar   Fetch osu! avatar for cdtitle (on/off)".into());
-        self.output_lines.push("  \u{2192} format   Export format: osz or folder".into());
-        self.output_lines.push("  \u{2192} dir      Output directory (default ./converts)".into());
+        self.output_lines
+            .push("  \u{2192} avatar   Fetch osu! avatar for cdtitle (on/off)".into());
+        self.output_lines
+            .push("  \u{2192} format   Export format: osz or folder".into());
+        self.output_lines
+            .push("  \u{2192} dir      Output directory (default ./converts)".into());
         self.output_lines.push("".into());
-        self.output_lines.push("  \u{2502} edit keys (per-difficulty)".into());
+        self.output_lines
+            .push("  \u{2502} edit keys (per-difficulty)".into());
         self.output_lines.push("".into());
-        self.output_lines.push("  Press Enter on a difficulty in the select screen to edit metadata".into());
-        self.output_lines.push("  This is used for overriding per-difficulty settings before export.".into());
+        self.output_lines
+            .push("  Press Enter on a difficulty in the select screen to edit metadata".into());
+        self.output_lines
+            .push("  This is used for overriding per-difficulty settings before export.".into());
         self.output_lines.push("".into());
-        self.output_lines.push("  \u{2192} title    Override title (empty = use source)".into());
-        self.output_lines.push("  \u{2192} artist   Override artist (empty = use source)".into());
-        self.output_lines.push("  \u{2192} mapper   Override mapper (empty = use source)".into());
-        self.output_lines.push("  \u{2192} diff     Override difficulty name (empty = use source)".into());
-        self.output_lines.push("  \u{2192} hp       HP drain (default 8)".into());
-        self.output_lines.push("  \u{2192} od       Overall difficulty (default 8)".into());
-        self.output_lines.push("  \u{2192} rate     Conversion rate multiplier (default 1)".into());
-        self.output_lines.push("  \u{2192} pitch    Preserve pitch on rate change (on/off)".into());
-        self.output_lines.push("  \u{2192} audio    Copy audio file (on/off)".into());
-        self.output_lines.push("  \u{2192} bg       Copy background image (on/off)".into());
-        self.output_lines.push("  \u{2192} banner   Copy banner for SM (on/off)".into());
-        self.output_lines.push("  \u{2192} cdtitle  Copy cdtitle for SM (on/off)".into());
+        self.output_lines
+            .push("  \u{2192} title    Override title (empty = use source)".into());
+        self.output_lines
+            .push("  \u{2192} artist   Override artist (empty = use source)".into());
+        self.output_lines
+            .push("  \u{2192} mapper   Override mapper (empty = use source)".into());
+        self.output_lines
+            .push("  \u{2192} diff     Override difficulty name (empty = use source)".into());
+        self.output_lines
+            .push("  \u{2192} hp       HP drain (default 8)".into());
+        self.output_lines
+            .push("  \u{2192} od       Overall difficulty (default 8)".into());
+        self.output_lines
+            .push("  \u{2192} rate     Conversion rate multiplier (default 1)".into());
+        self.output_lines
+            .push("  \u{2192} pitch    Preserve pitch on rate change (on/off)".into());
+        self.output_lines
+            .push("  \u{2192} audio    Copy audio file (on/off)".into());
+        self.output_lines
+            .push("  \u{2192} bg       Copy background image (on/off)".into());
+        self.output_lines
+            .push("  \u{2192} banner   Copy banner for SM (on/off)".into());
+        self.output_lines
+            .push("  \u{2192} cdtitle  Copy cdtitle for SM (on/off)".into());
         self.output_lines.push("".into());
         self.output_lines.push("  \u{2502} tips".into());
         self.output_lines.push("".into());
-        self.output_lines.push("  \u{2022} Type a path directly or press Enter with empty input for file dialog".into());
-        self.output_lines.push("  \u{2022} Up/Down recalls command history; PageUp/Down scrolls output".into());
-        self.output_lines.push("  \u{2022} Tab accepts the top suggestion; arrow keys navigate suggestions".into());
-        self.output_lines.push("  \u{2022} Starred items (*) in the pack screen have existing metadata edits".into());
+        self.output_lines.push(
+            "  \u{2022} Type a path directly or press Enter with empty input for file dialog"
+                .into(),
+        );
+        self.output_lines
+            .push("  \u{2022} Up/Down recalls command history; PageUp/Down scrolls output".into());
+        self.output_lines.push(
+            "  \u{2022} Tab accepts the top suggestion; arrow keys navigate suggestions".into(),
+        );
+        self.output_lines.push(
+            "  \u{2022} Starred items (*) in the pack screen have existing metadata edits".into(),
+        );
         self.output_lines.push("".into());
         self.output_lines.push(" \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}".into());
         self.output_lines.push("".into());
@@ -959,7 +1076,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
     }
 
     fn tab_complete(&mut self) {
-        if self.completions.is_empty() { return; }
+        if self.completions.is_empty() {
+            return;
+        }
         self.cmd_input.clone_from(&self.completions[0]);
         self.cmd_cursor = self.cmd_input.chars().count();
         self.completions.clear();
@@ -994,12 +1113,24 @@ if ($res -eq 'OK') { $d.SelectedPath }
 
     fn handle_results_key(&mut self, key: crossterm::event::KeyEvent) {
         match key.code {
-            KeyCode::Esc | KeyCode::Tab => { self.go_to_drop(); }
-            KeyCode::Enter | KeyCode::Char('o') => { self.open_folder(); }
-            KeyCode::Up => { if self.results_scroll > 0 { self.results_scroll -= 1; } }
+            KeyCode::Esc | KeyCode::Tab => {
+                self.go_to_drop();
+            }
+            KeyCode::Enter | KeyCode::Char('o') => {
+                self.open_folder();
+            }
+            KeyCode::Up => {
+                if self.results_scroll > 0 {
+                    self.results_scroll -= 1;
+                }
+            }
             KeyCode::Down => {
-                self.results_scroll = self.results_scroll.min(self.results.len().saturating_sub(1));
-                if self.results_scroll < self.results.len().saturating_sub(1) { self.results_scroll += 1; }
+                self.results_scroll = self
+                    .results_scroll
+                    .min(self.results.len().saturating_sub(1));
+                if self.results_scroll < self.results.len().saturating_sub(1) {
+                    self.results_scroll += 1;
+                }
             }
             KeyCode::PageUp => {
                 self.results_scroll = self.results_scroll.saturating_sub(5);
@@ -1029,34 +1160,34 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 self.settings_selection = self.settings_selection.saturating_sub(1);
             }
             KeyCode::Down => {
-                if self.settings_selection < max_idx { self.settings_selection += 1; }
-            }
-            KeyCode::Enter | KeyCode::Right | KeyCode::Left => {
-                match self.settings_selection {
-                    0 => {
-                        self.settings.fetch_avatar = !self.settings.fetch_avatar;
-                        self.settings.save();
-                    }
-                    1 => {
-                        self.settings.export_format_osz = !self.settings.export_format_osz;
-                        self.settings.save();
-                    }
-                    2 => {
-                        let _ = io::stdout().flush();
-                        let _ = disable_raw_mode();
-                        let _ = io::stdout().execute(DisableMouseCapture);
-                        let result = Self::folder_dialog_inner();
-                        let _ = enable_raw_mode();
-                        let _ = io::stdout().execute(Hide);
-                        let _ = io::stdout().execute(EnableMouseCapture);
-                        if let Ok(Some(dir)) = result {
-                            self.settings.output_dir = dir;
-                            self.settings.save();
-                        }
-                    }
-                    _ => {}
+                if self.settings_selection < max_idx {
+                    self.settings_selection += 1;
                 }
             }
+            KeyCode::Enter | KeyCode::Right | KeyCode::Left => match self.settings_selection {
+                0 => {
+                    self.settings.fetch_avatar = !self.settings.fetch_avatar;
+                    self.settings.save();
+                }
+                1 => {
+                    self.settings.export_format_osz = !self.settings.export_format_osz;
+                    self.settings.save();
+                }
+                2 => {
+                    let _ = io::stdout().flush();
+                    let _ = disable_raw_mode();
+                    let _ = io::stdout().execute(DisableMouseCapture);
+                    let result = Self::folder_dialog_inner();
+                    let _ = enable_raw_mode();
+                    let _ = io::stdout().execute(Hide);
+                    let _ = io::stdout().execute(EnableMouseCapture);
+                    if let Ok(Some(dir)) = result {
+                        self.settings.output_dir = dir;
+                        self.settings.save();
+                    }
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -1122,7 +1253,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
             KeyCode::Backspace => {
                 self.diff_search.pop();
                 self.update_diff_filter();
-                if self.diff_selection >= self.diff_filtered.len() && !self.diff_filtered.is_empty() {
+                if self.diff_selection >= self.diff_filtered.len() && !self.diff_filtered.is_empty()
+                {
                     self.diff_selection = self.diff_filtered.len() - 1;
                 }
             }
@@ -1161,8 +1293,14 @@ if ($res -eq 'OK') { $d.SelectedPath }
                         2 => meta.mapper = buf.clone(),
                         3 => meta.diff = buf.clone(),
                         4 => meta.hp_drain = buf.parse::<f64>().ok().map(|v| v.max(0.0).min(10.0)),
-                        5 => meta.overall_difficulty = buf.parse::<f64>().ok().map(|v| v.max(0.0).min(10.0)),
-                        6 => meta.conversion_rate = buf.parse::<f64>().ok().map(|v| v.max(0.5).min(3.0)),
+                        5 => {
+                            meta.overall_difficulty =
+                                buf.parse::<f64>().ok().map(|v| v.max(0.0).min(10.0))
+                        }
+                        6 => {
+                            meta.conversion_rate =
+                                buf.parse::<f64>().ok().map(|v| v.max(0.5).min(3.0))
+                        }
                         7 => { /* boolean toggle handled below */ }
                         _ => {}
                     }
@@ -1180,7 +1318,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 }
                 _ => (false, buf),
             };
-            if keep { self._edit_buf = Some((field_idx, val)); }
+            if keep {
+                self._edit_buf = Some((field_idx, val));
+            }
             return;
         }
 
@@ -1190,10 +1330,14 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 self._edit_selection = 0;
             }
             KeyCode::Up => {
-                if self._edit_selection > 0 { self._edit_selection -= 1; }
+                if self._edit_selection > 0 {
+                    self._edit_selection -= 1;
+                }
             }
             KeyCode::Down => {
-                if self._edit_selection < field_count - 1 { self._edit_selection += 1; }
+                if self._edit_selection < field_count - 1 {
+                    self._edit_selection += 1;
+                }
             }
             KeyCode::Left | KeyCode::Right => {
                 let sel = self._edit_selection;
@@ -1206,7 +1350,11 @@ if ($res -eq 'OK') { $d.SelectedPath }
                         6 => meta.conversion_rate.unwrap_or(1.0),
                         _ => return,
                     };
-                    let delta = if key.code == KeyCode::Left { -step } else { step };
+                    let delta = if key.code == KeyCode::Left {
+                        -step
+                    } else {
+                        step
+                    };
                     let new = (cur + delta).max(lo).min(hi);
                     match sel {
                         4 => meta.hp_drain = Some((new * 10.0).round() / 10.0),
@@ -1225,8 +1373,12 @@ if ($res -eq 'OK') { $d.SelectedPath }
                         2 => meta.mapper.clone(),
                         3 => meta.diff.clone(),
                         4 => meta.hp_drain.map_or(String::new(), |v| format!("{:.1}", v)),
-                        5 => meta.overall_difficulty.map_or(String::new(), |v| format!("{:.1}", v)),
-                        6 => meta.conversion_rate.map_or(String::new(), |v| format!("{:.2}", v)),
+                        5 => meta
+                            .overall_difficulty
+                            .map_or(String::new(), |v| format!("{:.1}", v)),
+                        6 => meta
+                            .conversion_rate
+                            .map_or(String::new(), |v| format!("{:.2}", v)),
                         _ => return,
                     };
                     self._edit_buf = Some((self._edit_selection, val));
@@ -1242,7 +1394,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
     }
 
     fn handle_mouse(&mut self, ev: crossterm::event::MouseEvent) {
-        if ev.kind != MouseEventKind::Up(MouseButton::Left) { return; }
+        if ev.kind != MouseEventKind::Up(MouseButton::Left) {
+            return;
+        }
         let pos = Position::new(ev.column, ev.row);
         match self.screen {
             Screen::Drop => {
@@ -1270,20 +1424,30 @@ if ($res -eq 'OK') { $d.SelectedPath }
     fn open_folder(&self) {
         let dir = self.last_export_dir.to_string_lossy();
         #[cfg(target_os = "windows")]
-        { let _ = Command::new("cmd").args(["/c", "start", "", &dir]).spawn(); }
+        {
+            let _ = Command::new("cmd").args(["/c", "start", "", &dir]).spawn();
+        }
         #[cfg(target_os = "macos")]
-        { let _ = Command::new("open").arg(&*dir).spawn(); }
+        {
+            let _ = Command::new("open").arg(&*dir).spawn();
+        }
         #[cfg(target_os = "linux")]
-        { let _ = Command::new("xdg-open").arg(&*dir).spawn(); }
+        {
+            let _ = Command::new("xdg-open").arg(&*dir).spawn();
+        }
     }
 
     fn process_file(&mut self, raw: &str) {
-        let clean = resolve_path(&deescape_path(&sanitize_path(&raw.trim_matches('"'))), &self.cwd);
+        let clean = resolve_path(
+            &deescape_path(&sanitize_path(&raw.trim_matches('"'))),
+            &self.cwd,
+        );
         let path = clean;
         let p = std::path::Path::new(&path);
 
         if !p.exists() {
-            self.output_lines.push(format!("  \u{2717} File not found: {}", path));
+            self.output_lines
+                .push(format!("  \u{2717} File not found: {}", path));
             self.output_scroll = self.output_lines.len().saturating_sub(1);
             return;
         }
@@ -1292,9 +1456,14 @@ if ($res -eq 'OK') { $d.SelectedPath }
         if p.is_dir() {
             if self.scan_pack(&path) {
                 self.screen = Screen::PackSelect;
-                self.output_lines.push(format!("  \u{2713} Found {} song{} in pack", self.pack_maps.len(), if self.pack_maps.len() == 1 { "" } else { "s" }));
+                self.output_lines.push(format!(
+                    "  \u{2713} Found {} song{} in pack",
+                    self.pack_maps.len(),
+                    if self.pack_maps.len() == 1 { "" } else { "s" }
+                ));
             } else {
-                self.output_lines.push(format!("  \u{2717} No beatmap files found in: {}", path));
+                self.output_lines
+                    .push(format!("  \u{2717} No beatmap files found in: {}", path));
             }
             self.output_scroll = self.output_lines.len().saturating_sub(1);
             return;
@@ -1305,7 +1474,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
             "osu" | "osz" => ("osu-to-etterna", "osu!", "StepMania"),
             "sm" => ("etterna-to-osu", "StepMania", "osu!"),
             _ => {
-                self.output_lines.push(format!("  \u{2717} Unknown format: .{}", ext));
+                self.output_lines
+                    .push(format!("  \u{2717} Unknown format: .{}", ext));
                 self.output_scroll = self.output_lines.len().saturating_sub(1);
                 return;
             }
@@ -1334,7 +1504,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
                         self.pending_labels = (from_label.to_owned(), to_label.to_owned());
                         self.pending_path = path;
                         self.output_lines.pop();
-                        self.output_lines.push("  > Multiple difficulties detected - select which to export.".into());
+                        self.output_lines.push(
+                            "  > Multiple difficulties detected - select which to export.".into(),
+                        );
                         self.enter_select_screen(&entries);
                         self.diff_entries = entries;
                         return;
@@ -1342,7 +1514,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
                     bm
                 }
                 Err(e) => {
-                    self.output_lines.push(format!("  \u{2717} Parse error: {}", e));
+                    self.output_lines
+                        .push(format!("  \u{2717} Parse error: {}", e));
                     self.output_scroll = self.output_lines.len().saturating_sub(1);
                     return;
                 }
@@ -1351,7 +1524,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
             match henkan_lib::cli_parse_file(&path, direction) {
                 Ok(b) => b,
                 Err(e) => {
-                    self.output_lines.push(format!("  \u{2717} Parse error: {}", e));
+                    self.output_lines
+                        .push(format!("  \u{2717} Parse error: {}", e));
                     self.output_scroll = self.output_lines.len().saturating_sub(1);
                     return;
                 }
@@ -1364,7 +1538,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
     fn scan_pack(&mut self, dir_path: &str) -> bool {
         let dir = std::path::Path::new(dir_path);
         let mut maps: Vec<PackMap> = Vec::new();
-        let _dir_name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let _dir_name = dir
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
 
         let entries = match std::fs::read_dir(dir) {
             Ok(e) => e,
@@ -1372,14 +1549,20 @@ if ($res -eq 'OK') { $d.SelectedPath }
         };
         for entry in entries.flatten() {
             let subdir = entry.path();
-            if !subdir.is_dir() { continue; }
+            if !subdir.is_dir() {
+                continue;
+            }
 
             // Look for .sm or .osu files in subdirectory
             let mut map_file: Option<std::path::PathBuf> = None;
             if let Ok(contents) = std::fs::read_dir(&subdir) {
                 for file in contents.flatten() {
                     let fp = file.path();
-                    let ext = fp.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                    let ext = fp
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
                     if ext == "sm" || ext == "osu" {
                         map_file = Some(fp);
                         break;
@@ -1389,7 +1572,11 @@ if ($res -eq 'OK') { $d.SelectedPath }
 
             if let Some(ref mf) = map_file {
                 let ext = mf.extension().and_then(|e| e.to_str()).unwrap_or("");
-                let direction = if ext == "osu" || ext == "osz" { "osu-to-etterna" } else { "etterna-to-osu" };
+                let direction = if ext == "osu" || ext == "osz" {
+                    "osu-to-etterna"
+                } else {
+                    "etterna-to-osu"
+                };
                 if let Ok(bm) = henkan_lib::cli_parse_file(&mf.to_string_lossy(), direction) {
                     maps.push(PackMap {
                         path: subdir,
@@ -1409,7 +1596,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
             }
         }
 
-        if maps.is_empty() { return false; }
+        if maps.is_empty() {
+            return false;
+        }
 
         maps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         self.pack_path = dir.to_path_buf();
@@ -1422,7 +1611,13 @@ if ($res -eq 'OK') { $d.SelectedPath }
         true
     }
 
-    fn do_convert(&mut self, mut bm: henkan_lib::Beatmap, from_label: &str, to_label: &str, _path: &str) {
+    fn do_convert(
+        &mut self,
+        mut bm: henkan_lib::Beatmap,
+        from_label: &str,
+        to_label: &str,
+        _path: &str,
+    ) {
         let mut config = henkan_lib::ExportConfig::default();
         config.title = bm.title.clone();
         config.artist = bm.artist.clone();
@@ -1442,11 +1637,13 @@ if ($res -eq 'OK') { $d.SelectedPath }
         config.preserve_pitch = true;
         config.fetch_avatar = self.settings.fetch_avatar;
 
-        self.output_lines.push(format!("  > Converting {}...", bm.title));
+        self.output_lines
+            .push(format!("  > Converting {}...", bm.title));
         let content = match henkan_lib::cli_convert_beatmap(&mut bm, &config) {
             Ok(c) => c,
             Err(e) => {
-                self.output_lines.push(format!("  \u{2717} Convert error: {}", e));
+                self.output_lines
+                    .push(format!("  \u{2717} Convert error: {}", e));
                 self.output_scroll = self.output_lines.len().saturating_sub(1);
                 return;
             }
@@ -1464,12 +1661,16 @@ if ($res -eq 'OK') { $d.SelectedPath }
                     from: from_label.into(),
                     to: to_label.into(),
                 });
-                self.output_lines.push(format!("  \u{2713} Exported: {} \u{2192} {}", bm.title, to_label));
+                self.output_lines.push(format!(
+                    "  \u{2713} Exported: {} \u{2192} {}",
+                    bm.title, to_label
+                ));
                 self.status_msg = format!("Exported: {}", bm.title);
                 self.go_to_results();
             }
             Err(e) => {
-                self.output_lines.push(format!("  \u{2717} Export error: {}", e));
+                self.output_lines
+                    .push(format!("  \u{2717} Export error: {}", e));
             }
         }
         self.output_scroll = self.output_lines.len().saturating_sub(1);
@@ -1486,19 +1687,24 @@ if ($res -eq 'OK') { $d.SelectedPath }
         self.diff_filtered = (0..count).collect();
 
         // Pre-fill metadata from each entry
-        self.diff_meta = entries.iter().map(|(_, text)| {
-            let bm = henkan_lib::parse_osu(text).ok();
-            DiffMetaOverride {
-                title: bm.as_ref().map_or(String::new(), |b| b.title.clone()),
-                artist: bm.as_ref().map_or(String::new(), |b| b.artist.clone()),
-                mapper: bm.as_ref().map_or(String::new(), |b| b.creator.clone()),
-                diff: bm.as_ref().map_or(String::new(), |b| b.difficulty_name.clone()),
-                hp_drain: None,
-                overall_difficulty: None,
-                conversion_rate: None,
-                preserve_pitch: None,
-            }
-        }).collect();
+        self.diff_meta = entries
+            .iter()
+            .map(|(_, text)| {
+                let bm = henkan_lib::parse_osu(text).ok();
+                DiffMetaOverride {
+                    title: bm.as_ref().map_or(String::new(), |b| b.title.clone()),
+                    artist: bm.as_ref().map_or(String::new(), |b| b.artist.clone()),
+                    mapper: bm.as_ref().map_or(String::new(), |b| b.creator.clone()),
+                    diff: bm
+                        .as_ref()
+                        .map_or(String::new(), |b| b.difficulty_name.clone()),
+                    hp_drain: None,
+                    overall_difficulty: None,
+                    conversion_rate: None,
+                    preserve_pitch: None,
+                }
+            })
+            .collect();
 
         self.screen = Screen::SelectDiffs;
     }
@@ -1508,7 +1714,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
             self.diff_filtered = (0..self.diff_info.len()).collect();
         } else {
             let q = self.diff_search.to_lowercase();
-            self.diff_filtered = self.diff_info.iter().enumerate()
+            self.diff_filtered = self
+                .diff_info
+                .iter()
+                .enumerate()
                 .filter(|(_, d)| d.name.to_lowercase().contains(&q))
                 .map(|(i, _)| i)
                 .collect();
@@ -1516,22 +1725,31 @@ if ($res -eq 'OK') { $d.SelectedPath }
     }
 
     fn export_selected_diffs(&mut self) {
-        let selected: Vec<usize> = self.diff_selected.iter()
+        let selected: Vec<usize> = self
+            .diff_selected
+            .iter()
             .enumerate()
             .filter(|(_, &s)| s)
             .map(|(i, _)| i)
             .collect();
 
-        if selected.is_empty() { return; }
+        if selected.is_empty() {
+            return;
+        }
 
-        self.output_lines.push(format!("  > Exporting {} selected difficult{}...",
-            selected.len(), if selected.len() == 1 { "y" } else { "ies" }));
+        self.output_lines.push(format!(
+            "  > Exporting {} selected difficult{}...",
+            selected.len(),
+            if selected.len() == 1 { "y" } else { "ies" }
+        ));
 
         // Count unique audio files among selected diffs
         let mut audio_set: std::collections::HashSet<String> = std::collections::HashSet::new();
         for &i in &selected {
             if let Some(ref a) = self.diff_info[i].audio_filename {
-                if !a.is_empty() { audio_set.insert(a.clone()); }
+                if !a.is_empty() {
+                    audio_set.insert(a.clone());
+                }
             }
         }
 
@@ -1571,7 +1789,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
             let mut bm = match henkan_lib::parse_osu(text) {
                 Ok(b) => b,
                 Err(e) => {
-                    self.output_lines.push(format!("  \u{2717} Parse error: {}", e));
+                    self.output_lines
+                        .push(format!("  \u{2717} Parse error: {}", e));
                     return;
                 }
             };
@@ -1585,7 +1804,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
             let content = match henkan_lib::cli_convert_beatmap(&mut bm, &config) {
                 Ok(c) => c,
                 Err(e) => {
-                    self.output_lines.push(format!("  \u{2717} Convert error: {}", e));
+                    self.output_lines
+                        .push(format!("  \u{2717} Convert error: {}", e));
                     return;
                 }
             };
@@ -1616,7 +1836,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let safe_name = henkan_lib::sanitize_filename(&base, 80);
         let export_path = std::path::Path::new(&out_dir).join(&safe_name);
         if let Err(e) = std::fs::create_dir_all(&export_path) {
-            self.output_lines.push(format!("  \u{2717} Create dir error: {}", e));
+            self.output_lines
+                .push(format!("  \u{2717} Create dir error: {}", e));
             return;
         }
 
@@ -1627,19 +1848,35 @@ if ($res -eq 'OK') { $d.SelectedPath }
             let dst_a = export_path.join(&config.audio_filename);
             if needs_rate {
                 if let Some(ff) = henkan_lib::find_ffmpeg() {
-                    let _ = henkan_lib::speed_up_audio_ffmpeg(&ff, &src_a, &dst_a, config.conversion_rate, config.preserve_pitch);
+                    let _ = henkan_lib::speed_up_audio_ffmpeg(
+                        &ff,
+                        &src_a,
+                        &dst_a,
+                        config.conversion_rate,
+                        config.preserve_pitch,
+                    );
                 } else {
-                    let _ = henkan_lib::speed_up_audio_symphonia(&src_a.to_string_lossy(), &dst_a.to_string_lossy(), config.conversion_rate);
+                    let _ = henkan_lib::speed_up_audio_symphonia(
+                        &src_a.to_string_lossy(),
+                        &dst_a.to_string_lossy(),
+                        config.conversion_rate,
+                    );
                 }
             } else {
-                let _ = henkan_lib::copy_media(&self.diff_tmp_dir, &config.audio_filename, &export_path, &config.audio_filename);
+                let _ = henkan_lib::copy_media(
+                    &self.diff_tmp_dir,
+                    &config.audio_filename,
+                    &export_path,
+                    &config.audio_filename,
+                );
             }
         }
 
         // Write combined .sm
         let out_filename = format!("{}.sm", safe_name);
         if std::fs::write(export_path.join(&out_filename), &combined).is_err() {
-            self.output_lines.push("  \u{2717} Failed to write .sm".into());
+            self.output_lines
+                .push("  \u{2717} Failed to write .sm".into());
             return;
         }
 
@@ -1652,19 +1889,31 @@ if ($res -eq 'OK') { $d.SelectedPath }
 
         // cdtitle: copy source → fetch avatar → default fallback
         if bm.source_format == henkan_lib::SourceFormat::OsuMania {
-            let has_cdt = config.cdtitle_filename.as_ref().is_some_and(|s| !s.is_empty());
+            let has_cdt = config
+                .cdtitle_filename
+                .as_ref()
+                .is_some_and(|s| !s.is_empty());
             if has_cdt {
                 if let Some(ref cdt) = config.cdtitle_filename {
-                    let _ = henkan_lib::copy_media(&self.diff_tmp_dir, cdt, &export_path, "cdtitle.png");
+                    let _ = henkan_lib::copy_media(
+                        &self.diff_tmp_dir,
+                        cdt,
+                        &export_path,
+                        "cdtitle.png",
+                    );
                 }
             } else if config.fetch_avatar {
                 if let Some(avatar) = henkan_lib::fetch_mapper_avatar(&bm.creator) {
                     let _ = std::fs::write(export_path.join("cdtitle.png"), &avatar);
                 } else {
-                    let _ = std::fs::write(export_path.join("cdtitle.png"), henkan_lib::DEFAULT_CDTITLE);
+                    let _ = std::fs::write(
+                        export_path.join("cdtitle.png"),
+                        henkan_lib::DEFAULT_CDTITLE,
+                    );
                 }
             } else {
-                let _ = std::fs::write(export_path.join("cdtitle.png"), henkan_lib::DEFAULT_CDTITLE);
+                let _ =
+                    std::fs::write(export_path.join("cdtitle.png"), henkan_lib::DEFAULT_CDTITLE);
             }
         }
 
@@ -1675,7 +1924,12 @@ if ($res -eq 'OK') { $d.SelectedPath }
             from: from_label.into(),
             to: to_label.into(),
         });
-        self.output_lines.push(format!("  \u{2713} Exported: {} \u{2192} {} ({} diffs)", config.title, to_label, indices.len()));
+        self.output_lines.push(format!(
+            "  \u{2713} Exported: {} \u{2192} {} ({} diffs)",
+            config.title,
+            to_label,
+            indices.len()
+        ));
         self.status_msg = format!("Exported: {}", config.title);
         self.go_to_results();
     }
@@ -1685,7 +1939,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let mut bm = match henkan_lib::parse_osu(text) {
             Ok(b) => b,
             Err(e) => {
-                self.output_lines.push(format!("  \u{2717} Parse error: {}", e));
+                self.output_lines
+                    .push(format!("  \u{2717} Parse error: {}", e));
                 return;
             }
         };
@@ -1701,7 +1956,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let content = match henkan_lib::cli_convert_beatmap(&mut bm, &config) {
             Ok(c) => c,
             Err(e) => {
-                self.output_lines.push(format!("  \u{2717} Convert error: {}", e));
+                self.output_lines
+                    .push(format!("  \u{2717} Convert error: {}", e));
                 return;
             }
         };
@@ -1716,10 +1972,13 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let export_dir = if diff_safe.is_empty() {
             std::path::PathBuf::from(&out_dir).join(&safe_sub)
         } else {
-            std::path::PathBuf::from(&out_dir).join(&safe_sub).join(&diff_safe)
+            std::path::PathBuf::from(&out_dir)
+                .join(&safe_sub)
+                .join(&diff_safe)
         };
         if let Err(e) = std::fs::create_dir_all(&export_dir) {
-            self.output_lines.push(format!("  \u{2717} Dir error: {}", e));
+            self.output_lines
+                .push(format!("  \u{2717} Dir error: {}", e));
             return;
         }
         let folder_name = if diff_safe.is_empty() {
@@ -1728,7 +1987,14 @@ if ($res -eq 'OK') { $d.SelectedPath }
             Some(format!("{} [{}]", config.title, diff_safe))
         };
 
-        match henkan_lib::cli_export_beatmap_named(&bm, &config, &content, &export_dir.to_string_lossy(), folder_name.as_deref(), true) {
+        match henkan_lib::cli_export_beatmap_named(
+            &bm,
+            &config,
+            &content,
+            &export_dir.to_string_lossy(),
+            folder_name.as_deref(),
+            true,
+        ) {
             Ok(_) => {
                 self.results.push(ExportResult {
                     title: config.title.clone(),
@@ -1737,11 +2003,15 @@ if ($res -eq 'OK') { $d.SelectedPath }
                     from: from_label.into(),
                     to: to_label.into(),
                 });
-                self.output_lines.push(format!("  \u{2713} Exported: {} \u{2192} {}  ({})", config.title, to_label, config.difficulty_name));
+                self.output_lines.push(format!(
+                    "  \u{2713} Exported: {} \u{2192} {}  ({})",
+                    config.title, to_label, config.difficulty_name
+                ));
                 self.status_msg = format!("Exported: {}", config.title);
             }
             Err(e) => {
-                self.output_lines.push(format!("  \u{2717} Export error: {}", e));
+                self.output_lines
+                    .push(format!("  \u{2717} Export error: {}", e));
             }
         }
     }
@@ -1751,7 +2021,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
         if p.is_absolute() {
             self.settings.output_dir.clone()
         } else {
-            self.cwd.join(&self.settings.output_dir).to_string_lossy().to_string()
+            self.cwd
+                .join(&self.settings.output_dir)
+                .to_string_lossy()
+                .to_string()
         }
     }
 
@@ -1760,21 +2033,37 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let meta = &self.diff_meta[idx];
 
         // Priority: per-diff meta > global settings > original
-        config.title = if !meta.title.is_empty() { meta.title.clone() }
-            else if !String::new().is_empty() { String::new().clone() }
-            else { bm.title.clone() };
+        config.title = if !meta.title.is_empty() {
+            meta.title.clone()
+        } else if !String::new().is_empty() {
+            String::new().clone()
+        } else {
+            bm.title.clone()
+        };
 
-        config.artist = if !meta.artist.is_empty() { meta.artist.clone() }
-            else if !String::new().is_empty() { String::new().clone() }
-            else { bm.artist.clone() };
+        config.artist = if !meta.artist.is_empty() {
+            meta.artist.clone()
+        } else if !String::new().is_empty() {
+            String::new().clone()
+        } else {
+            bm.artist.clone()
+        };
 
-        config.creator = if !meta.mapper.is_empty() { meta.mapper.clone() }
-            else if !String::new().is_empty() { String::new().clone() }
-            else { bm.creator.clone() };
+        config.creator = if !meta.mapper.is_empty() {
+            meta.mapper.clone()
+        } else if !String::new().is_empty() {
+            String::new().clone()
+        } else {
+            bm.creator.clone()
+        };
 
-        config.difficulty_name = if !meta.diff.is_empty() { meta.diff.clone() }
-            else if !String::new().is_empty() { String::new().clone() }
-            else { bm.difficulty_name.clone() };
+        config.difficulty_name = if !meta.diff.is_empty() {
+            meta.diff.clone()
+        } else if !String::new().is_empty() {
+            String::new().clone()
+        } else {
+            bm.difficulty_name.clone()
+        };
 
         config.source = bm.source.clone();
         config.tags = bm.tags.clone();
@@ -1800,11 +2089,16 @@ if ($res -eq 'OK') { $d.SelectedPath }
         f.render_widget(Paragraph::new(" ").style(Style::default().bg(BG)), area);
 
         for star in &self.stars {
-            if star.y < 0 || star.y >= area.height as i32 { continue; }
+            if star.y < 0 || star.y >= area.height as i32 {
+                continue;
+            }
             let ch = if star.size == 1 { '*' } else { '.' };
             let b = star.brightness;
             f.render_widget(
-                Paragraph::new(Span::styled(ch.to_string(), Style::default().fg(Color::Rgb(b, b, b)).bg(BG))),
+                Paragraph::new(Span::styled(
+                    ch.to_string(),
+                    Style::default().fg(Color::Rgb(b, b, b)).bg(BG),
+                )),
                 Rect::new(star.x, star.y as u16, 1, 1),
             );
         }
@@ -1837,7 +2131,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
     }
 
     fn draw_drop(&self, f: &mut Frame, area: Rect) {
-        if area.width < 30 || area.height < 10 { return; }
+        if area.width < 30 || area.height < 10 {
+            return;
+        }
 
         let has_comps = !self.completions.is_empty();
         let hint_items = if has_comps {
@@ -1899,7 +2195,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
         } else if self.output_lines.is_empty() && self.results.is_empty() {
             // Welcome screen: centered ASCII art logo + hints
             let logo_h = LOGO.len() as u16 + 3;
-            let start_y = output_a.top() + (output_a.height.saturating_sub(logo_h).saturating_sub(4) / 2);
+            let start_y =
+                output_a.top() + (output_a.height.saturating_sub(logo_h).saturating_sub(4) / 2);
             let start_x = output_a.left() + 2;
 
             // Logo lines
@@ -1907,19 +2204,32 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 let line_w = line.chars().count() as u16;
                 let x = start_x + (output_a.width.saturating_sub(6).saturating_sub(line_w) / 2);
                 f.render_widget(
-                    Paragraph::new(Span::styled(*line, Style::default().fg(Color::Rgb(80, 140, 255))))
-                        .style(Style::default().bg(BG)),
+                    Paragraph::new(Span::styled(
+                        *line,
+                        Style::default().fg(Color::Rgb(80, 140, 255)),
+                    ))
+                    .style(Style::default().bg(BG)),
                     Rect::new(x, start_y + i as u16, line_w, 1),
                 );
             }
 
             // Subtitle
             let subtitle = "osu!mania \u{2194} StepMania Converter";
-            let sub_x = start_x + (output_a.width.saturating_sub(6).saturating_sub(subtitle.chars().count() as u16) / 2);
+            let sub_x = start_x
+                + (output_a
+                    .width
+                    .saturating_sub(6)
+                    .saturating_sub(subtitle.chars().count() as u16)
+                    / 2);
             f.render_widget(
                 Paragraph::new(Span::styled(subtitle, Style::default().fg(DIM)))
                     .style(Style::default().bg(BG)),
-                Rect::new(sub_x, start_y + LOGO.len() as u16 + 1, subtitle.chars().count() as u16, 1),
+                Rect::new(
+                    sub_x,
+                    start_y + LOGO.len() as u16 + 1,
+                    subtitle.chars().count() as u16,
+                    1,
+                ),
             );
         } else {
             let out_block = Block::default()
@@ -1930,24 +2240,32 @@ if ($res -eq 'OK') { $d.SelectedPath }
             let inner_h = output_a.height.saturating_sub(2);
             let max_scroll = self.output_lines.len().saturating_sub(inner_h as usize);
             let scroll = self.output_scroll.min(max_scroll);
-            let lines: Vec<Line> = self.output_lines.iter().map(|l| {
-                let fg = if l.contains("\u{2713}") {
-                    GREEN
-                } else if l.contains("\u{2717}") {
-                    RED
-                } else if l.starts_with("  >") {
-                    ACCENT
-                } else if l.starts_with('\u{2500}') {
-                    DIM
-                } else if l.contains("\u{2192}") || l.contains("\u{2190}") {
-                    YELLOW
-                } else {
-                    TEXT
-                };
-                Line::from(Span::styled(l.as_str(), Style::default().fg(fg).bg(SURFACE)))
-            }).collect();
+            let lines: Vec<Line> = self
+                .output_lines
+                .iter()
+                .map(|l| {
+                    let fg = if l.contains("\u{2713}") {
+                        GREEN
+                    } else if l.contains("\u{2717}") {
+                        RED
+                    } else if l.starts_with("  >") {
+                        ACCENT
+                    } else if l.starts_with('\u{2500}') {
+                        DIM
+                    } else if l.contains("\u{2192}") || l.contains("\u{2190}") {
+                        YELLOW
+                    } else {
+                        TEXT
+                    };
+                    Line::from(Span::styled(
+                        l.as_str(),
+                        Style::default().fg(fg).bg(SURFACE),
+                    ))
+                })
+                .collect();
             f.render_widget(
-                Paragraph::new(lines).block(out_block)
+                Paragraph::new(lines)
+                    .block(out_block)
                     .style(Style::default().bg(SURFACE))
                     .scroll((scroll as u16, 0)),
                 output_a,
@@ -1959,7 +2277,11 @@ if ($res -eq 'OK') { $d.SelectedPath }
             let vis = hint_items;
             let mut hint_lines: Vec<Line> = Vec::with_capacity(vis + 2);
             hint_lines.push(Line::from(Span::styled(
-                format!("\u{2500}{:w$}\u{2500}", "", w = hint_a.width.saturating_sub(2) as usize),
+                format!(
+                    "\u{2500}{:w$}\u{2500}",
+                    "",
+                    w = hint_a.width.saturating_sub(2) as usize
+                ),
                 Style::default().fg(BORDER),
             )));
             for i in 0..vis {
@@ -1980,13 +2302,20 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 };
 
                 hint_lines.push(Line::from(vec![
-                    Span::styled(format!(" {} ", arrow), Style::default().fg(item_fg).bg(item_bg)),
+                    Span::styled(
+                        format!(" {} ", arrow),
+                        Style::default().fg(item_fg).bg(item_bg),
+                    ),
                     Span::styled(cmd.clone(), Style::default().fg(item_fg).bold().bg(item_bg)),
                     Span::styled(desc_part, Style::default().fg(DIM).bg(item_bg)),
                 ]));
             }
             hint_lines.push(Line::from(Span::styled(
-                format!("\u{2500}{:w$}\u{2500}", "", w = hint_a.width.saturating_sub(2) as usize),
+                format!(
+                    "\u{2500}{:w$}\u{2500}",
+                    "",
+                    w = hint_a.width.saturating_sub(2) as usize
+                ),
                 Style::default().fg(BORDER),
             )));
             let hint_h = hint_lines.len() as u16;
@@ -2002,7 +2331,12 @@ if ($res -eq 'OK') { $d.SelectedPath }
         // ── Command input bar ──
         let byte_at = cmd_byte_offset(&self.cmd_input, self.cmd_cursor);
         let before = &self.cmd_input[..byte_at];
-        let at = self.cmd_input.chars().nth(self.cmd_cursor).map(|c| c.to_string()).unwrap_or_default();
+        let at = self
+            .cmd_input
+            .chars()
+            .nth(self.cmd_cursor)
+            .map(|c| c.to_string())
+            .unwrap_or_default();
         let after = &self.cmd_input[byte_at + at.len()..];
         let input_display = format!("{}\u{2588}{}{}", before, at, after);
         let cmd_block = Block::default()
@@ -2029,7 +2363,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
         } else {
             "Esc exit"
         };
-        let centered_x = status_a.left() + (status_a.width.saturating_sub(hint.chars().count() as u16) / 2);
+        let centered_x =
+            status_a.left() + (status_a.width.saturating_sub(hint.chars().count() as u16) / 2);
         f.render_widget(
             Paragraph::new(Span::styled(hint, Style::default().fg(DIM)))
                 .style(Style::default().bg(BG)),
@@ -2038,7 +2373,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
     }
 
     fn draw_results(&self, f: &mut Frame, area: Rect) {
-        if area.width < 40 || area.height < 10 { return; }
+        if area.width < 40 || area.height < 10 {
+            return;
+        }
 
         let bg = Color::Rgb(10, 10, 15);
         f.render_widget(Paragraph::new(" ").style(Style::default().bg(bg)), area);
@@ -2059,11 +2396,15 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let pad = 2u16;
         let list_w = area.width.saturating_sub(pad * 2);
         let max_visible = ((area.height - 4) / 2) as usize;
-        let scroll = self.results_scroll.min(self.results.len().saturating_sub(max_visible));
+        let scroll = self
+            .results_scroll
+            .min(self.results.len().saturating_sub(max_visible));
 
         for (i, r) in self.results.iter().skip(scroll).enumerate() {
             let y = 2 + i as u16 * 2;
-            if y + 2 >= area.height { break; }
+            if y + 2 >= area.height {
+                break;
+            }
 
             // Background block
             f.render_widget(Block::default().bg(SURFACE), Rect::new(pad, y, list_w, 2));
@@ -2086,7 +2427,13 @@ if ($res -eq 'OK') { $d.SelectedPath }
             };
             let max_chars = list_w as usize - 2;
             let line1 = if line1.len() > max_chars {
-                format!("{}...", line1.chars().take(max_chars.saturating_sub(3)).collect::<String>())
+                format!(
+                    "{}...",
+                    line1
+                        .chars()
+                        .take(max_chars.saturating_sub(3))
+                        .collect::<String>()
+                )
             } else {
                 line1
             };
@@ -2114,8 +2461,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
             Paragraph::new(Span::styled(
                 " [Esc] back  [O] open folder  \u{2191}\u{2193} scroll",
                 Style::default().fg(DIM),
-            )).style(Style::default().bg(bg))
-                .alignment(Alignment::Center),
+            ))
+            .style(Style::default().bg(bg))
+            .alignment(Alignment::Center),
             Rect::new(0, area.height.saturating_sub(1), area.width, 1),
         );
     }
@@ -2127,7 +2475,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
             return;
         }
 
-        if area.width < 46 || area.height < 10 { return; }
+        if area.width < 46 || area.height < 10 {
+            return;
+        }
 
         let total = self.diff_info.len();
         let filtered = self.diff_filtered.len();
@@ -2138,10 +2488,15 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let y = (area.height - box_h) / 2;
 
         // Title from first diff's metadata
-        let title = self.diff_meta.first()
+        let title = self
+            .diff_meta
+            .first()
             .map(|m| {
-                if m.artist.is_empty() { m.title.clone() }
-                else { format!("{} \u{2014} {}", m.artist, m.title) }
+                if m.artist.is_empty() {
+                    m.title.clone()
+                } else {
+                    format!("{} \u{2014} {}", m.artist, m.title)
+                }
             })
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "Select difficulties".into());
@@ -2169,7 +2524,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let from = &self.pending_labels.0;
         let to = &self.pending_labels.1;
         let fmt = format!(" {} \u{2192} {}  \u{00B7}  {}", from, to, total);
-        lines.push(Line::from(Span::styled(fmt, Style::default().fg(DIM).bg(SURFACE))));
+        lines.push(Line::from(Span::styled(
+            fmt,
+            Style::default().fg(DIM).bg(SURFACE),
+        )));
 
         // Search bar
         let search_display = if self.diff_search.is_empty() {
@@ -2177,7 +2535,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
         } else {
             format!(" Search: {}\u{2588}", self.diff_search)
         };
-        lines.push(Line::from(Span::styled(search_display, Style::default().fg(DIM).bg(SURFACE))));
+        lines.push(Line::from(Span::styled(
+            search_display,
+            Style::default().fg(DIM).bg(SURFACE),
+        )));
 
         // Diffs with scrolling
         let diff_scroll = if self.diff_selection >= filtered {
@@ -2194,7 +2555,11 @@ if ($res -eq 'OK') { $d.SelectedPath }
             let checked = self.diff_selected.get(real).copied().unwrap_or(true);
             let cb = if checked { "[x]" } else { "[ ]" };
             let arrow = if cursor { "\u{276F} " } else { "  " };
-            let bg = if cursor { Color::Rgb(22, 22, 36) } else { SURFACE };
+            let bg = if cursor {
+                Color::Rgb(22, 22, 36)
+            } else {
+                SURFACE
+            };
             let fg = if cursor { ACCENT } else { TEXT };
             let label = format!("{}{} {}", arrow, cb, d.name);
             let max_w = (box_w - 4) as usize;
@@ -2204,17 +2569,26 @@ if ($res -eq 'OK') { $d.SelectedPath }
             } else {
                 label
             };
-            lines.push(Line::from(Span::styled(label, Style::default().fg(fg).bg(bg))));
+            lines.push(Line::from(Span::styled(
+                label,
+                Style::default().fg(fg).bg(bg),
+            )));
         }
 
         // Export button
         let sel_count = self.diff_selected.iter().filter(|&&s| s).count();
         let is_export = self.diff_selection >= filtered;
-        let label = format!("{}Export {} song{}", if is_export { "\u{276F} " } else { "   " }, sel_count, if sel_count == 1 { "" } else { "s" });
+        let label = format!(
+            "{}Export {} song{}",
+            if is_export { "\u{276F} " } else { "   " },
+            sel_count,
+            if sel_count == 1 { "" } else { "s" }
+        );
         let btn = format!(" {:^width$} ", label, width = (box_w - 4) as usize);
         lines.push(Line::from(Span::styled(
             btn,
-            Style::default().fg(if is_export { BG } else { DIM })
+            Style::default()
+                .fg(if is_export { BG } else { DIM })
                 .bg(if is_export { ACCENT } else { SURFACE })
                 .bold(),
         )));
@@ -2225,11 +2599,18 @@ if ($res -eq 'OK') { $d.SelectedPath }
         );
 
         // Hint
-        let hint = " \u{2191}\u{2193} nav  Space toggle  Enter edit/export  Type to search  Esc back ";
+        let hint =
+            " \u{2191}\u{2193} nav  Space toggle  Enter edit/export  Type to search  Esc back ";
         f.render_widget(
             Paragraph::new(Span::styled(hint, Style::default().fg(DIM)))
-                .style(Style::default().bg(SURFACE)).alignment(Alignment::Center),
-            Rect::new(box_area.x, box_area.y + box_area.height - 1, box_area.width, 1),
+                .style(Style::default().bg(SURFACE))
+                .alignment(Alignment::Center),
+            Rect::new(
+                box_area.x,
+                box_area.y + box_area.height - 1,
+                box_area.width,
+                1,
+            ),
         );
     }
 
@@ -2240,7 +2621,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
             return;
         }
 
-        if area.width < 50 || area.height < 12 { return; }
+        if area.width < 50 || area.height < 12 {
+            return;
+        }
 
         let count = self.pack_maps.len();
         let filtered = self.pack_filtered.len();
@@ -2250,12 +2633,19 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let x = (area.width - box_w) / 2;
         let y = (area.height - box_h) / 2;
 
-        let pack_name = self.pack_path.file_name()
+        let pack_name = self
+            .pack_path
+            .file_name()
             .map(|n| n.to_string_lossy())
             .unwrap_or(std::borrow::Cow::Borrowed("Pack"));
 
         let outer = Block::default()
-            .title(format!(" {} (\u{00B7} {} song{}) ", pack_name, count, if count == 1 { "" } else { "s" }))
+            .title(format!(
+                " {} (\u{00B7} {} song{}) ",
+                pack_name,
+                count,
+                if count == 1 { "" } else { "s" }
+            ))
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
             .border_set(symbols::border::ROUNDED)
@@ -2273,7 +2663,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
         } else {
             format!("Search: {}\u{2588}", self.pack_search)
         };
-        lines.push(Line::from(Span::styled(search_display, Style::default().fg(DIM).bg(SURFACE))));
+        lines.push(Line::from(Span::styled(
+            search_display,
+            Style::default().fg(DIM).bg(SURFACE),
+        )));
 
         // Divider
         lines.push(Line::from(Span::styled(
@@ -2294,10 +2687,22 @@ if ($res -eq 'OK') { $d.SelectedPath }
             let checked = self.pack_selected[real];
             let cb = if checked { "[x]" } else { "[ ]" };
             let arrow = if cursor { "\u{276F} " } else { "  " };
-            let bg = if cursor { Color::Rgb(22, 22, 36) } else { SURFACE };
+            let bg = if cursor {
+                Color::Rgb(22, 22, 36)
+            } else {
+                SURFACE
+            };
             let fg = if cursor { ACCENT } else { TEXT };
-            let title_disp = if !m.title_ov.is_empty() { &m.title_ov } else { &m.name };
-            let mapper_disp = if !m.mapper_ov.is_empty() { &m.mapper_ov } else { &m.mapper };
+            let title_disp = if !m.title_ov.is_empty() {
+                &m.title_ov
+            } else {
+                &m.name
+            };
+            let mapper_disp = if !m.mapper_ov.is_empty() {
+                &m.mapper_ov
+            } else {
+                &m.mapper
+            };
             let label = format!("{}{} {} \u{2014} {}", arrow, cb, title_disp, mapper_disp);
             let max_w = (box_w - 6) as usize;
             let label = if label.chars().count() > max_w {
@@ -2306,22 +2711,41 @@ if ($res -eq 'OK') { $d.SelectedPath }
             } else {
                 label
             };
-            lines.push(Line::from(Span::styled(label, Style::default().fg(fg).bg(bg))));
+            lines.push(Line::from(Span::styled(
+                label,
+                Style::default().fg(fg).bg(bg),
+            )));
         }
 
         // Output format indicator (static, not selectable)
-        let fmt_label = if self.settings.export_format_osz { "OSZ" } else { "Folder" };
-        let fmt_text = format!("   Output format: [{}]  (\u{2190}\u{2192} toggle)", fmt_label);
-        lines.push(Line::from(Span::styled(fmt_text, Style::default().fg(DIM).bg(SURFACE))));
+        let fmt_label = if self.settings.export_format_osz {
+            "OSZ"
+        } else {
+            "Folder"
+        };
+        let fmt_text = format!(
+            "   Output format: [{}]  (\u{2190}\u{2192} toggle)",
+            fmt_label
+        );
+        lines.push(Line::from(Span::styled(
+            fmt_text,
+            Style::default().fg(DIM).bg(SURFACE),
+        )));
 
         // Export button
         let is_export = self.pack_selection >= filtered;
         let sel_count = self.pack_selected.iter().filter(|&&s| s).count();
-        let label = format!("{}Export {} song{}", if is_export { "\u{276F} " } else { "   " }, sel_count, if sel_count == 1 { "" } else { "s" });
+        let label = format!(
+            "{}Export {} song{}",
+            if is_export { "\u{276F} " } else { "   " },
+            sel_count,
+            if sel_count == 1 { "" } else { "s" }
+        );
         let btn = format!(" {:^width$} ", label, width = (box_w - 4) as usize);
         lines.push(Line::from(Span::styled(
             btn,
-            Style::default().fg(if is_export { BG } else { DIM })
+            Style::default()
+                .fg(if is_export { BG } else { DIM })
                 .bg(if is_export { ACCENT } else { SURFACE })
                 .bold(),
         )));
@@ -2335,34 +2759,94 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let hint = " \u{2191}\u{2193} nav  Space toggle  Enter edit  Type to search  Esc back ";
         f.render_widget(
             Paragraph::new(Span::styled(hint, Style::default().fg(DIM)))
-                .style(Style::default().bg(SURFACE)).alignment(Alignment::Center),
-            Rect::new(box_area.x, box_area.y + box_area.height - 1, box_area.width, 1),
+                .style(Style::default().bg(SURFACE))
+                .alignment(Alignment::Center),
+            Rect::new(
+                box_area.x,
+                box_area.y + box_area.height - 1,
+                box_area.width,
+                1,
+            ),
         );
     }
 
     fn draw_pack_edit(&self, f: &mut Frame, area: Rect, map_idx: usize) {
-        if area.width < 50 || area.height < 10 { return; }
+        if area.width < 50 || area.height < 10 {
+            return;
+        }
 
-        struct EditField<'a> { label: &'a str, value: String, is_bool: bool }
+        struct EditField<'a> {
+            label: &'a str,
+            value: String,
+            is_bool: bool,
+        }
         let m = &self.pack_maps[map_idx];
         let cur_hp = format!("{:.1}", m.hp_drain.unwrap_or(8.0));
         let cur_od = format!("{:.1}", m.overall_difficulty.unwrap_or(8.0));
         let cur_rate = format!("{:.2}", m.conversion_rate.unwrap_or(1.0));
         let pitch = m.preserve_pitch.unwrap_or(true);
 
-        let title_val = if m.title_ov.is_empty()  { m.name.clone() } else { m.title_ov.clone() };
-        let artist_val = if m.artist_ov.is_empty() { m.artist.clone() } else { m.artist_ov.clone() };
-        let mapper_val = if m.mapper_ov.is_empty() { m.mapper.clone() } else { m.mapper_ov.clone() };
-        let diff_val = if m.diff_ov.is_empty()   { String::new() } else { m.diff_ov.clone() };
+        let title_val = if m.title_ov.is_empty() {
+            m.name.clone()
+        } else {
+            m.title_ov.clone()
+        };
+        let artist_val = if m.artist_ov.is_empty() {
+            m.artist.clone()
+        } else {
+            m.artist_ov.clone()
+        };
+        let mapper_val = if m.mapper_ov.is_empty() {
+            m.mapper.clone()
+        } else {
+            m.mapper_ov.clone()
+        };
+        let diff_val = if m.diff_ov.is_empty() {
+            String::new()
+        } else {
+            m.diff_ov.clone()
+        };
         let fields = [
-            EditField { label: "Title",     value: title_val,             is_bool: false },
-            EditField { label: "Artist",    value: artist_val,            is_bool: false },
-            EditField { label: "Mapper",    value: mapper_val,            is_bool: false },
-            EditField { label: "Diff",      value: diff_val,              is_bool: false },
-            EditField { label: "HP Drain",  value: cur_hp,                is_bool: false },
-            EditField { label: "OD",        value: cur_od,                is_bool: false },
-            EditField { label: "Rate",      value: cur_rate,              is_bool: false },
-            EditField { label: "Pitch",     value: if pitch { "ON" } else { "OFF" }.into(), is_bool: true },
+            EditField {
+                label: "Title",
+                value: title_val,
+                is_bool: false,
+            },
+            EditField {
+                label: "Artist",
+                value: artist_val,
+                is_bool: false,
+            },
+            EditField {
+                label: "Mapper",
+                value: mapper_val,
+                is_bool: false,
+            },
+            EditField {
+                label: "Diff",
+                value: diff_val,
+                is_bool: false,
+            },
+            EditField {
+                label: "HP Drain",
+                value: cur_hp,
+                is_bool: false,
+            },
+            EditField {
+                label: "OD",
+                value: cur_od,
+                is_bool: false,
+            },
+            EditField {
+                label: "Rate",
+                value: cur_rate,
+                is_bool: false,
+            },
+            EditField {
+                label: "Pitch",
+                value: if pitch { "ON" } else { "OFF" }.into(),
+                is_bool: true,
+            },
         ];
 
         let box_w = 46.min(area.width.saturating_sub(10));
@@ -2376,7 +2860,11 @@ if ($res -eq 'OK') { $d.SelectedPath }
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
             .border_set(symbols::border::ROUNDED)
-            .border_style(Style::default().fg(if self._edit_buf.is_some() { GREEN } else { ACCENT }))
+            .border_style(Style::default().fg(if self._edit_buf.is_some() {
+                GREEN
+            } else {
+                ACCENT
+            }))
             .bg(SURFACE);
         let box_area = Rect::new(x, y, box_w, box_h);
         f.render_widget(&outer, box_area);
@@ -2395,12 +2883,29 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 )));
             }
             let cursor = i == self.pack_edit_selection && self._edit_buf.is_none();
-            let editing = self._edit_buf.as_ref().map_or(false, |(f, _)| *f == i + 100);
+            let editing = self
+                ._edit_buf
+                .as_ref()
+                .map_or(false, |(f, _)| *f == i + 100);
             let arrow = if cursor || editing { "\u{276F}" } else { " " };
-            let bg = if cursor || editing { Color::Rgb(22, 22, 36) } else { SURFACE };
-            let fg = if cursor { ACCENT } else if editing { GREEN } else if fld.is_bool {
-                if fld.value == "ON" { Color::Rgb(108, 92, 231) } else { DIM }
-            } else { TEXT };
+            let bg = if cursor || editing {
+                Color::Rgb(22, 22, 36)
+            } else {
+                SURFACE
+            };
+            let fg = if cursor {
+                ACCENT
+            } else if editing {
+                GREEN
+            } else if fld.is_bool {
+                if fld.value == "ON" {
+                    Color::Rgb(108, 92, 231)
+                } else {
+                    DIM
+                }
+            } else {
+                TEXT
+            };
 
             let display = if editing {
                 let buf = &self._edit_buf.as_ref().unwrap().1;
@@ -2415,7 +2920,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
 
             let label_w = 10usize;
             let text = format!(" {} {:<label_w$}  {}", arrow, fld.label, display);
-            lines.push(Line::from(Span::styled(text, Style::default().fg(fg).bg(bg))));
+            lines.push(Line::from(Span::styled(
+                text,
+                Style::default().fg(fg).bg(bg),
+            )));
         }
 
         f.render_widget(
@@ -2430,29 +2938,75 @@ if ($res -eq 'OK') { $d.SelectedPath }
         };
         f.render_widget(
             Paragraph::new(Span::styled(hint, Style::default().fg(DIM)))
-                .style(Style::default().bg(SURFACE)).alignment(Alignment::Center),
-            Rect::new(box_area.x, box_area.y + box_area.height - 1, box_area.width, 1),
+                .style(Style::default().bg(SURFACE))
+                .alignment(Alignment::Center),
+            Rect::new(
+                box_area.x,
+                box_area.y + box_area.height - 1,
+                box_area.width,
+                1,
+            ),
         );
     }
 
     fn draw_select_edit(&self, f: &mut Frame, area: Rect, diff_idx: usize) {
         // Metadata fields definition
-        struct EditField<'a> { label: &'a str, value: String, is_bool: bool }
+        struct EditField<'a> {
+            label: &'a str,
+            value: String,
+            is_bool: bool,
+        }
         let meta = &self.diff_meta[diff_idx];
         let cur_hp = meta.hp_drain.map_or(String::new(), |v| format!("{:.1}", v));
-        let cur_od = meta.overall_difficulty.map_or(String::new(), |v| format!("{:.1}", v));
-        let cur_rate = meta.conversion_rate.map_or(String::new(), |v| format!("{:.2}", v));
+        let cur_od = meta
+            .overall_difficulty
+            .map_or(String::new(), |v| format!("{:.1}", v));
+        let cur_rate = meta
+            .conversion_rate
+            .map_or(String::new(), |v| format!("{:.2}", v));
         let pitch = meta.preserve_pitch.unwrap_or(true);
 
         let fields = [
-            EditField { label: "Title",     value: meta.title.clone(),     is_bool: false },
-            EditField { label: "Artist",    value: meta.artist.clone(),    is_bool: false },
-            EditField { label: "Mapper",    value: meta.mapper.clone(),    is_bool: false },
-            EditField { label: "Diff",      value: meta.diff.clone(),      is_bool: false },
-            EditField { label: "HP Drain",  value: cur_hp,                 is_bool: false },
-            EditField { label: "OD",        value: cur_od,                 is_bool: false },
-            EditField { label: "Rate",      value: cur_rate,               is_bool: false },
-            EditField { label: "Pitch",     value: if pitch { "ON" } else { "OFF" }.into(), is_bool: true },
+            EditField {
+                label: "Title",
+                value: meta.title.clone(),
+                is_bool: false,
+            },
+            EditField {
+                label: "Artist",
+                value: meta.artist.clone(),
+                is_bool: false,
+            },
+            EditField {
+                label: "Mapper",
+                value: meta.mapper.clone(),
+                is_bool: false,
+            },
+            EditField {
+                label: "Diff",
+                value: meta.diff.clone(),
+                is_bool: false,
+            },
+            EditField {
+                label: "HP Drain",
+                value: cur_hp,
+                is_bool: false,
+            },
+            EditField {
+                label: "OD",
+                value: cur_od,
+                is_bool: false,
+            },
+            EditField {
+                label: "Rate",
+                value: cur_rate,
+                is_bool: false,
+            },
+            EditField {
+                label: "Pitch",
+                value: if pitch { "ON" } else { "OFF" }.into(),
+                is_bool: true,
+            },
         ];
 
         let box_w = 46.min(area.width.saturating_sub(10));
@@ -2460,14 +3014,22 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let x = (area.width - box_w) / 2;
         let y = (area.height - box_h) / 2;
 
-        let fmt = if self.pending_labels.0 == "osu!" { "osu! → SM" } else { "SM → osu!" };
+        let fmt = if self.pending_labels.0 == "osu!" {
+            "osu! → SM"
+        } else {
+            "SM → osu!"
+        };
         let title = format!(" {} [{}] ", self.diff_info[diff_idx].name, fmt);
         let outer = Block::default()
             .title(title.as_str())
             .title_alignment(Alignment::Center)
             .borders(Borders::ALL)
             .border_set(symbols::border::ROUNDED)
-            .border_style(Style::default().fg(if self._edit_buf.is_some() { GREEN } else { ACCENT }))
+            .border_style(Style::default().fg(if self._edit_buf.is_some() {
+                GREEN
+            } else {
+                ACCENT
+            }))
             .bg(SURFACE);
         let box_area = Rect::new(x, y, box_w, box_h);
         f.render_widget(&outer, box_area);
@@ -2489,10 +3051,24 @@ if ($res -eq 'OK') { $d.SelectedPath }
             let cursor = i == self._edit_selection && self._edit_buf.is_none();
             let editing = self._edit_buf.as_ref().map_or(false, |(f, _)| *f == i);
             let arrow = if cursor || editing { "\u{276F}" } else { " " };
-            let bg = if cursor || editing { Color::Rgb(22, 22, 36) } else { SURFACE };
-            let fg = if cursor { ACCENT } else if editing { GREEN } else if fld.is_bool {
-                if fld.value == "ON" { Color::Rgb(108, 92, 231) } else { DIM }
-            } else { TEXT };
+            let bg = if cursor || editing {
+                Color::Rgb(22, 22, 36)
+            } else {
+                SURFACE
+            };
+            let fg = if cursor {
+                ACCENT
+            } else if editing {
+                GREEN
+            } else if fld.is_bool {
+                if fld.value == "ON" {
+                    Color::Rgb(108, 92, 231)
+                } else {
+                    DIM
+                }
+            } else {
+                TEXT
+            };
 
             let display = if editing {
                 let buf = &self._edit_buf.as_ref().unwrap().1;
@@ -2507,7 +3083,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
 
             let label_w = 10usize;
             let text = format!(" {} {:<label_w$}  {}", arrow, fld.label, display);
-            lines.push(Line::from(Span::styled(text, Style::default().fg(fg).bg(bg))));
+            lines.push(Line::from(Span::styled(
+                text,
+                Style::default().fg(fg).bg(bg),
+            )));
         }
 
         f.render_widget(
@@ -2522,13 +3101,21 @@ if ($res -eq 'OK') { $d.SelectedPath }
         };
         f.render_widget(
             Paragraph::new(Span::styled(hint, Style::default().fg(DIM)))
-                .style(Style::default().bg(SURFACE)).alignment(Alignment::Center),
-            Rect::new(box_area.x, box_area.y + box_area.height - 1, box_area.width, 1),
+                .style(Style::default().bg(SURFACE))
+                .alignment(Alignment::Center),
+            Rect::new(
+                box_area.x,
+                box_area.y + box_area.height - 1,
+                box_area.width,
+                1,
+            ),
         );
     }
 
     fn draw_settings(&self, f: &mut Frame, area: Rect) {
-        if area.width < 50 || area.height < 16 { return; }
+        if area.width < 50 || area.height < 16 {
+            return;
+        }
 
         let box_w = 60.min(area.width.saturating_sub(6));
         let box_h = 12.min(area.height.saturating_sub(2));
@@ -2547,8 +3134,22 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let inner = outer.inner(box_area);
 
         let items: Vec<(&str, &str)> = vec![
-            ("Fetch osu avatars", if self.settings.fetch_avatar { "on" } else { "off" }),
-            ("Format", if self.settings.export_format_osz { "OSZ" } else { "Folder" }),
+            (
+                "Fetch osu avatars",
+                if self.settings.fetch_avatar {
+                    "on"
+                } else {
+                    "off"
+                },
+            ),
+            (
+                "Format",
+                if self.settings.export_format_osz {
+                    "OSZ"
+                } else {
+                    "Folder"
+                },
+            ),
             ("Output", &self.settings.output_dir),
         ];
 
@@ -2558,9 +3159,17 @@ if ($res -eq 'OK') { $d.SelectedPath }
         for (i, (name, value)) in items.iter().enumerate() {
             let selected = i == self.settings_selection;
             let arrow = if selected { "\u{276F}" } else { " " };
-            let bg = if selected { Color::Rgb(22, 22, 36) } else { SURFACE };
+            let bg = if selected {
+                Color::Rgb(22, 22, 36)
+            } else {
+                SURFACE
+            };
             let name_fg = if selected { ACCENT } else { TEXT };
-            let value_disp = if value.len() > 30 { format!("{}...", &value[..28]) } else { value.to_string() };
+            let value_disp = if value.len() > 30 {
+                format!("{}...", &value[..28])
+            } else {
+                value.to_string()
+            };
             let name_w = 20usize;
             let pad = " ".repeat(name_w.saturating_sub(name.len()));
             let main = format!(" {} {}{}  {}", arrow, name, pad, value_disp);
@@ -2570,7 +3179,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
                     Span::styled("  slows down conversion", Style::default().fg(DIM).bg(bg)),
                 ]));
             } else {
-                lines.push(Line::from(Span::styled(main, Style::default().fg(name_fg).bold().bg(bg))));
+                lines.push(Line::from(Span::styled(
+                    main,
+                    Style::default().fg(name_fg).bold().bg(bg),
+                )));
             }
         }
 
@@ -2582,8 +3194,14 @@ if ($res -eq 'OK') { $d.SelectedPath }
         let hint = "  \u{2191}\u{2193} select  Enter toggle  Esc back  ";
         f.render_widget(
             Paragraph::new(Span::styled(hint, Style::default().fg(DIM).bg(SURFACE)))
-                .style(Style::default().bg(SURFACE)).alignment(Alignment::Center),
-            Rect::new(box_area.x, box_area.y + box_area.height - 1, box_area.width, 1),
+                .style(Style::default().bg(SURFACE))
+                .alignment(Alignment::Center),
+            Rect::new(
+                box_area.x,
+                box_area.y + box_area.height - 1,
+                box_area.width,
+                1,
+            ),
         );
     }
 
@@ -2598,13 +3216,21 @@ if ($res -eq 'OK') { $d.SelectedPath }
             let speed = rng.gen_range(1..=4);
             let brightness = rng.gen_range(80..=255);
             let size = if rng.gen_bool(0.3) { 1 } else { 0 };
-            self.stars.push(Star { x, y, speed, brightness, size });
+            self.stars.push(Star {
+                x,
+                y,
+                speed,
+                brightness,
+                size,
+            });
         }
     }
 
     fn update_stars(&mut self) {
         let elapsed = self.star_tick.elapsed();
-        if elapsed < Duration::from_millis(50) { return; }
+        if elapsed < Duration::from_millis(50) {
+            return;
+        }
         self.star_tick = Instant::now();
 
         let w = self.term_w.max(10);
@@ -2622,7 +3248,13 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 let speed = rng.gen_range(1..=4);
                 let brightness = rng.gen_range(150..=255);
                 let size = if rng.gen_bool(0.3) { 1 } else { 0 };
-                self.stars.push(Star { x, y: 0, speed, brightness, size });
+                self.stars.push(Star {
+                    x,
+                    y: 0,
+                    speed,
+                    brightness,
+                    size,
+                });
             }
         }
     }
@@ -2683,7 +3315,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
             KeyCode::Backspace => {
                 self.pack_search.pop();
                 self.update_pack_filter();
-                if self.pack_selection >= self.pack_filtered.len() && !self.pack_filtered.is_empty() {
+                if self.pack_selection >= self.pack_filtered.len() && !self.pack_filtered.is_empty()
+                {
                     self.pack_selection = self.pack_filtered.len() - 1;
                 }
             }
@@ -2721,8 +3354,13 @@ if ($res -eq 'OK') { $d.SelectedPath }
                         2 => m.mapper_ov = buf.clone(),
                         3 => m.diff_ov = buf.clone(),
                         4 => m.hp_drain = buf.parse::<f64>().ok().map(|v| v.max(0.0).min(10.0)),
-                        5 => m.overall_difficulty = buf.parse::<f64>().ok().map(|v| v.max(0.0).min(10.0)),
-                        6 => m.conversion_rate = buf.parse::<f64>().ok().map(|v| v.max(0.5).min(3.0)),
+                        5 => {
+                            m.overall_difficulty =
+                                buf.parse::<f64>().ok().map(|v| v.max(0.0).min(10.0))
+                        }
+                        6 => {
+                            m.conversion_rate = buf.parse::<f64>().ok().map(|v| v.max(0.5).min(3.0))
+                        }
                         7 => {}
                         _ => {}
                     }
@@ -2740,22 +3378,28 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 }
                 _ => (false, buf),
             };
-            if keep { self._edit_buf = Some((field_idx, val)); }
+            if keep {
+                self._edit_buf = Some((field_idx, val));
+            }
             return;
         }
 
         match key.code {
             KeyCode::Esc => {
-        self.pack_editing = None;
-        self.pack_edit_selection = 0;
-        self.settings.export_format_osz = true;
+                self.pack_editing = None;
+                self.pack_edit_selection = 0;
+                self.settings.export_format_osz = true;
                 self.pack_edit_selection = 0;
             }
             KeyCode::Up => {
-                if self.pack_edit_selection > 0 { self.pack_edit_selection -= 1; }
+                if self.pack_edit_selection > 0 {
+                    self.pack_edit_selection -= 1;
+                }
             }
             KeyCode::Down => {
-                if self.pack_edit_selection < field_count - 1 { self.pack_edit_selection += 1; }
+                if self.pack_edit_selection < field_count - 1 {
+                    self.pack_edit_selection += 1;
+                }
             }
             KeyCode::Left | KeyCode::Right => {
                 let sel = self.pack_edit_selection;
@@ -2769,7 +3413,11 @@ if ($res -eq 'OK') { $d.SelectedPath }
                             6 => m.conversion_rate.unwrap_or(1.0),
                             _ => return,
                         };
-                        let delta = if key.code == KeyCode::Left { -step } else { step };
+                        let delta = if key.code == KeyCode::Left {
+                            -step
+                        } else {
+                            step
+                        };
                         let new = (cur + delta).max(lo).min(hi);
                         match sel {
                             4 => m.hp_drain = Some((new * 10.0).round() / 10.0),
@@ -2790,8 +3438,12 @@ if ($res -eq 'OK') { $d.SelectedPath }
                         2 => m.mapper_ov.clone(),
                         3 => m.diff_ov.clone(),
                         4 => m.hp_drain.map_or(String::new(), |v| format!("{:.1}", v)),
-                        5 => m.overall_difficulty.map_or(String::new(), |v| format!("{:.1}", v)),
-                        6 => m.conversion_rate.map_or(String::new(), |v| format!("{:.2}", v)),
+                        5 => m
+                            .overall_difficulty
+                            .map_or(String::new(), |v| format!("{:.1}", v)),
+                        6 => m
+                            .conversion_rate
+                            .map_or(String::new(), |v| format!("{:.2}", v)),
                         _ => return,
                     };
                     self._edit_buf = Some((sel + 100, val));
@@ -2810,10 +3462,12 @@ if ($res -eq 'OK') { $d.SelectedPath }
             self.pack_filtered = (0..self.pack_maps.len()).collect();
         } else {
             let q = self.pack_search.to_lowercase();
-            self.pack_filtered = self.pack_maps.iter().enumerate()
+            self.pack_filtered = self
+                .pack_maps
+                .iter()
+                .enumerate()
                 .filter(|(_, m)| {
-                    m.name.to_lowercase().contains(&q) ||
-                    m.mapper.to_lowercase().contains(&q)
+                    m.name.to_lowercase().contains(&q) || m.mapper.to_lowercase().contains(&q)
                 })
                 .map(|(i, _)| i)
                 .collect();
@@ -2821,13 +3475,25 @@ if ($res -eq 'OK') { $d.SelectedPath }
     }
 
     fn export_pack(&mut self) {
-        let selected: Vec<usize> = self.pack_selected.iter()
-            .enumerate().filter(|(_, &s)| s).map(|(i, _)| i).collect();
-        if selected.is_empty() { return; }
+        let selected: Vec<usize> = self
+            .pack_selected
+            .iter()
+            .enumerate()
+            .filter(|(_, &s)| s)
+            .map(|(i, _)| i)
+            .collect();
+        if selected.is_empty() {
+            return;
+        }
 
-        self.output_lines.push(format!("  > Exporting {} song{} from pack...",
-            selected.len(), if selected.len() == 1 { "" } else { "s" }));
-        let pack_name = self.pack_path.file_name()
+        self.output_lines.push(format!(
+            "  > Exporting {} song{} from pack...",
+            selected.len(),
+            if selected.len() == 1 { "" } else { "s" }
+        ));
+        let pack_name = self
+            .pack_path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "pack".into());
         let out_dir = self.resolve_output_dir();
@@ -2835,13 +3501,20 @@ if ($res -eq 'OK') { $d.SelectedPath }
 
         let use_osz = self.settings.export_format_osz;
         let tmp_dir = if use_osz {
-            Some(std::env::temp_dir().join(format!("henkan_pack_{}", std::time::UNIX_EPOCH.elapsed().unwrap_or_default().as_nanos())))
+            Some(std::env::temp_dir().join(format!(
+                    "henkan_pack_{}",
+                    std::time::UNIX_EPOCH
+                        .elapsed()
+                        .unwrap_or_default()
+                        .as_nanos()
+                )))
         } else {
             None
         };
         if let Some(ref td) = tmp_dir {
             if let Err(e) = std::fs::create_dir_all(td) {
-                self.output_lines.push(format!("  \u{2717} Temp dir error: {}", e));
+                self.output_lines
+                    .push(format!("  \u{2717} Temp dir error: {}", e));
                 return;
             }
         }
@@ -2850,32 +3523,63 @@ if ($res -eq 'OK') { $d.SelectedPath }
         for &idx in &selected {
             let m = &self.pack_maps[idx];
             let map_files: Vec<std::path::PathBuf> = std::fs::read_dir(&m.path)
-                .into_iter().flatten().flatten()
+                .into_iter()
+                .flatten()
+                .flatten()
                 .filter(|e| e.path().is_file())
                 .map(|e| e.path())
                 .filter(|p| {
-                    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                    let ext = p
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
                     ext == "sm" || ext == "osu"
                 })
                 .collect();
 
             if map_files.is_empty() {
-                self.output_lines.push(format!("  \u{2717} No beatmap files in: {}", m.name));
+                self.output_lines
+                    .push(format!("  \u{2717} No beatmap files in: {}", m.name));
                 continue;
             }
 
             for mf in &map_files {
-                let ext = mf.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                let ext = mf
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
                 if ext != "sm" {
                     // Non-SM files: single-song folder export (unchanged)
-                    let direction = if ext == "osu" || ext == "osz" { "osu-to-etterna" } else { "etterna-to-osu" };
+                    let direction = if ext == "osu" || ext == "osz" {
+                        "osu-to-etterna"
+                    } else {
+                        "etterna-to-osu"
+                    };
                     match henkan_lib::cli_parse_file(&mf.to_string_lossy(), direction) {
                         Ok(mut bm) => {
                             let mut config = henkan_lib::ExportConfig::default();
-                            let title = if !m.title_ov.is_empty() { &m.title_ov } else { &m.name };
-                            let artist = if !m.artist_ov.is_empty() { &m.artist_ov } else { &m.artist };
-                            let creator = if !m.mapper_ov.is_empty() { &m.mapper_ov } else { &m.mapper };
-                            let diff = if !m.diff_ov.is_empty() { m.diff_ov.clone() } else { bm.difficulty_name.clone() };
+                            let title = if !m.title_ov.is_empty() {
+                                &m.title_ov
+                            } else {
+                                &m.name
+                            };
+                            let artist = if !m.artist_ov.is_empty() {
+                                &m.artist_ov
+                            } else {
+                                &m.artist
+                            };
+                            let creator = if !m.mapper_ov.is_empty() {
+                                &m.mapper_ov
+                            } else {
+                                &m.mapper
+                            };
+                            let diff = if !m.diff_ov.is_empty() {
+                                m.diff_ov.clone()
+                            } else {
+                                bm.difficulty_name.clone()
+                            };
 
                             config.title = title.clone();
                             config.artist = artist.clone();
@@ -2897,7 +3601,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
                             let content = match henkan_lib::cli_convert_beatmap(&mut bm, &config) {
                                 Ok(c) => c,
                                 Err(e) => {
-                                    self.output_lines.push(format!("  \u{2717} Convert error ({}): {}", m.name, e));
+                                    self.output_lines.push(format!(
+                                        "  \u{2717} Convert error ({}): {}",
+                                        m.name, e
+                                    ));
                                     continue;
                                 }
                             };
@@ -2911,7 +3618,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
                                 export_base.join(&safe_sub).join(&diff_safe)
                             };
                             if let Err(e) = std::fs::create_dir_all(&export_dir) {
-                                self.output_lines.push(format!("  \u{2717} Dir error: {}", e));
+                                self.output_lines
+                                    .push(format!("  \u{2717} Dir error: {}", e));
                                 continue;
                             }
                             let fn_folder = if diff_safe.is_empty() {
@@ -2920,25 +3628,46 @@ if ($res -eq 'OK') { $d.SelectedPath }
                                 Some(format!("{} [{}]", title, diff_safe))
                             };
 
-                            match henkan_lib::cli_export_beatmap_named(&bm, &config, &content, &export_dir.to_string_lossy(), fn_folder.as_deref(), true) {
+                            match henkan_lib::cli_export_beatmap_named(
+                                &bm,
+                                &config,
+                                &content,
+                                &export_dir.to_string_lossy(),
+                                fn_folder.as_deref(),
+                                true,
+                            ) {
                                 Ok(_) => {
-                                    let to_label = if direction == "osu-to-etterna" { "StepMania" } else { "osu!" };
+                                    let to_label = if direction == "osu-to-etterna" {
+                                        "StepMania"
+                                    } else {
+                                        "osu!"
+                                    };
                                     self.results.push(ExportResult {
                                         title: config.title.clone(),
                                         mapper: config.creator.clone(),
                                         difficulty: config.difficulty_name.clone(),
-                                        from: if direction == "osu-to-etterna" { "osu!" } else { "StepMania" }.into(),
+                                        from: if direction == "osu-to-etterna" {
+                                            "osu!"
+                                        } else {
+                                            "StepMania"
+                                        }
+                                        .into(),
                                         to: to_label.into(),
                                     });
-                                    self.output_lines.push(format!("  \u{2713} Exported: {}", config.title));
+                                    self.output_lines
+                                        .push(format!("  \u{2713} Exported: {}", config.title));
                                 }
                                 Err(e) => {
-                                    self.output_lines.push(format!("  \u{2717} Export error ({}): {}", m.name, e));
+                                    self.output_lines.push(format!(
+                                        "  \u{2717} Export error ({}): {}",
+                                        m.name, e
+                                    ));
                                 }
                             }
                         }
                         Err(e) => {
-                            self.output_lines.push(format!("  \u{2717} Parse error ({}): {}", m.name, e));
+                            self.output_lines
+                                .push(format!("  \u{2717} Parse error ({}): {}", m.name, e));
                         }
                     }
                     continue;
@@ -2948,7 +3677,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 let content = match std::fs::read_to_string(mf) {
                     Ok(c) => c,
                     Err(e) => {
-                        self.output_lines.push(format!("  \u{2717} Read error ({}): {}", m.name, e));
+                        self.output_lines
+                            .push(format!("  \u{2717} Read error ({}): {}", m.name, e));
                         continue;
                     }
                 };
@@ -2956,21 +3686,24 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 let beatmaps = match henkan_lib::parsers::etterna::parse_sm_all(&content) {
                     Ok(b) => b,
                     Err(e) => {
-                        self.output_lines.push(format!("  \u{2717} Parse error ({}): {}", m.name, e));
+                        self.output_lines
+                            .push(format!("  \u{2717} Parse error ({}): {}", m.name, e));
                         continue;
                     }
                 };
 
                 if beatmaps.is_empty() {
-                    self.output_lines.push(format!("  \u{2717} No sections in: {}", m.name));
+                    self.output_lines
+                        .push(format!("  \u{2717} No sections in: {}", m.name));
                     continue;
                 }
 
-                let source_dir = mf.parent()
+                let source_dir = mf
+                    .parent()
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_default();
-                let audio_filename = henkan_lib::extract_sm_header_field(&content, "MUSIC")
-                    .unwrap_or_default();
+                let audio_filename =
+                    henkan_lib::extract_sm_header_field(&content, "MUSIC").unwrap_or_default();
                 let mut bg_filename = henkan_lib::extract_sm_header_field(&content, "BACKGROUND")
                     .or_else(|| henkan_lib::extract_sm_header_field(&content, "BANNER"));
                 if bg_filename.as_ref().map_or(true, |s| s.is_empty()) {
@@ -2981,57 +3714,73 @@ if ($res -eq 'OK') { $d.SelectedPath }
                     }
                 }
 
-                let title = if !m.title_ov.is_empty() { &m.title_ov } else { &m.name };
-                let artist = if !m.artist_ov.is_empty() { &m.artist_ov } else { &m.artist };
-                let creator = if !m.mapper_ov.is_empty() { &m.mapper_ov } else { &m.mapper };
+                let title = if !m.title_ov.is_empty() {
+                    &m.title_ov
+                } else {
+                    &m.name
+                };
+                let artist = if !m.artist_ov.is_empty() {
+                    &m.artist_ov
+                } else {
+                    &m.artist
+                };
+                let creator = if !m.mapper_ov.is_empty() {
+                    &m.mapper_ov
+                } else {
+                    &m.mapper
+                };
 
                 let safe = henkan_lib::sanitize_filename(&format!("{} - {}", artist, title), 80);
 
                 let mut any_ok = false;
 
-                    // ── Use pre-parsed beatmaps ──
-                    let rate = m.conversion_rate.unwrap_or(1.0);
-                    let pitch = m.preserve_pitch.unwrap_or(true);
-                    for bm in &beatmaps {
-                        let mut bm = bm.clone();
-                        bm.title = title.clone();
-                        bm.artist = artist.clone();
-                        if !creator.is_empty() { bm.creator = creator.clone(); }
-                        bm.source = title.clone();
-                        bm.tags = String::new();
+                // ── Use pre-parsed beatmaps ──
+                let rate = m.conversion_rate.unwrap_or(1.0);
+                let pitch = m.preserve_pitch.unwrap_or(true);
+                for bm in &beatmaps {
+                    let mut bm = bm.clone();
+                    bm.title = title.clone();
+                    bm.artist = artist.clone();
+                    if !creator.is_empty() {
+                        bm.creator = creator.clone();
+                    }
+                    bm.source = title.clone();
+                    bm.tags = String::new();
 
-                        let diff_name = if !m.diff_ov.is_empty() {
-                            m.diff_ov.clone()
-                        } else {
-                            bm.difficulty_name.clone()
-                        };
-                        bm.difficulty_name = diff_name.clone();
+                    let diff_name = if !m.diff_ov.is_empty() {
+                        m.diff_ov.clone()
+                    } else {
+                        bm.difficulty_name.clone()
+                    };
+                    bm.difficulty_name = diff_name.clone();
 
-                        henkan_lib::scale_timing_for_rate(&mut bm, rate);
-                        if let Some(label) = henkan_lib::rate_label(rate) {
-                            bm.difficulty_name.push(' ');
-                            bm.difficulty_name.push_str(&label);
-                        }
+                    henkan_lib::scale_timing_for_rate(&mut bm, rate);
+                    if let Some(label) = henkan_lib::rate_label(rate) {
+                        bm.difficulty_name.push(' ');
+                        bm.difficulty_name.push_str(&label);
+                    }
 
-                        let mut bmc = henkan_lib::ExportConfig::default();
-                        bmc.title = bm.title.clone();
-                        bmc.artist = bm.artist.clone();
-                        bmc.creator = bm.creator.clone();
-                        bmc.source = bm.source.clone();
-                        bmc.tags = bm.tags.clone();
-                        bmc.difficulty_name = bm.difficulty_name.clone();
-                        bmc.conversion_rate = rate;
-                        bmc.preserve_pitch = pitch;
-                        bmc.audio_filename = bm.audio_filename.clone();
-                        bmc.background_filename = bm.background_filename.clone();
-                        bmc.banner_filename = bm.banner_filename.clone();
-                        bmc.cdtitle_filename = bm.cdtitle_filename.clone();
-                        bmc.fetch_avatar = self.settings.fetch_avatar;
+                    let mut bmc = henkan_lib::ExportConfig::default();
+                    bmc.title = bm.title.clone();
+                    bmc.artist = bm.artist.clone();
+                    bmc.creator = bm.creator.clone();
+                    bmc.source = bm.source.clone();
+                    bmc.tags = bm.tags.clone();
+                    bmc.difficulty_name = bm.difficulty_name.clone();
+                    bmc.conversion_rate = rate;
+                    bmc.preserve_pitch = pitch;
+                    bmc.audio_filename = bm.audio_filename.clone();
+                    bmc.background_filename = bm.background_filename.clone();
+                    bmc.banner_filename = bm.banner_filename.clone();
+                    bmc.cdtitle_filename = bm.cdtitle_filename.clone();
+                    bmc.fetch_avatar = self.settings.fetch_avatar;
 
-                    let converted = match henkan_lib::converters::etterna_to_osu::convert(&bm, &bmc) {
+                    let converted = match henkan_lib::converters::etterna_to_osu::convert(&bm, &bmc)
+                    {
                         Ok(c) => c,
                         Err(e) => {
-                            self.output_lines.push(format!("  \u{2717} Convert error ({}): {}", m.name, e));
+                            self.output_lines
+                                .push(format!("  \u{2717} Convert error ({}): {}", m.name, e));
                             continue;
                         }
                     };
@@ -3045,7 +3794,8 @@ if ($res -eq 'OK') { $d.SelectedPath }
 
                     if let Some(ref td) = tmp_dir {
                         if let Err(e) = std::fs::write(td.join(&entry_name), &converted) {
-                            self.output_lines.push(format!("  \u{2717} Write error ({}): {}", m.name, e));
+                            self.output_lines
+                                .push(format!("  \u{2717} Write error ({}): {}", m.name, e));
                             continue;
                         }
                     } else {
@@ -3054,28 +3804,48 @@ if ($res -eq 'OK') { $d.SelectedPath }
                         let safe_sub = henkan_lib::sanitize_filename(&sub, 60);
                         let diff_dir = export_base.join(&safe_sub).join(&diff_safe);
                         if let Err(e) = std::fs::create_dir_all(&diff_dir) {
-                            self.output_lines.push(format!("  \u{2717} Dir error: {}", e));
+                            self.output_lines
+                                .push(format!("  \u{2717} Dir error: {}", e));
                             continue;
                         }
                         if let Err(e) = std::fs::write(diff_dir.join(&entry_name), &converted) {
-                            self.output_lines.push(format!("  \u{2717} Write error ({}): {}", m.name, e));
+                            self.output_lines
+                                .push(format!("  \u{2717} Write error ({}): {}", m.name, e));
                             continue;
                         }
                         // Copy audio and background into per-diff folder
                         if !audio_filename.is_empty() {
                             let needs_rate = (rate - 1.0).abs() > f64::EPSILON;
                             if needs_rate {
-                                let src = henkan_lib::resolve_audio_path(&source_dir, &audio_filename);
+                                let src =
+                                    henkan_lib::resolve_audio_path(&source_dir, &audio_filename);
                                 let dest = diff_dir.join(&audio_filename);
                                 if let Some(ff) = henkan_lib::find_ffmpeg() {
-                                    if let Err(e) = henkan_lib::speed_up_audio_ffmpeg(&ff, &src, &dest, rate, pitch) {
-                                        self.output_lines.push(format!("  \u{2717} Audio error ({}): {}", m.name, e));
+                                    if let Err(e) = henkan_lib::speed_up_audio_ffmpeg(
+                                        &ff, &src, &dest, rate, pitch,
+                                    ) {
+                                        self.output_lines.push(format!(
+                                            "  \u{2717} Audio error ({}): {}",
+                                            m.name, e
+                                        ));
                                     }
-                                } else if let Err(e) = henkan_lib::speed_up_audio_symphonia(&src.to_string_lossy(), &dest.to_string_lossy(), rate) {
-                                    self.output_lines.push(format!("  \u{2717} Audio error ({}): {}", m.name, e));
+                                } else if let Err(e) = henkan_lib::speed_up_audio_symphonia(
+                                    &src.to_string_lossy(),
+                                    &dest.to_string_lossy(),
+                                    rate,
+                                ) {
+                                    self.output_lines.push(format!(
+                                        "  \u{2717} Audio error ({}): {}",
+                                        m.name, e
+                                    ));
                                 }
                             } else {
-                                let _ = henkan_lib::copy_media(&source_dir, &audio_filename, &diff_dir, &audio_filename);
+                                let _ = henkan_lib::copy_media(
+                                    &source_dir,
+                                    &audio_filename,
+                                    &diff_dir,
+                                    &audio_filename,
+                                );
                             }
                         }
                         if let Some(ref bg) = bg_filename {
@@ -3092,7 +3862,12 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 }
 
                 total_sections += beatmaps.len();
-                self.output_lines.push(format!("  \u{2713} Added: {} ({} diff{})", m.name, beatmaps.len(), if beatmaps.len() == 1 { "" } else { "s" }));
+                self.output_lines.push(format!(
+                    "  \u{2713} Added: {} ({} diff{})",
+                    m.name,
+                    beatmaps.len(),
+                    if beatmaps.len() == 1 { "" } else { "s" }
+                ));
             }
         }
 
@@ -3102,9 +3877,14 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 let entries = std::fs::read_dir(&self.pack_path).ok()?;
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if !path.is_file() { continue; }
+                    if !path.is_file() {
+                        continue;
+                    }
                     let ext = path.extension()?.to_str()?.to_lowercase();
-                    if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp") {
+                    if matches!(
+                        ext.as_str(),
+                        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+                    ) {
                         return Some(path.to_string_lossy().to_string());
                     }
                 }
@@ -3113,7 +3893,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
 
             let banner_filename = if let Some(ref pb) = banner_path {
                 let bf = std::path::Path::new(pb)
-                    .file_name().and_then(|n| n.to_str()).unwrap_or("banner.png").to_string();
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("banner.png")
+                    .to_string();
                 if let Some(ref td) = tmp_dir {
                     let _ = std::fs::copy(pb, td.join(&bf));
                 }
@@ -3154,7 +3937,13 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 dummy.push_str("[TimingPoints]\n");
                 dummy.push_str("0,500,4,0,0,100,1,0\n\n");
                 dummy.push_str("[HitObjects]\n");
-                let _ = std::fs::write(td.join(format!("{}.osu", henkan_lib::sanitize_filename(&pack_name, 60))), &dummy);
+                let _ = std::fs::write(
+                    td.join(format!(
+                        "{}.osu",
+                        henkan_lib::sanitize_filename(&pack_name, 60)
+                    )),
+                    &dummy,
+                );
             }
 
             // Zip
@@ -3175,19 +3964,28 @@ if ($res -eq 'OK') { $d.SelectedPath }
                         base: &std::path::Path,
                         opts: &zip::write::FileOptions<'_, ()>,
                     ) -> Result<(), String> {
-                        if !dir.is_dir() { return Ok(()); }
-                        let entries = std::fs::read_dir(dir).map_err(|e| format!("Failed to read dir: {}", e))?;
+                        if !dir.is_dir() {
+                            return Ok(());
+                        }
+                        let entries = std::fs::read_dir(dir)
+                            .map_err(|e| format!("Failed to read dir: {}", e))?;
                         for entry in entries.flatten() {
                             let path = entry.path();
-                            let relative = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().to_string();
+                            let relative = path
+                                .strip_prefix(base)
+                                .unwrap_or(&path)
+                                .to_string_lossy()
+                                .to_string();
                             if path.is_dir() {
                                 walk_dir(zip_w, &path, base, opts)?;
                             } else {
                                 let bytes = std::fs::read(&path)
                                     .map_err(|e| format!("Failed to read {}: {}", relative, e))?;
-                                zip_w.start_file(relative.replace('\\', "/"), *opts)
+                                zip_w
+                                    .start_file(relative.replace('\\', "/"), *opts)
                                     .map_err(|e| format!("Zip error: {}", e))?;
-                                zip_w.write_all(&bytes)
+                                zip_w
+                                    .write_all(&bytes)
                                     .map_err(|e| format!("Zip write error: {}", e))?;
                             }
                         }
@@ -3197,7 +3995,9 @@ if ($res -eq 'OK') { $d.SelectedPath }
                     if let Some(ref td) = tmp_dir {
                         walk_dir(&mut zip_w, td, td, &opts)?;
                     }
-                    zip_w.finish().map_err(|e| format!("Zip finalize error: {}", e))?;
+                    zip_w
+                        .finish()
+                        .map_err(|e| format!("Zip finalize error: {}", e))?;
                     Ok(osz_path.to_string_lossy().to_string())
                 })();
 
@@ -3210,10 +4010,15 @@ if ($res -eq 'OK') { $d.SelectedPath }
                             from: "StepMania".into(),
                             to: "osu!".into(),
                         });
-                        self.output_lines.push(format!("  \u{2713} Exported: {}.osz ({} songs)", pack_name, selected.len()));
+                        self.output_lines.push(format!(
+                            "  \u{2713} Exported: {}.osz ({} songs)",
+                            pack_name,
+                            selected.len()
+                        ));
                     }
                     Err(e) => {
-                        self.output_lines.push(format!("  \u{2717} Zip error: {}", e));
+                        self.output_lines
+                            .push(format!("  \u{2717} Zip error: {}", e));
                     }
                 }
             }
@@ -3229,7 +4034,10 @@ if ($res -eq 'OK') { $d.SelectedPath }
                 from: "StepMania".into(),
                 to: "osu!".into(),
             });
-            self.output_lines.push(format!("  \u{2713} Exported {} songs to folders", selected.len()));
+            self.output_lines.push(format!(
+                "  \u{2713} Exported {} songs to folders",
+                selected.len()
+            ));
         }
 
         self.last_export_dir = export_base;
@@ -3237,29 +4045,34 @@ if ($res -eq 'OK') { $d.SelectedPath }
         self.output_scroll = self.output_lines.len().saturating_sub(1);
         self.go_to_results();
     }
-
 }
 
 // ── Help text drawing inside TUI ────────────────────────────────
 /// Byte offset for a char index in the command input; clamps to the end
 fn cmd_byte_offset(s: &str, char_idx: usize) -> usize {
-    s.char_indices().nth(char_idx).map(|(b, _)| b).unwrap_or(s.len())
+    s.char_indices()
+        .nth(char_idx)
+        .map(|(b, _)| b)
+        .unwrap_or(s.len())
 }
 
 fn desc_for(cmd: &str) -> &'static str {
     let trimmed = cmd.trim().strip_prefix("set ").unwrap_or(cmd.trim());
     for (name, desc) in COMMAND_DESCS {
-        if *name == trimmed { return desc; }
+        if *name == trimmed {
+            return desc;
+        }
     }
     for key in SETTING_KEYS {
-        if *key == trimmed { return "Configuration setting"; }
+        if *key == trimmed {
+            return "Configuration setting";
+        }
     }
     if trimmed == "set" {
         return "Modify a configuration value (set <key> <value>)";
     }
     ""
 }
-
 
 fn parse_onoff(s: &str) -> Result<bool, String> {
     match s.to_lowercase().as_str() {
@@ -3271,11 +4084,19 @@ fn parse_onoff(s: &str) -> Result<bool, String> {
 
 fn resolve_path(file: &str, cwd: &PathBuf) -> String {
     let p = PathBuf::from(file);
-    if p.is_absolute() { file.to_string() } else { cwd.join(file).to_string_lossy().to_string() }
+    if p.is_absolute() {
+        file.to_string()
+    } else {
+        cwd.join(file).to_string_lossy().to_string()
+    }
 }
 
 fn sanitize_path(s: &str) -> String {
-    s.chars().filter(|&c| c != '\x7f' && (c >= ' ' || c == '\t')).collect::<String>().trim().to_string()
+    s.chars()
+        .filter(|&c| c != '\x7f' && (c >= ' ' || c == '\t'))
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 fn deescape_path(s: &str) -> String {
@@ -3290,7 +4111,9 @@ fn deescape_path(s: &str) -> String {
         let mut chars = s.chars();
         while let Some(c) = chars.next() {
             if c == '\\' {
-                if let Some(next) = chars.next() { out.push(next); }
+                if let Some(next) = chars.next() {
+                    out.push(next);
+                }
             } else {
                 out.push(c);
             }
@@ -3302,10 +4125,16 @@ fn deescape_path(s: &str) -> String {
 // ── Non-interactive mode ────────────────────────────────────
 
 fn non_interactive(command: &str, args: &[String]) -> Result<(), String> {
-    let file = args.iter()
+    let file = args
+        .iter()
         .position(|a| !a.starts_with("--") && a != command && *a != args[0])
         .and_then(|i| args.get(i))
-        .ok_or_else(|| format!("Usage: henkan-cli {} <file> [--output <dir>] [--dir <osu|sm>] [settings...]", command))?;
+        .ok_or_else(|| {
+            format!(
+                "Usage: henkan-cli {} <file> [--output <dir>] [--dir <osu|sm>] [settings...]",
+                command
+            )
+        })?;
     let out_dir = parse_flag(args, "--output").unwrap_or_else(|| ".".to_string());
     let dir_flag = parse_flag(args, "--dir");
     let direction = match dir_flag.as_deref() {
@@ -3325,13 +4154,20 @@ fn non_interactive(command: &str, args: &[String]) -> Result<(), String> {
     // Parse settings from CLI flags
     let cli_settings = CliSettings {
         fetch_avatar: parse_bool_flag(args, "--avatar").unwrap_or(true),
-        export_format_osz: !parse_bool_flag(args, "--format").map(|v| v == false).unwrap_or(true),
+        export_format_osz: !parse_bool_flag(args, "--format")
+            .map(|v| v == false)
+            .unwrap_or(true),
         output_dir: parse_flag(args, "--output").unwrap_or_else(|| "./converts".into()),
     };
-    let has_any_setting_flag = args.iter().any(|a| matches!(a.as_str(), "--avatar" | "--format" | "--output"));
+    let has_any_setting_flag = args
+        .iter()
+        .any(|a| matches!(a.as_str(), "--avatar" | "--format" | "--output"));
 
     // For convert/export: if no settings flags and not --quick, show interactive TUI
-    let final_settings = if (command == "convert" || command == "export") && !has_any_setting_flag && !args.contains(&"--quick".to_string()) {
+    let final_settings = if (command == "convert" || command == "export")
+        && !has_any_setting_flag
+        && !args.contains(&"--quick".to_string())
+    {
         match run_interactive_convert(file, direction) {
             Ok(Some(s)) => s,
             Ok(None) => return Ok(()),
@@ -3350,23 +4186,36 @@ fn non_interactive(command: &str, args: &[String]) -> Result<(), String> {
             println!("Difficulty:    {}", bm.difficulty_name);
             println!("Source:        {:?}", bm.source_format);
             println!("Keys:          {}", bm.keys);
-            println!("Notes:         {} (holds: {})", bm.notes.len(), bm.notes.iter().filter(|n| n.hold).count());
+            println!(
+                "Notes:         {} (holds: {})",
+                bm.notes.len(),
+                bm.notes.iter().filter(|n| n.hold).count()
+            );
             println!("Timing pts:    {}", bm.timing_points.len());
             println!("Duration:      {:.1}s", bm.duration_ms / 1000.0);
             println!("Preview:       {:.1}s", bm.preview_time / 1000.0);
             println!("Audio:         {}", bm.audio_filename);
             println!("Difficulties:  {}", bm.available_difficulties.len());
             for d in &bm.available_difficulties {
-                println!("  \u{2192} {} ({}K, {} notes)", d.name, d.keys, d.note_count);
+                println!(
+                    "  \u{2192} {} ({}K, {} notes)",
+                    d.name, d.keys, d.note_count
+                );
             }
         }
         "convert" => {
             let mut bm = henkan_lib::cli_parse_file(file, direction)?;
             let mut config = henkan_lib::ExportConfig::default();
-            config.title = bm.title.clone(); config.artist = bm.artist.clone(); config.creator = bm.creator.clone();
-            config.difficulty_name = bm.difficulty_name.clone(); config.source = bm.source.clone(); config.tags = bm.tags.clone();
-            config.audio_filename = bm.audio_filename.clone(); config.background_filename = bm.background_filename.clone();
-            config.banner_filename = bm.banner_filename.clone(); config.cdtitle_filename = bm.cdtitle_filename.clone();
+            config.title = bm.title.clone();
+            config.artist = bm.artist.clone();
+            config.creator = bm.creator.clone();
+            config.difficulty_name = bm.difficulty_name.clone();
+            config.source = bm.source.clone();
+            config.tags = bm.tags.clone();
+            config.audio_filename = bm.audio_filename.clone();
+            config.background_filename = bm.background_filename.clone();
+            config.banner_filename = bm.banner_filename.clone();
+            config.cdtitle_filename = bm.cdtitle_filename.clone();
             config.preview_time = bm.preview_time;
             config.hp_drain = 8.0;
             config.overall_difficulty = 8.0;
@@ -3378,10 +4227,16 @@ fn non_interactive(command: &str, args: &[String]) -> Result<(), String> {
         "export" => {
             let mut bm = henkan_lib::cli_parse_file(file, direction)?;
             let mut config = henkan_lib::ExportConfig::default();
-            config.title = bm.title.clone(); config.artist = bm.artist.clone(); config.creator = bm.creator.clone();
-            config.difficulty_name = bm.difficulty_name.clone(); config.source = bm.source.clone(); config.tags = bm.tags.clone();
-            config.audio_filename = bm.audio_filename.clone(); config.background_filename = bm.background_filename.clone();
-            config.banner_filename = bm.banner_filename.clone(); config.cdtitle_filename = bm.cdtitle_filename.clone();
+            config.title = bm.title.clone();
+            config.artist = bm.artist.clone();
+            config.creator = bm.creator.clone();
+            config.difficulty_name = bm.difficulty_name.clone();
+            config.source = bm.source.clone();
+            config.tags = bm.tags.clone();
+            config.audio_filename = bm.audio_filename.clone();
+            config.background_filename = bm.background_filename.clone();
+            config.banner_filename = bm.banner_filename.clone();
+            config.cdtitle_filename = bm.cdtitle_filename.clone();
             config.preview_time = bm.preview_time;
             config.hp_drain = 8.0;
             config.overall_difficulty = 8.0;
@@ -3389,7 +4244,10 @@ fn non_interactive(command: &str, args: &[String]) -> Result<(), String> {
             config.preserve_pitch = true;
             config.fetch_avatar = final_settings.fetch_avatar;
             let content = henkan_lib::cli_convert_beatmap(&mut bm, &config)?;
-            println!("Exported to: {}", henkan_lib::cli_export_beatmap(&bm, &config, &content, &out_dir)?);
+            println!(
+                "Exported to: {}",
+                henkan_lib::cli_export_beatmap(&bm, &config, &content, &out_dir)?
+            );
         }
         _ => unreachable!(),
     }
@@ -3397,11 +4255,18 @@ fn non_interactive(command: &str, args: &[String]) -> Result<(), String> {
 }
 
 fn parse_flag(args: &[String], flag: &str) -> Option<String> {
-    args.windows(2).find_map(|w| { if w[0] == flag { Some(w[1].clone()) } else { None } })
+    args.windows(2).find_map(|w| {
+        if w[0] == flag {
+            Some(w[1].clone())
+        } else {
+            None
+        }
+    })
 }
 
 fn parse_bool_flag(args: &[String], flag: &str) -> Option<bool> {
-    parse_flag(args, flag).map(|s| !matches!(s.to_lowercase().as_str(), "off" | "false" | "no" | "0"))
+    parse_flag(args, flag)
+        .map(|s| !matches!(s.to_lowercase().as_str(), "off" | "false" | "no" | "0"))
 }
 
 // ── Interactive settings TUI for `convert <file>` without flags ──
@@ -3425,22 +4290,34 @@ fn run_interactive_convert(file: &str, _direction: &str) -> io::Result<Option<Cl
     loop {
         let _ = terminal.draw(|f| {
             let area = f.area();
-            f.render_widget(Paragraph::new(" ").style(Style::default().bg(Color::Rgb(10, 10, 15))), area);
+            f.render_widget(
+                Paragraph::new(" ").style(Style::default().bg(Color::Rgb(10, 10, 15))),
+                area,
+            );
             draw_mini_settings(f, area, &settings, selection, file);
         });
 
         if event::poll(Duration::from_millis(50))? {
             match event::read()? {
                 Event::Key(key) => {
-                    if key.kind != KeyEventKind::Press { continue; }
+                    if key.kind != KeyEventKind::Press {
+                        continue;
+                    }
 
                     match key.code {
                         KeyCode::Esc => break,
-                        KeyCode::Up => { selection = selection.saturating_sub(1); }
-                        KeyCode::Down => { if selection < max_idx { selection += 1; } }
+                        KeyCode::Up => {
+                            selection = selection.saturating_sub(1);
+                        }
+                        KeyCode::Down => {
+                            if selection < max_idx {
+                                selection += 1;
+                            }
+                        }
                         KeyCode::Enter | KeyCode::Right | KeyCode::Left => {
                             if selection == max_idx {
-                                confirmed = true; break;
+                                confirmed = true;
+                                break;
                             } else if selection == 0 {
                                 settings.fetch_avatar = !settings.fetch_avatar;
                             } else if selection == 1 {
@@ -3471,10 +4348,21 @@ fn run_interactive_convert(file: &str, _direction: &str) -> io::Result<Option<Cl
     stdout.execute(DisableMouseCapture)?;
     disable_raw_mode()?;
 
-    if confirmed { settings.save(); Ok(Some(settings)) } else { Ok(None) }
+    if confirmed {
+        settings.save();
+        Ok(Some(settings))
+    } else {
+        Ok(None)
+    }
 }
 
-fn draw_mini_settings(f: &mut Frame, area: Rect, settings: &CliSettings, selection: usize, file_path: &str) {
+fn draw_mini_settings(
+    f: &mut Frame,
+    area: Rect,
+    settings: &CliSettings,
+    selection: usize,
+    file_path: &str,
+) {
     let box_w = 64.min(area.width.saturating_sub(8));
     let box_h = 12.min(area.height.saturating_sub(4));
     let x = (area.width - box_w) / 2;
@@ -3491,7 +4379,10 @@ fn draw_mini_settings(f: &mut Frame, area: Rect, settings: &CliSettings, selecti
     f.render_widget(&outer, box_area);
     let inner = outer.inner(box_area);
 
-    let display = file_path.chars().take(box_w as usize - 10).collect::<String>();
+    let display = file_path
+        .chars()
+        .take(box_w as usize - 10)
+        .collect::<String>();
     f.render_widget(
         Paragraph::new(Span::styled(display, Style::default().fg(DIM).bg(SURFACE)))
             .style(Style::default().bg(SURFACE)),
@@ -3499,8 +4390,18 @@ fn draw_mini_settings(f: &mut Frame, area: Rect, settings: &CliSettings, selecti
     );
 
     let items: Vec<(&str, &str)> = vec![
-        ("Fetch osu avatars", if settings.fetch_avatar { "on" } else { "off" }),
-        ("Format", if settings.export_format_osz { "OSZ" } else { "Folder" }),
+        (
+            "Fetch osu avatars",
+            if settings.fetch_avatar { "on" } else { "off" },
+        ),
+        (
+            "Format",
+            if settings.export_format_osz {
+                "OSZ"
+            } else {
+                "Folder"
+            },
+        ),
         ("Output", &settings.output_dir),
     ];
     let max_idx = items.len(); // 3, convert button is at this index
@@ -3508,35 +4409,48 @@ fn draw_mini_settings(f: &mut Frame, area: Rect, settings: &CliSettings, selecti
     let mut lines: Vec<Line> = Vec::new();
     lines.push(Line::from(Span::styled("", Style::default().bg(SURFACE))));
 
-        for (i, (name, value)) in items.iter().enumerate() {
-            let selected = i == selection;
-            let arrow = if selected { "\u{276F}" } else { " " };
-            let bg = if selected { Color::Rgb(22, 22, 36) } else { SURFACE };
-            let item_fg = if selected { ACCENT } else { TEXT };
-            let value_disp = if value.len() > 30 { format!("{}...", &value[..28]) } else { value.to_string() };
-            let name_w = 20usize;
-            let pad = " ".repeat(name_w.saturating_sub(name.len()));
-            let main = format!(" {} {}{}  {}", arrow, name, pad, value_disp);
-            if i == 0 {
-                lines.push(Line::from(vec![
-                    Span::styled(main, Style::default().fg(item_fg).bold().bg(bg)),
-                    Span::styled("  slows down conversion", Style::default().fg(DIM).bg(bg)),
-                ]));
-            } else {
-                lines.push(Line::from(Span::styled(main, Style::default().fg(item_fg).bold().bg(bg))));
-            }
+    for (i, (name, value)) in items.iter().enumerate() {
+        let selected = i == selection;
+        let arrow = if selected { "\u{276F}" } else { " " };
+        let bg = if selected {
+            Color::Rgb(22, 22, 36)
+        } else {
+            SURFACE
+        };
+        let item_fg = if selected { ACCENT } else { TEXT };
+        let value_disp = if value.len() > 30 {
+            format!("{}...", &value[..28])
+        } else {
+            value.to_string()
+        };
+        let name_w = 20usize;
+        let pad = " ".repeat(name_w.saturating_sub(name.len()));
+        let main = format!(" {} {}{}  {}", arrow, name, pad, value_disp);
+        if i == 0 {
+            lines.push(Line::from(vec![
+                Span::styled(main, Style::default().fg(item_fg).bold().bg(bg)),
+                Span::styled("  slows down conversion", Style::default().fg(DIM).bg(bg)),
+            ]));
+        } else {
+            lines.push(Line::from(Span::styled(
+                main,
+                Style::default().fg(item_fg).bold().bg(bg),
+            )));
         }
+    }
 
     lines.push(Line::from(Span::styled("", Style::default().bg(SURFACE))));
     let convert_sel = selection == max_idx;
     let convert_fg = if convert_sel { BG } else { DIM };
     let convert_bg = if convert_sel { ACCENT } else { SURFACE };
-    lines.push(Line::from(vec![
-        Span::styled(
-            format!("{} Convert{}", if convert_sel { "\u{276F}" } else { " " }, if convert_sel { " \u{23CE}" } else { "" }),
-            Style::default().fg(convert_fg).bold().bg(convert_bg),
+    lines.push(Line::from(vec![Span::styled(
+        format!(
+            "{} Convert{}",
+            if convert_sel { "\u{276F}" } else { " " },
+            if convert_sel { " \u{23CE}" } else { "" }
         ),
-    ]));
+        Style::default().fg(convert_fg).bold().bg(convert_bg),
+    )]));
 
     f.render_widget(
         Paragraph::new(lines).style(Style::default().bg(SURFACE)),
@@ -3546,31 +4460,45 @@ fn draw_mini_settings(f: &mut Frame, area: Rect, settings: &CliSettings, selecti
     let hint = "  \u{2191}\u{2193} select  Enter toggle  Esc back  ";
     f.render_widget(
         Paragraph::new(Span::styled(hint, Style::default().fg(DIM).bg(SURFACE)))
-            .style(Style::default().bg(SURFACE)).alignment(Alignment::Center),
-        Rect::new(box_area.x, box_area.y + box_area.height - 1, box_area.width, 1),
+            .style(Style::default().bg(SURFACE))
+            .alignment(Alignment::Center),
+        Rect::new(
+            box_area.x,
+            box_area.y + box_area.height - 1,
+            box_area.width,
+            1,
+        ),
     );
 }
 
 fn splash_stdout() {
-    for line in LOGO { println!("{}", line); }
-    println!(); println!("    osu!mania \u{2194} StepMania Converter");
+    for line in LOGO {
+        println!("{}", line);
+    }
+    println!();
+    println!("    osu!mania \u{2194} StepMania Converter");
 }
 
 fn help_stdout() {
-    println!(); println!("  Commands:");
+    println!();
+    println!("  Commands:");
     println!("    parse <file>           Parse & display metadata");
     println!("    convert <file>         Convert & print output");
     println!("    export <file>          Convert & save to folder");
-    println!(); println!("  Quick mode flags (omit for interactive settings):");
+    println!();
+    println!("  Quick mode flags (omit for interactive settings):");
     println!("    --avatar <on|off>      Fetch osu! avatar (default on)");
     println!("    --format <osz|folder>  Export format (default osz)");
     println!("    --quick                Use defaults, skip interactive menu");
-    println!(); println!("  Other flags:");
+    println!();
+    println!("  Other flags:");
     println!("    --dir <osu|sm>         Conversion direction (default: auto-detect)");
     println!("    --output <dir>         Output directory (default: current dir)");
-    println!(); println!("  Examples:");
+    println!();
+    println!("  Examples:");
     println!("    henkan-cli convert song.osz           Show interactive settings, then convert");
     println!("    henkan-cli convert song.osz --quick   Convert with default settings");
     println!("    henkan-cli export song.osz --avatar off --format folder");
-    println!(); println!("  Run without args for interactive TUI mode.");
+    println!();
+    println!("  Run without args for interactive TUI mode.");
 }

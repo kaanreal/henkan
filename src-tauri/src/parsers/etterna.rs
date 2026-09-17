@@ -43,13 +43,18 @@ pub fn parse_sm(content: &str) -> Result<Beatmap> {
     beatmap.source = headers.get("GENRE").cloned().unwrap_or_default();
 
     beatmap.audio_filename = headers.get("MUSIC").cloned().unwrap_or_default();
-    beatmap.background_filename = headers.get("BACKGROUND").cloned()
+    beatmap.background_filename = headers
+        .get("BACKGROUND")
+        .cloned()
         .filter(|s| !s.is_empty())
         .or_else(|| headers.get("BANNER").cloned().filter(|s| !s.is_empty()));
     beatmap.banner_filename = headers.get("BANNER").cloned().filter(|s| !s.is_empty());
     beatmap.cdtitle_filename = headers.get("CDTITLE").cloned().filter(|s| !s.is_empty());
 
-    let offset: f64 = headers.get("OFFSET").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let offset: f64 = headers
+        .get("OFFSET")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
 
     let sample_start: f64 = headers
         .get("SAMPLESTART")
@@ -73,17 +78,20 @@ pub fn parse_sm(content: &str) -> Result<Beatmap> {
     }
 
     let audio = headers.get("MUSIC").cloned();
-    beatmap.available_difficulties = sections.iter().map(|s| {
-        let k = detect_keys(s);
-        let count = count_notes(s);
-        DiffInfo {
-            name: detect_difficulty(s),
-            keys: k,
-            note_count: count,
-            audio_filename: audio.clone(),
-            difficulty_rating: detect_meter(s),
-        }
-    }).collect();
+    beatmap.available_difficulties = sections
+        .iter()
+        .map(|s| {
+            let k = detect_keys(s);
+            let count = count_notes(s);
+            DiffInfo {
+                name: detect_difficulty(s),
+                keys: k,
+                note_count: count,
+                audio_filename: audio.clone(),
+                difficulty_rating: detect_meter(s),
+            }
+        })
+        .collect();
 
     beatmap.difficulty_rating = try_compute_msd(&beatmap);
     beatmap.compute_duration();
@@ -96,7 +104,11 @@ pub fn parse_sm_difficulty(content: &str, index: usize) -> Result<Beatmap> {
     let sections = extract_all_notes_sections(&raw);
 
     if index >= sections.len() {
-        anyhow::bail!("Difficulty index {} out of range (0..{})", index, sections.len());
+        anyhow::bail!(
+            "Difficulty index {} out of range (0..{})",
+            index,
+            sections.len()
+        );
     }
 
     let notes_str = &sections[index];
@@ -110,14 +122,22 @@ pub fn parse_sm_difficulty(content: &str, index: usize) -> Result<Beatmap> {
     beatmap.creator = headers.get("CREDIT").cloned().unwrap_or_default();
     beatmap.source = headers.get("GENRE").cloned().unwrap_or_default();
     beatmap.audio_filename = headers.get("MUSIC").cloned().unwrap_or_default();
-    beatmap.background_filename = headers.get("BACKGROUND").cloned()
+    beatmap.background_filename = headers
+        .get("BACKGROUND")
+        .cloned()
         .filter(|s| !s.is_empty())
         .or_else(|| headers.get("BANNER").cloned().filter(|s| !s.is_empty()));
     beatmap.banner_filename = headers.get("BANNER").cloned().filter(|s| !s.is_empty());
     beatmap.cdtitle_filename = headers.get("CDTITLE").cloned().filter(|s| !s.is_empty());
 
-    let offset: f64 = headers.get("OFFSET").and_then(|s| s.parse().ok()).unwrap_or(0.0);
-    let sample_start: f64 = headers.get("SAMPLESTART").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let offset: f64 = headers
+        .get("OFFSET")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let sample_start: f64 = headers
+        .get("SAMPLESTART")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
     beatmap.preview_time = sample_start * 1000.0;
 
     let bpm_changes = parse_bpms(headers.get("BPMS").unwrap_or(&String::new()));
@@ -134,17 +154,20 @@ pub fn parse_sm_difficulty(content: &str, index: usize) -> Result<Beatmap> {
     }
 
     let audio = headers.get("MUSIC").cloned();
-    beatmap.available_difficulties = sections.iter().map(|s| {
-        let k = detect_keys(s);
-        let count = count_notes(s);
-        DiffInfo {
-            name: detect_difficulty(s),
-            keys: k,
-            note_count: count,
-            audio_filename: audio.clone(),
-            difficulty_rating: detect_meter(s),
-        }
-    }).collect();
+    beatmap.available_difficulties = sections
+        .iter()
+        .map(|s| {
+            let k = detect_keys(s);
+            let count = count_notes(s);
+            DiffInfo {
+                name: detect_difficulty(s),
+                keys: k,
+                note_count: count,
+                audio_filename: audio.clone(),
+                difficulty_rating: detect_meter(s),
+            }
+        })
+        .collect();
 
     beatmap.difficulty_rating = try_compute_msd(&beatmap);
     beatmap.compute_duration();
@@ -162,8 +185,14 @@ pub fn parse_sm_all(content: &str) -> Result<Vec<Beatmap>> {
         anyhow::bail!("No #NOTES: sections found");
     }
 
-    let offset: f64 = headers.get("OFFSET").and_then(|s| s.parse().ok()).unwrap_or(0.0);
-    let sample_start: f64 = headers.get("SAMPLESTART").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let offset: f64 = headers
+        .get("OFFSET")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let sample_start: f64 = headers
+        .get("SAMPLESTART")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
     let preview_time = sample_start * 1000.0;
     let bpm_changes = parse_bpms(headers.get("BPMS").unwrap_or(&String::new()));
     let stops = parse_stops(headers.get("STOPS").unwrap_or(&String::new()));
@@ -174,35 +203,48 @@ pub fn parse_sm_all(content: &str) -> Result<Vec<Beatmap>> {
     let creator = headers.get("CREDIT").cloned().unwrap_or_default();
     let source = headers.get("GENRE").cloned().unwrap_or_default();
     let audio_filename = headers.get("MUSIC").cloned().unwrap_or_default();
-    let bg = headers.get("BACKGROUND").cloned()
+    let bg = headers
+        .get("BACKGROUND")
+        .cloned()
         .filter(|s| !s.is_empty())
         .or_else(|| headers.get("BANNER").cloned().filter(|s| !s.is_empty()));
     let banner = headers.get("BANNER").cloned().filter(|s| !s.is_empty());
     let cdtitle = headers.get("CDTITLE").cloned().filter(|s| !s.is_empty());
 
     // Pre-parse all sections once
-    let parsed_sections: Vec<_> = sections.iter().map(|s| {
-        let k = detect_keys(s);
-        let notes = parse_notes_data(s, k, &bpm_changes, &stops, offset).unwrap_or_default();
-        let diff_name = detect_difficulty(s);
-        let note_count = count_notes(s);
-        (k, notes, diff_name, note_count)
-    }).collect();
+    let parsed_sections: Vec<_> = sections
+        .iter()
+        .map(|s| {
+            let k = detect_keys(s);
+            let notes = parse_notes_data(s, k, &bpm_changes, &stops, offset).unwrap_or_default();
+            let diff_name = detect_difficulty(s);
+            let note_count = count_notes(s);
+            (k, notes, diff_name, note_count)
+        })
+        .collect();
 
     // Batch-compute MSD for all note slices in one Calc instance
-    let note_refs: Vec<&[Note]> = parsed_sections.iter().map(|(_, notes, _, _)| notes.as_slice()).collect();
+    let note_refs: Vec<&[Note]> = parsed_sections
+        .iter()
+        .map(|(_, notes, _, _)| notes.as_slice())
+        .collect();
     let msd_ratings = try_compute_msd_batch(&note_refs);
 
     // Build shared available_difficulties once
-    let available_difficulties: Vec<DiffInfo> = parsed_sections.iter().zip(&msd_ratings).enumerate().map(|(i, ((k, _notes, diff_name, note_count), rating))| {
-        DiffInfo {
-            name: diff_name.clone(),
-            keys: *k,
-            note_count: *note_count,
-            audio_filename: audio.clone(),
-            difficulty_rating: rating.or_else(|| detect_meter(&sections[i])),
-        }
-    }).collect();
+    let available_difficulties: Vec<DiffInfo> = parsed_sections
+        .iter()
+        .zip(&msd_ratings)
+        .enumerate()
+        .map(
+            |(i, ((k, _notes, diff_name, note_count), rating))| DiffInfo {
+                name: diff_name.clone(),
+                keys: *k,
+                note_count: *note_count,
+                audio_filename: audio.clone(),
+                difficulty_rating: rating.or_else(|| detect_meter(&sections[i])),
+            },
+        )
+        .collect();
 
     let mut result = Vec::with_capacity(sections.len());
     for (i, _notes_str) in sections.iter().enumerate() {
@@ -220,7 +262,9 @@ pub fn parse_sm_all(content: &str) -> Result<Vec<Beatmap>> {
         beatmap.preview_time = preview_time;
         beatmap.timing_points = timing_points.clone();
         beatmap.notes = notes.clone();
-        if !dn.is_empty() { beatmap.difficulty_name = dn.clone(); }
+        if !dn.is_empty() {
+            beatmap.difficulty_name = dn.clone();
+        }
         beatmap.difficulty_rating = msd_ratings[i];
         beatmap.available_difficulties = available_difficulties.clone();
         beatmap.compute_duration();
@@ -243,7 +287,9 @@ pub fn parse_headers(content: &str) -> std::collections::HashMap<String, String>
         let value_part = &after[colon + 1..];
         let end = value_part.find(';').unwrap_or(value_part.len());
         if key != "NOTES" {
-            headers.entry(key).or_insert_with(|| value_part[..end].trim().to_string());
+            headers
+                .entry(key)
+                .or_insert_with(|| value_part[..end].trim().to_string());
         }
         rest = &value_part[end.min(value_part.len())..];
     }
@@ -316,7 +362,12 @@ fn detect_keys(notes_section: &str) -> u32 {
 fn detect_difficulty(notes_section: &str) -> String {
     let lines: Vec<&str> = notes_section.lines().collect();
     if lines.len() > 1 {
-        lines[1].trim().trim_matches(':').trim().trim_matches('"').to_string()
+        lines[1]
+            .trim()
+            .trim_matches(':')
+            .trim()
+            .trim_matches('"')
+            .to_string()
     } else {
         String::new()
     }
@@ -369,11 +420,7 @@ fn parse_stops(content: &str) -> Vec<(f64, f64)> {
     stops
 }
 
-fn build_timing(
-    bpms: &[(f64, f64)],
-    stops: &[(f64, f64)],
-    offset: f64,
-) -> Vec<TimingPoint> {
+fn build_timing(bpms: &[(f64, f64)], stops: &[(f64, f64)], offset: f64) -> Vec<TimingPoint> {
     let mut points = Vec::new();
     let mut current_time = -offset * 1000.0;
 
@@ -549,22 +596,25 @@ fn parse_notes_data(
         }
     }
 
-    notes.sort_by(|a, b| a.time_ms.partial_cmp(&b.time_ms).unwrap_or(std::cmp::Ordering::Equal));
+    notes.sort_by(|a, b| {
+        a.time_ms
+            .partial_cmp(&b.time_ms)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     Some(notes)
 }
 
-fn beat_to_ms(
-    beat: f64,
-    bpms: &[(f64, f64)],
-    stops: &[(f64, f64)],
-    offset: f64,
-) -> f64 {
+fn beat_to_ms(beat: f64, bpms: &[(f64, f64)], stops: &[(f64, f64)], offset: f64) -> f64 {
     let mut time = -offset * 1000.0;
     let mut prev_beat = 0.0;
 
     for i in 0..bpms.len() {
         let (_bpm_beat, bpm) = bpms[i];
-        let seg_end = if i + 1 < bpms.len() { bpms[i + 1].0 } else { f64::INFINITY };
+        let seg_end = if i + 1 < bpms.len() {
+            bpms[i + 1].0
+        } else {
+            f64::INFINITY
+        };
 
         if beat < seg_end {
             let beat_diff = beat - prev_beat;
@@ -647,9 +697,18 @@ mod tests {
 
         // 8 rows in the two measures at 120 BPM (2000ms per measure):
         // row 1 of measure 0 = 500ms, row 0 of measure 1 = 2000ms
-        let taps: Vec<f64> = beatmap.notes.iter().filter(|n| !n.hold).map(|n| n.time_ms).collect();
+        let taps: Vec<f64> = beatmap
+            .notes
+            .iter()
+            .filter(|n| !n.hold)
+            .map(|n| n.time_ms)
+            .collect();
         assert!((taps[0] - 500.0).abs() < 1.0, "first tap at {}ms", taps[0]);
-        assert!((taps[3] - 2000.0).abs() < 1.0, "fourth tap at {}ms", taps[3]);
+        assert!(
+            (taps[3] - 2000.0).abs() < 1.0,
+            "fourth tap at {}ms",
+            taps[3]
+        );
     }
 
     #[test]

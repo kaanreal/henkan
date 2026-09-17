@@ -1,4 +1,4 @@
-﻿use crate::models::beatmap::{Beatmap, ExportConfig};
+use crate::models::beatmap::{Beatmap, ExportConfig};
 use crate::models::timing::{snap_to_osu_grid, TimingPoint};
 use anyhow::Result;
 
@@ -31,13 +31,24 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     output.push_str(&format!("Tags:{}\n", beatmap.tags));
     output.push('\n');
 
-    let cs = if config.circle_size == 0.0 { beatmap.keys as f64 } else { config.circle_size };
-    let ar = if config.approach_rate == 0.0 { config.overall_difficulty } else { config.approach_rate };
+    let cs = if config.circle_size == 0.0 {
+        beatmap.keys as f64
+    } else {
+        config.circle_size
+    };
+    let ar = if config.approach_rate == 0.0 {
+        config.overall_difficulty
+    } else {
+        config.approach_rate
+    };
 
     output.push_str("[Difficulty]\n");
     output.push_str(&format!("HPDrainRate:{}\n", config.hp_drain));
     output.push_str(&format!("CircleSize:{}\n", cs));
-    output.push_str(&format!("OverallDifficulty:{}\n", config.overall_difficulty));
+    output.push_str(&format!(
+        "OverallDifficulty:{}\n",
+        config.overall_difficulty
+    ));
     output.push_str(&format!("ApproachRate:{}\n", ar));
     output.push_str("SliderMultiplier:1.4\n");
     output.push_str("SliderTickRate:1\n");
@@ -70,9 +81,8 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     // (e.g. 27469 BPM for 4 beats ≈ 8ms). These create meaningless timing
     // segments in osu and should be omitted. Notes are still timestamped
     // correctly because build_timing used the full BPM list.
-    let is_extreme = |tp: &TimingPoint| {
-        tp.uninherited && tp.beat_length > 0.0 && tp.beat_length < 10.0
-    };
+    let is_extreme =
+        |tp: &TimingPoint| tp.uninherited && tp.beat_length > 0.0 && tp.beat_length < 10.0;
 
     output.push_str("[TimingPoints]\n");
 
@@ -89,7 +99,11 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
         // At this magnitude f64 has enough precision for 12 digits, and osu!
         // parses the timing point string back to f64 using the same number of
         // digits - producing the exact same internal value used for grid math.
-        let raw = if tp.beat_length > 0.0 { tp.beat_length } else { -100.0 };
+        let raw = if tp.beat_length > 0.0 {
+            tp.beat_length
+        } else {
+            -100.0
+        };
         let beat_length = (raw * 1e12).round() / 1e12;
         let t = shift_tp(tp.time_ms);
         lines.push((
@@ -119,7 +133,17 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
         lines.push((
             t,
             1,
-            format!("{},{:.12},{},{},{},{},{},{}", t.round() as i64, sv_beat_length, 4, 0, 0, 100, 0, 0),
+            format!(
+                "{},{:.12},{},{},{},{},{},{}",
+                t.round() as i64,
+                sv_beat_length,
+                4,
+                0,
+                0,
+                100,
+                0,
+                0
+            ),
         ));
     }
 

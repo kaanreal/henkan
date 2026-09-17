@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
@@ -6,7 +6,13 @@ use std::time::{Duration, Instant};
 use rosu_mem::process::{Process, ProcessTraits};
 use rosu_mem::signature::Signature;
 use serde::Serialize;
-use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::{
+    Foundation::{CloseHandle, FALSE, HMODULE},
+    System::{
+        ProcessStatus::{EnumProcesses, GetModuleFileNameExA},
+        Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ},
+    },
+};
 
 const PROCESS_NAME: &str = "osu!.exe";
 const BASE_SIGNATURE: &str = "F8 01 74 04 83 65";
@@ -104,13 +110,60 @@ struct Owned(Option<Process>);
 
 impl Owned {
     fn find() -> Option<Self> {
-        Process::find_process(PROCESS_NAME, &EXCLUDE_WORDS)
+        let mut processes = [0u32; 512];
+        let mut returned = 0u32;
+        unsafe {
+            EnumProcesses(
+                processes.as_mut_slice().as_mut_ptr(),
+                std::mem::size_of_val(&processes) as u32,
+                &mut returned,
+            )
             .ok()
-            .map(|process| Self(Some(process)))
+            .ok()?;
+        }
+
+        let length = returned as usize / std::mem::size_of::<u32>();
+        for pid in &processes[..length] {
+            let Some(handle) = (unsafe {
+                OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, *pid).ok()
+            }) else {
+                continue;
+            };
+            let mut buffer = [0u8; 1024];
+            let size = unsafe { GetModuleFileNameExA(handle, HMODULE(0), &mut buffer) } as usize;
+            let path = std::str::from_utf8(&buffer[..size]).ok().map(PathBuf::from);
+            let stable = path.as_deref().is_some_and(|path| {
+                path.file_name()
+                    .is_some_and(|name| name.eq_ignore_ascii_case(PROCESS_NAME))
+                    && !super::lazer::is_lazer_executable(path)
+                    && !path
+                        .to_string_lossy()
+                        .to_ascii_lowercase()
+                        .split(['/', '\\'])
+                        .any(|part| EXCLUDE_WORDS.contains(&part))
+            });
+            if stable {
+                let executable_dir = path.and_then(|path| path.parent().map(Path::to_path_buf));
+                return Some(Self(Some(Process {
+                    pid: *pid,
+                    handle,
+                    maps: Vec::new(),
+                    executable_dir,
+                })));
+            }
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
+        }
+        None
     }
 
     fn get(&self) -> Option<&Process> {
         self.0.as_ref()
+    }
+
+    fn pid(&self) -> Option<u32> {
+        self.0.as_ref().map(|process| process.pid)
     }
 
     /// Collects the memory regions the signature scan searches. `read_regions`
@@ -204,6 +257,7 @@ impl Watcher {
 struct State {
     attached: Option<Attached>,
     retry_after: Option<Instant>,
+    retry_pid: Option<u32>,
 }
 
 impl State {
@@ -226,6 +280,7 @@ impl State {
                 Some(_) => Live::unreadable(),
                 None => {
                     self.retry_after = None;
+                    self.retry_pid = None;
                     Live::default()
                 }
             };
@@ -233,30 +288,37 @@ impl State {
 
         let Some(found) = Owned::find() else {
             self.retry_after = None;
+            self.retry_pid = None;
             return Live::default();
         };
+        let pid = found.pid();
         let Some(owned) = found.scan_regions() else {
-            return self.hold_off();
+            return self.hold_off(pid);
         };
         let Ok(signature) = Signature::from_str(BASE_SIGNATURE) else {
-            return self.hold_off();
+            return self.hold_off(owned.pid());
         };
         let Some(process) = owned.get() else {
-            return self.hold_off();
+            return self.hold_off(owned.pid());
         };
         let Ok(base) = process.read_signature::<i32>(&signature) else {
-            return self.hold_off();
+            return self.hold_off(owned.pid());
         };
 
         self.retry_after = None;
+        self.retry_pid = None;
         self.attached = Some(Attached { owned, base });
 
         match self.read_attached() {
             Reading::Map(map) => Live::connected(Some(map)),
             Reading::NoMap => Live::connected(None),
             Reading::Lost => {
+                let pid = self
+                    .attached
+                    .as_ref()
+                    .and_then(|attached| attached.owned.pid());
                 self.attached = None;
-                self.hold_off()
+                self.hold_off(pid)
             }
         }
     }
@@ -311,12 +373,30 @@ impl State {
         })
     }
 
-    fn backing_off(&self) -> bool {
-        self.retry_after.is_some_and(|retry| Instant::now() < retry)
+    fn backing_off(&mut self) -> bool {
+        let Some(retry) = self.retry_after else {
+            return false;
+        };
+        if Instant::now() >= retry {
+            self.retry_after = None;
+            self.retry_pid = None;
+            return false;
+        }
+
+        // A new game process must get a fresh attach attempt even if the old
+        // process left the watcher in its attach backoff window.
+        let current_pid = Owned::find().and_then(|owned| owned.pid());
+        if current_pid != self.retry_pid {
+            self.retry_after = None;
+            self.retry_pid = None;
+            return false;
+        }
+        true
     }
 
-    fn hold_off(&mut self) -> Live {
+    fn hold_off(&mut self, pid: Option<u32>) -> Live {
         self.retry_after = Some(Instant::now() + ATTACH_BACKOFF);
+        self.retry_pid = pid;
         Live::unreadable()
     }
 }

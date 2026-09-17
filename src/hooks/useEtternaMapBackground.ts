@@ -4,6 +4,7 @@ import { etternaMapBackground, type EtternaSelectedMap } from '../lib/etternaDes
 const cache = new Map<string, string | null>()
 const inFlight = new Map<string, Promise<string | null>>()
 const CACHE_LIMIT = 8
+const ARTWORK_GRACE_MS = 800
 
 function remember(key: string, value: string | null): void {
   cache.set(key, value)
@@ -38,7 +39,15 @@ export function useEtternaMapBackground(map: EtternaSelectedMap | null): string 
   }))
 
   useEffect(() => {
-    if (!map || !key) return
+    if (!map || !key) {
+      // A native song change can briefly report no audio handle. Keep the
+      // previous artwork through that gap, but clear it if Etterna really
+      // stops reporting a selected song.
+      const timeout = window.setTimeout(() => {
+        setLoaded({ key: null, url: null })
+      }, ARTWORK_GRACE_MS)
+      return () => window.clearTimeout(timeout)
+    }
     if (cache.has(key)) {
       queueMicrotask(() => setLoaded({ key, url: cache.get(key) ?? null }))
       return
@@ -52,5 +61,8 @@ export function useEtternaMapBackground(map: EtternaSelectedMap | null): string 
     }
   }, [key, map])
 
-  return map ? loaded.url : null
+  // Keep the last artwork during the short gap between two native song
+  // detections. The prompt itself can disappear, but the page background
+  // should not flash back to the solid fallback color.
+  return loaded.url
 }

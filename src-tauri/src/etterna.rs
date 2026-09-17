@@ -74,7 +74,12 @@ impl Watcher {
         }
 
         let selection = latest_selection(&root);
-        let open_folder = current_song_folder(&root);
+        // Gameplay updates nowplaying.txt, so avoid the more expensive
+        // Windows handle walk until metadata is unavailable (song select).
+        let open_folder = selection
+            .is_none()
+            .then(|| current_song_folder(&root))
+            .flatten();
         if selection.is_none() && open_folder.is_none() {
             return Live {
                 running: true,
@@ -83,33 +88,33 @@ impl Watcher {
             };
         }
 
-        let mut state = self.lock();
-        if state.root.as_deref() != Some(root.as_path())
-            || state
-                .indexed_at
-                .is_none_or(|time| time.elapsed() >= INDEX_REFRESH)
-        {
-            state.root = Some(root.clone());
-            state.candidates = scan_candidates(&root);
-            state.indexed_at = Some(Instant::now());
-        }
-
-        let candidate = open_folder
+        // When the audio handle gives us the song folder, inspect only that
+        // folder. Scanning a large Etterna library is reserved for the
+        // nowplaying-metadata fallback below.
+        let direct_candidate = open_folder
             .as_deref()
-            .and_then(|folder| {
+            .and_then(|folder| candidate_for_folder(&root, folder));
+        let candidate = if direct_candidate.is_some() {
+            direct_candidate
+        } else {
+            let mut state = self.lock();
+            if state.root.as_deref() != Some(root.as_path())
+                || state
+                    .indexed_at
+                    .is_none_or(|time| time.elapsed() >= INDEX_REFRESH)
+            {
+                state.root = Some(root.clone());
+                state.candidates = scan_candidates(&root);
+                state.indexed_at = Some(Instant::now());
+            }
+            selection.as_ref().and_then(|selection| {
                 state
                     .candidates
                     .iter()
-                    .find(|candidate| candidate.folder == folder)
+                    .find(|candidate| candidate_matches(candidate, selection))
+                    .cloned()
             })
-            .or_else(|| {
-                selection.as_ref().and_then(|selection| {
-                    state
-                        .candidates
-                        .iter()
-                        .find(|candidate| candidate_matches(candidate, selection))
-                })
-            });
+        };
         let Some(candidate) = candidate else {
             return Live {
                 running: true,
@@ -244,17 +249,10 @@ pub fn discover_root() -> Option<PathBuf> {
 fn running_root() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        let output = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "(Get-Process -Name Etterna -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Path)",
-            ])
-            .output()
-            .ok()?;
-        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !path.is_empty() {
-            return root_from_executable(Path::new(&path));
+        for path in windows_etterna_process_paths() {
+            if let Some(root) = root_from_executable(&path) {
+                return Some(root);
+            }
         }
     }
     #[cfg(not(windows))]
@@ -280,6 +278,32 @@ fn running_root() -> Option<PathBuf> {
     None
 }
 
+#[cfg(windows)]
+fn windows_etterna_process_paths() -> Vec<PathBuf> {
+    // Get-Process -Name Etterna only matches the literal process name. The
+    // portable Windows builds retain their version in the executable name
+    // (for example, Etterna-0.75.1-win64.exe), so query the executable path
+    // and apply the same matcher used by the Unix process scan instead.
+    let script = r#"
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -match '(?i)^etterna(?:[-_].*)?\.exe$' -and $_.ExecutablePath } |
+  Select-Object -ExpandProperty ExecutablePath
+"#;
+    let Ok(output) = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .output()
+    else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .filter(|path| is_etterna_command(path))
+        .map(PathBuf::from)
+        .collect()
+}
+
 fn root_from_executable(path: &Path) -> Option<PathBuf> {
     let lower = path.to_string_lossy().to_ascii_lowercase();
     if lower.contains(".app/contents/macos/etterna") {
@@ -290,21 +314,41 @@ fn root_from_executable(path: &Path) -> Option<PathBuf> {
             .parent()
             .map(Path::to_path_buf);
     }
-    path.parent().map(Path::to_path_buf)
+    let parent = path.parent()?;
+    #[cfg(windows)]
+    if parent
+        .file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("Program"))
+        && parent
+            .parent()
+            .is_some_and(|root| root.join("Songs").is_dir())
+    {
+        return parent.parent().map(Path::to_path_buf);
+    }
+    Some(parent.to_path_buf())
 }
 
 fn etterna_running() -> bool {
     #[cfg(windows)]
     {
+        if !windows_etterna_process_paths().is_empty() {
+            return true;
+        }
+
+        // Path lookup can be denied for an elevated process. Fall back to
+        // tasklist, but inspect every image name so versioned portable builds
+        // are found too.
         let Ok(output) = Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq Etterna.exe", "/FO", "CSV", "/NH"])
+            .args(["/FO", "CSV", "/NH"])
             .output()
         else {
             return false;
         };
-        return String::from_utf8_lossy(&output.stdout)
+        String::from_utf8_lossy(&output.stdout)
             .lines()
-            .any(|line| line.to_ascii_lowercase().contains("etterna.exe"));
+            .filter_map(|line| line.split(',').next())
+            .map(|name| name.trim().trim_matches('"'))
+            .any(is_etterna_command)
     }
     #[cfg(not(windows))]
     {
@@ -319,19 +363,11 @@ fn etterna_running() -> bool {
 }
 
 fn current_song_folder(root: &Path) -> Option<String> {
-    #[cfg(windows)]
-    {
-        let _ = root;
-        return None;
-    }
-    #[cfg(not(windows))]
-    {
-        let pid = etterna_pid()?;
-        let songs = root.join("Songs").canonicalize().ok()?;
-        for path in open_paths(pid) {
-            if let Some(folder) = song_folder_from_audio_path(&songs, Path::new(&path)) {
-                return Some(folder);
-            }
+    let pid = etterna_pid()?;
+    let songs = root.join("Songs").canonicalize().ok()?;
+    for path in open_paths(pid) {
+        if let Some(folder) = song_folder_from_audio_path(&songs, Path::new(&path)) {
+            return Some(folder);
         }
     }
     None
@@ -346,7 +382,7 @@ fn song_folder_from_audio_path(songs: &Path, path: &Path) -> Option<String> {
     let canonical = path.canonicalize().ok()?;
     let relative = canonical.strip_prefix(songs).ok()?;
     let folder = relative.parent()?;
-    (folder.components().count() >= 2).then(|| folder.to_string_lossy().to_string())
+    (folder.components().count() >= 2).then(|| folder.to_string_lossy().replace('\\', "/"))
 }
 
 #[cfg(target_os = "macos")]
@@ -374,25 +410,183 @@ fn open_paths(pid: u32) -> Vec<String> {
         .collect()
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(windows)]
+fn open_paths(pid: u32) -> Vec<String> {
+    use std::ffi::c_void;
+    use std::mem::size_of;
+
+    type RawHandle = *mut c_void;
+
+    #[repr(C)]
+    struct SystemHandle {
+        object: usize,
+        process_id: usize,
+        handle: usize,
+        granted_access: u32,
+        creator_back_trace_index: u16,
+        object_type_index: u16,
+        handle_attributes: u32,
+        reserved: u32,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CloseHandle(handle: RawHandle) -> i32;
+        fn DuplicateHandle(
+            source_process: RawHandle,
+            source_handle: RawHandle,
+            target_process: RawHandle,
+            target_handle: *mut RawHandle,
+            desired_access: u32,
+            inherit_handle: i32,
+            options: u32,
+        ) -> i32;
+        fn GetCurrentProcess() -> RawHandle;
+        fn GetFinalPathNameByHandleW(
+            handle: RawHandle,
+            path: *mut u16,
+            path_length: u32,
+            flags: u32,
+        ) -> u32;
+        fn OpenProcess(access: u32, inherit_handle: i32, process_id: u32) -> RawHandle;
+    }
+
+    #[link(name = "ntdll")]
+    extern "system" {
+        fn NtQuerySystemInformation(
+            information_class: u32,
+            information: *mut c_void,
+            information_length: u32,
+            return_length: *mut u32,
+        ) -> i32;
+    }
+
+    const SYSTEM_EXTENDED_HANDLE_INFORMATION: u32 = 0x40;
+    const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC0000004u32 as i32;
+    const PROCESS_DUP_HANDLE: u32 = 0x0040;
+    const DUPLICATE_SAME_ACCESS: u32 = 0x00000002;
+    const FILE_READ_DATA: u32 = 0x0001;
+
+    unsafe fn final_path(handle: RawHandle) -> Option<String> {
+        let mut buffer = vec![0u16; 512];
+        loop {
+            let length =
+                GetFinalPathNameByHandleW(handle, buffer.as_mut_ptr(), buffer.len() as u32, 0);
+            if length == 0 {
+                return None;
+            }
+            if (length as usize) < buffer.len() {
+                let value = String::from_utf16(&buffer[..length as usize]).ok()?;
+                return Some(value.strip_prefix(r"\\?\").unwrap_or(&value).to_string());
+            }
+            buffer.resize(length as usize + 1, 0);
+        }
+    }
+
+    let source_process = unsafe { OpenProcess(PROCESS_DUP_HANDLE, 0, pid) };
+    if source_process.is_null() {
+        return Vec::new();
+    }
+
+    let mut size = 1024 * 1024usize;
+    let mut result = Vec::new();
+    for _ in 0..8 {
+        let mut buffer = vec![0u8; size];
+        let mut returned = 0u32;
+        let status = unsafe {
+            NtQuerySystemInformation(
+                SYSTEM_EXTENDED_HANDLE_INFORMATION,
+                buffer.as_mut_ptr().cast(),
+                buffer.len() as u32,
+                &mut returned,
+            )
+        };
+        if status == 0 {
+            let header_size = size_of::<usize>() * 2;
+            if buffer.len() < header_size {
+                break;
+            }
+            let count = unsafe { *(buffer.as_ptr().cast::<usize>()) };
+            let entries = unsafe { buffer.as_ptr().add(header_size).cast::<SystemHandle>() };
+            let max_count = (buffer.len() - header_size) / size_of::<SystemHandle>();
+            let current_process = unsafe { GetCurrentProcess() };
+            for index in 0..count.min(max_count) {
+                let entry = unsafe { &*entries.add(index) };
+                if entry.process_id != pid as usize {
+                    continue;
+                }
+                if entry.granted_access & FILE_READ_DATA == 0 {
+                    continue;
+                }
+                let mut duplicate = std::ptr::null_mut();
+                let copied = unsafe {
+                    DuplicateHandle(
+                        source_process,
+                        entry.handle as RawHandle,
+                        current_process,
+                        &mut duplicate,
+                        0,
+                        0,
+                        DUPLICATE_SAME_ACCESS,
+                    )
+                };
+                if copied == 0 || duplicate.is_null() {
+                    continue;
+                }
+                if let Some(path) = unsafe { final_path(duplicate) } {
+                    result.push(path);
+                }
+                unsafe {
+                    CloseHandle(duplicate);
+                }
+            }
+            break;
+        }
+        if status != STATUS_INFO_LENGTH_MISMATCH {
+            break;
+        }
+        size = (returned as usize).max(size.saturating_mul(2));
+    }
+    unsafe {
+        CloseHandle(source_process);
+    }
+    result
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 fn open_paths(_pid: u32) -> Vec<String> {
     Vec::new()
 }
 
+#[cfg(windows)]
 fn etterna_pid() -> Option<u32> {
-    #[cfg(not(windows))]
-    {
-        let output = Command::new("ps")
-            .args(["-axo", "pid=,command="])
-            .output()
-            .ok()?;
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            let mut fields = line.trim().splitn(2, char::is_whitespace);
+    let output = Command::new("tasklist")
+        .args(["/FO", "CSV", "/NH"])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split(',').map(|field| field.trim().trim_matches('"'));
+            let name = fields.next()?;
             let pid = fields.next()?.parse().ok()?;
-            let command = fields.next().unwrap_or_default();
-            if is_etterna_command(command) {
-                return Some(pid);
-            }
+            is_etterna_command(name).then_some(pid)
+        })
+        .next()
+}
+
+#[cfg(not(windows))]
+fn etterna_pid() -> Option<u32> {
+    let output = Command::new("ps")
+        .args(["-axo", "pid=,command="])
+        .output()
+        .ok()?;
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let mut fields = line.trim().splitn(2, char::is_whitespace);
+        let pid = fields.next()?.parse().ok()?;
+        let command = fields.next().unwrap_or_default();
+        if is_etterna_command(command) {
+            return Some(pid);
         }
     }
     None
@@ -463,6 +657,27 @@ fn scan_candidates(root: &Path) -> Vec<Candidate> {
         .collect()
 }
 
+fn candidate_for_folder(root: &Path, folder: &str) -> Option<Candidate> {
+    let songs = root.join("Songs");
+    let mut song_dir = songs.clone();
+    for component in Path::new(folder).components() {
+        match component {
+            Component::Normal(part) => song_dir.push(part),
+            _ => return None,
+        }
+    }
+    if !song_dir.is_dir() || !within(&songs, &song_dir) {
+        return None;
+    }
+    let mut paths = Vec::new();
+    collect_chart_files(&song_dir, 0, &mut paths);
+    paths.sort();
+    paths
+        .into_iter()
+        .filter_map(|path| candidate_from_path(&songs, &path))
+        .find(|candidate| candidate.folder == folder)
+}
+
 fn collect_chart_files(dir: &Path, depth: usize, output: &mut Vec<PathBuf>) {
     if depth > 4 {
         return;
@@ -506,7 +721,7 @@ fn candidate_from_path(songs: &Path, path: &Path) -> Option<Candidate> {
         })
         .unwrap_or_default()
         .to_string();
-    let folder = folder.to_string_lossy().to_string();
+    let folder = folder.to_string_lossy().replace('\\', "/");
     let file = path.file_name()?.to_string_lossy().to_string();
     Some(Candidate {
         folder,
@@ -726,6 +941,7 @@ mod tests {
         ));
         assert!(is_etterna_command("/opt/Etterna/Etterna-x86_64.AppImage"));
         assert!(is_etterna_command("C:\\Etterna\\Etterna.exe"));
+        assert!(is_etterna_command("C:\\Etterna\\Etterna-0.75.1-win64.exe"));
         assert!(!is_etterna_command(
             "/Applications/Henkan.app/Contents/MacOS/henkan"
         ));
@@ -737,10 +953,22 @@ mod tests {
             Some(PathBuf::from("/Applications/Etterna"))
         );
         #[cfg(windows)]
-        assert_eq!(
-            root_from_executable(Path::new(r"C:\Games\Etterna\Etterna.exe")),
-            Some(PathBuf::from(r"C:\Games\Etterna"))
-        );
+        {
+            assert_eq!(
+                root_from_executable(Path::new(r"C:\Games\Etterna\Etterna.exe")),
+                Some(PathBuf::from(r"C:\Games\Etterna"))
+            );
+            let root =
+                std::env::temp_dir().join(format!("henkan-etterna-program-{}", std::process::id()));
+            let _ = fs::remove_dir_all(&root);
+            fs::create_dir_all(root.join("Program")).unwrap();
+            fs::create_dir_all(root.join("Songs")).unwrap();
+            assert_eq!(
+                root_from_executable(&root.join("Program/Etterna.exe")),
+                Some(root.clone())
+            );
+            let _ = fs::remove_dir_all(root);
+        }
     }
 
     #[test]

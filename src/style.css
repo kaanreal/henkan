@@ -142,6 +142,49 @@ body::-webkit-scrollbar { display: none; }
   animation: bg-fade-in 0.4s ease-out both;
 }
 
+.live-map-stack {
+  isolation: isolate;
+  overflow: visible;
+}
+
+.live-map-stack--stacked {
+  margin-bottom: 1rem;
+}
+
+.live-map-stack__deck {
+  display: grid;
+  width: 100%;
+}
+
+.live-map-stack__item {
+  grid-area: 1 / 1;
+  min-width: 0;
+  cursor: pointer;
+  filter: saturate(0.82) brightness(0.8);
+  opacity: 0.76;
+  transform: translate3d(var(--stack-x), var(--stack-y), 0) rotate(var(--stack-rotate)) scale(var(--stack-scale));
+  transform-origin: 86% 52%;
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease, filter 0.28s ease;
+  will-change: transform, opacity;
+}
+
+.live-map-stack__item--front {
+  filter: none;
+  opacity: 1;
+}
+
+.live-map-stack__item--hovered {
+  filter: saturate(1) brightness(0.98);
+  opacity: 1;
+  z-index: 50 !important;
+  --stack-scale: 1.008 !important;
+  --stack-rotate: -0.6deg !important;
+}
+
+.live-map-stack__item--front:hover {
+  transform: translate3d(0, -0.12rem, 0) rotate(0.15deg) scale(1.002);
+}
+
 .animate-app-entrance {
   animation: app-entrance 0.3s ease-out both;
 }

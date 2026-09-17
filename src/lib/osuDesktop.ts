@@ -17,6 +17,16 @@ export type OsuLive = {
   connected: boolean
   map: OsuSelectedMap | null
   problem: string | null
+  sources?: OsuLiveSource[]
+}
+
+export type OsuLiveSource = {
+  id: string
+  clientName: 'osu!lazer' | 'osu!stable'
+  running: boolean
+  connected: boolean
+  map: OsuSelectedMap | null
+  problem: string | null
 }
 
 export const OSU_LIVE_EVENT = 'henkan://osu-live'

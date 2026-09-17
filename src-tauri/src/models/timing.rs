@@ -36,7 +36,10 @@ pub struct SVEvent {
 /// Convert a time in milliseconds to a beat position using the given timing points.
 /// Only uninherited (BPM) timing points are used.
 pub fn ms_to_beat(time_ms: f64, tps: &[TimingPoint]) -> f64 {
-    let relevant: Vec<&TimingPoint> = tps.iter().filter(|tp| tp.uninherited && tp.beat_length > 0.0).collect();
+    let relevant: Vec<&TimingPoint> = tps
+        .iter()
+        .filter(|tp| tp.uninherited && tp.beat_length > 0.0)
+        .collect();
     if relevant.is_empty() {
         return time_ms / 500.0;
     }
@@ -68,7 +71,10 @@ pub fn ms_to_beat(time_ms: f64, tps: &[TimingPoint]) -> f64 {
 /// Convert a beat position back to a time in milliseconds using the given timing points.
 /// Only uninherited (BPM) timing points are used.
 pub fn beat_to_ms(beat: f64, tps: &[TimingPoint]) -> f64 {
-    let relevant: Vec<&TimingPoint> = tps.iter().filter(|tp| tp.uninherited && tp.beat_length > 0.0).collect();
+    let relevant: Vec<&TimingPoint> = tps
+        .iter()
+        .filter(|tp| tp.uninherited && tp.beat_length > 0.0)
+        .collect();
     if relevant.is_empty() {
         return beat * 500.0;
     }

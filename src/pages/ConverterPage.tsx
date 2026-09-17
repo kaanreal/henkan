@@ -26,7 +26,7 @@ import { MirrorDownloadWarning } from '../components/MirrorDownloadWarning'
 import { BulkConvertDialog } from '../components/BulkConvertDialog'
 import { PackBrowser } from '../components/PackBrowser'
 import { FallingArrows } from '../components/FallingArrows'
-import { OsuBackground, OsuMapPrompt } from '../components/OsuMapPrompt'
+import { LiveMapStack, type LiveMapStackItem, OsuBackground } from '../components/OsuMapPrompt'
 import { PackSettingsDialog } from '../components/PackSettingsDialog'
 import { DiffPresetManager } from '../components/DiffPresetManager'
 import { UpdateDialog } from '../components/UpdateDialog'
@@ -65,7 +65,7 @@ import {
 import { detectSkinArchive } from '../services/skinConverter'
 import { useOsuLive } from '../hooks/useOsuLive'
 import { useOsuMapBackground } from '../hooks/useOsuMapBackground'
-import { osuReadMap } from '../lib/osuDesktop'
+import { osuReadMap, type OsuSelectedMap } from '../lib/osuDesktop'
 import { useEtternaLive } from '../hooks/useEtternaLive'
 import { useEtternaMapBackground } from '../hooks/useEtternaMapBackground'
 import { etternaClientName, etternaReadMap } from '../lib/etternaDesktop'
@@ -301,13 +301,53 @@ export default function ConverterPage() {
   const [queueLoading, setQueueLoading] = useState(false)
   const [osuHookBusy, setOsuHookBusy] = useState(false)
   const [etternaHookBusy, setEtternaHookBusy] = useState(false)
+  const [livePriorityId, setLivePriorityId] = useState('')
   const { live: osuLive } = useOsuLive(isTauri())
   const osuSelected = osuLive.connected ? osuLive.map : null
-  const osuBackgroundUrl = useOsuMapBackground(osuSelected)
+  const osuSources = osuLive.sources ?? []
+  const stableSource = osuSources.find((source) => source.id === 'osu-stable')
+  const lazerSource = osuSources.find((source) => source.id === 'osu-lazer')
+  const stableSelected = stableSource?.map ?? (osuSelected && !osuSelected.folder.startsWith('lazer:') ? osuSelected : null)
+  const lazerSelected = lazerSource?.map ?? (osuSelected?.folder.startsWith('lazer:') ? osuSelected : null)
+  const stableBackgroundUrl = useOsuMapBackground(stableSelected)
+  const lazerBackgroundUrl = useOsuMapBackground(lazerSelected)
   const { live: etternaLive } = useEtternaLive(isTauri())
   const etternaSelected = etternaLive.connected ? etternaLive.map : null
   const etternaBackgroundUrl = useEtternaMapBackground(etternaSelected)
-  const liveBackgroundUrl = osuSelected ? osuBackgroundUrl : etternaBackgroundUrl
+  const livePromptItems = ([
+    stableSelected
+      ? {
+          id: 'osu-stable',
+          map: stableSelected,
+          sourceLabel: stableSource?.clientName,
+          backgroundUrl: stableBackgroundUrl,
+          busy: osuHookBusy,
+          onConvert: () => void handleConvertOsuMap(stableSelected),
+        }
+      : null,
+    lazerSelected
+      ? {
+          id: 'osu-lazer',
+          map: lazerSelected,
+          sourceLabel: lazerSource?.clientName,
+          backgroundUrl: lazerBackgroundUrl,
+          busy: osuHookBusy,
+          onConvert: () => void handleConvertOsuMap(lazerSelected),
+        }
+      : null,
+    etternaSelected
+      ? {
+          id: 'etterna',
+          map: etternaSelected,
+          sourceLabel: etternaClientName(),
+          backgroundUrl: etternaBackgroundUrl,
+          busy: etternaHookBusy,
+          onConvert: () => void handleConvertEtternaMap(),
+        }
+      : null,
+  ] as (LiveMapStackItem | null)[]).filter((item): item is LiveMapStackItem => item !== null)
+  const priorityItem = livePromptItems.find((item) => item.id === livePriorityId) ?? livePromptItems[0]
+  const liveBackgroundUrl = priorityItem?.backgroundUrl ?? null
 
   const routeSkinInput = useCallback(
     async (input: SkinInput): Promise<boolean> => {
@@ -692,19 +732,19 @@ export default function ConverterPage() {
     [handleFilesSelected, routeSkinInput, setError, t],
   )
 
-  const handleConvertOsuMap = useCallback(async () => {
-    if (!osuSelected || osuHookBusy) return
+  const handleConvertOsuMap = useCallback(async (map: OsuSelectedMap) => {
+    if (osuHookBusy) return
     setOsuHookBusy(true)
     setError(null)
     try {
-      const path = await osuReadMap(osuSelected.folder)
+      const path = await osuReadMap(map.folder)
       await handleMainFilesSelected([path])
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('converter.failedToParseFile'))
     } finally {
       setOsuHookBusy(false)
     }
-  }, [handleMainFilesSelected, osuHookBusy, osuSelected, setError, t])
+  }, [handleMainFilesSelected, osuHookBusy, setError, t])
 
   const handleConvertEtternaMap = useCallback(async () => {
     if (!etternaSelected || etternaHookBusy) return
@@ -1982,10 +2022,10 @@ export default function ConverterPage() {
         }}
       >
         {(mediaUrls.background || liveBackgroundUrl) && (
-          <div className="absolute inset-0 -z-10 overflow-hidden animate-bg-fade-in">
+          <div className="absolute inset-0 -z-10 overflow-hidden">
             {mediaUrls.background ? (
               <div
-                className="w-full h-full bg-cover bg-center"
+                className="w-full h-full bg-cover bg-center animate-bg-fade-in"
                 style={{
                   backgroundImage: `url(${mediaUrls.background})`,
                   filter: 'blur(20px) brightness(0.5) saturate(0.5)',
@@ -2087,22 +2127,7 @@ export default function ConverterPage() {
 
             {!packFolder && queueItems.length === 0 && !beatmap && !packLoading && (
               <>
-                {osuSelected && (
-                  <div className="w-full max-w-lg flex-none">
-                    <OsuMapPrompt map={osuSelected} busy={osuHookBusy} onConvert={() => void handleConvertOsuMap()} />
-                  </div>
-                )}
-                {etternaSelected && (
-                  <div className="w-full max-w-lg flex-none">
-                    <OsuMapPrompt
-                      map={etternaSelected}
-                      sourceLabel={etternaClientName()}
-                      backgroundUrl={etternaBackgroundUrl}
-                      busy={etternaHookBusy}
-                      onConvert={() => void handleConvertEtternaMap()}
-                    />
-                  </div>
-                )}
+                <LiveMapStack items={livePromptItems} onPriorityChange={setLivePriorityId} />
                 <FallingArrows />
                 <div className="flex flex-col items-center gap-4 w-full max-w-lg my-auto relative z-10">
                   <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />

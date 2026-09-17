@@ -82,8 +82,8 @@ pub struct ExportConfig {
     pub background_filename: Option<String>,
     pub banner_filename: Option<String>,
     pub cdtitle_filename: Option<String>,
-    pub global_timing_ms: f64,       // ms to shift all notes later (+ = later, - = earlier)
-    pub output_format: String,       // "osu" or "osz" ("osz" = zip package)
+    pub global_timing_ms: f64, // ms to shift all notes later (+ = later, - = earlier)
+    pub output_format: String, // "osu" or "osz" ("osz" = zip package)
     pub hp_drain: f64,
     pub overall_difficulty: f64,
     #[serde(default)]
@@ -161,9 +161,15 @@ impl Default for ExportConfig {
     }
 }
 
-fn default_conversion_rate() -> f64 { 1.0 }
-fn default_preserve_pitch() -> bool { true }
-fn default_fetch_avatar() -> bool { true }
+fn default_conversion_rate() -> f64 {
+    1.0
+}
+fn default_preserve_pitch() -> bool {
+    true
+}
+fn default_fetch_avatar() -> bool {
+    true
+}
 
 /// Lightweight metadata returned by scan_pack for each .sm file found.
 #[derive(Debug, Clone, Serialize, Deserialize)]

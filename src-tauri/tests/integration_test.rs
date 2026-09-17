@@ -85,19 +85,28 @@ fn integration_sm_with_negative_offset() {
     // Negative offset: timing point starts at -(-0.500) * 1000 = 500ms
     assert!((beatmap.timing_points[0].time_ms - 500.0).abs() < 1.0);
     // First note at beat 0 = 500ms (from offset compensation)
-    assert!((beatmap.notes[0].time_ms - 500.0).abs() < 1.0, "first note at {}ms", beatmap.notes[0].time_ms);
+    assert!(
+        (beatmap.notes[0].time_ms - 500.0).abs() < 1.0,
+        "first note at {}ms",
+        beatmap.notes[0].time_ms
+    );
 }
 
 #[test]
 fn integration_sm_empty_song() {
-    let content = make_sm(&[], Some(r#"#NOTES:
+    let content = make_sm(
+        &[],
+        Some(
+            r#"#NOTES:
      dance-single:
      Beginner:
      1:
      0,0,0,0,0:
 0000
 ;
-"#));
+"#,
+        ),
+    );
     let beatmap = henkan_lib::parse_sm(&content).unwrap();
     // empty fields fall back to defaults
     assert_eq!(beatmap.title, "");

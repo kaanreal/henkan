@@ -1,11 +1,21 @@
 use std::fs;
-use std::io::Read;
+use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
+#[cfg(not(windows))]
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
+
+#[cfg(windows)]
+use windows::Win32::{
+    Foundation::{CloseHandle, FALSE, HMODULE},
+    System::{
+        ProcessStatus::{EnumProcesses, GetModuleFileNameExA},
+        Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ},
+    },
+};
 
 const INDEX_REFRESH: Duration = Duration::from_secs(60);
 const POLL_INTERVAL: Duration = Duration::from_millis(1000);
@@ -131,7 +141,7 @@ impl Watcher {
 }
 
 pub fn discover_root() -> Option<PathBuf> {
-    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let home = PathBuf::from(std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?);
     let root = if cfg!(target_os = "macos") {
         home.join("Library/Application Support/osu")
     } else if cfg!(target_os = "windows") {
@@ -146,17 +156,79 @@ pub fn discover_root() -> Option<PathBuf> {
 }
 
 fn lazer_running() -> bool {
-    let Ok(output) = Command::new("ps").args(["-axo", "command="]).output() else {
+    #[cfg(windows)]
+    {
+        return osu_executable_paths()
+            .iter()
+            .any(|path| is_lazer_executable(path));
+    }
+
+    #[cfg(not(windows))]
+    {
+        let Ok(output) = Command::new("ps").args(["-axo", "command="]).output() else {
+            return false;
+        };
+        String::from_utf8_lossy(&output.stdout).lines().any(|line| {
+            let name = line.trim().to_ascii_lowercase();
+            name == "osu!"
+                || name.ends_with("/osu!")
+                || name.contains("/osu!.app/")
+                || name.contains("osu!.dll")
+                || name.contains("osu!.exe")
+        })
+    }
+}
+
+#[cfg(windows)]
+pub(crate) fn osu_executable_paths() -> Vec<PathBuf> {
+    let mut processes = [0u32; 512];
+    let mut returned = 0u32;
+    let Ok(()) = (unsafe {
+        EnumProcesses(
+            processes.as_mut_slice().as_mut_ptr(),
+            std::mem::size_of_val(&processes) as u32,
+            &mut returned,
+        )
+    })
+    .ok() else {
+        return Vec::new();
+    };
+
+    let length = returned as usize / std::mem::size_of::<u32>();
+    processes[..length]
+        .iter()
+        .filter_map(|pid| {
+            let handle = unsafe {
+                OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, *pid).ok()?
+            };
+            let mut buffer = [0u8; 1024];
+            let size = unsafe { GetModuleFileNameExA(handle, HMODULE(0), &mut buffer) } as usize;
+            let path = std::str::from_utf8(&buffer[..size])
+                .ok()
+                .filter(|path| {
+                    Path::new(path)
+                        .file_name()
+                        .is_some_and(|name| name.eq_ignore_ascii_case("osu!.exe"))
+                })
+                .map(PathBuf::from);
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
+            path
+        })
+        .collect()
+}
+
+#[cfg(windows)]
+pub(crate) fn is_lazer_executable(path: &Path) -> bool {
+    let Some(root) = path.parent() else {
         return false;
     };
-    String::from_utf8_lossy(&output.stdout).lines().any(|line| {
-        let name = line.trim().to_ascii_lowercase();
-        name == "osu!"
-            || name.ends_with("/osu!")
-            || name.contains("/osu!.app/")
-            || name.contains("osu!.dll")
-            || name.contains("osu!.exe")
-    })
+    // Stable has the same osu!.exe name, while Lazer ships the .NET game
+    // assembly/runtime files beside it. No install path is assumed.
+    ["osu.Game.dll", "osu!.dll", "osu!.deps.json"]
+        .iter()
+        .any(|marker| root.join(marker).is_file())
 }
 
 fn latest_selection(root: &Path) -> Option<(String, String, String, String)> {
@@ -343,46 +415,353 @@ pub fn read_map(app: &tauri::AppHandle, folder: &str) -> Result<String, String> 
     let candidate = parse_candidate(hash, &text)
         .ok_or_else(|| "The selected osu!lazer map has incomplete metadata.".to_string())?;
 
-    // Lazer keeps charts and media under unrelated content hashes. A normal
-    // import is a complete `.osz`, so fetch that same archive before handing
-    // the path to the existing queue. This also keeps audio, backgrounds, and
-    // every difficulty on the same path as a dropped map.
-    if candidate.set_id > 0 {
-        let label = format!("{} - {}", candidate.artist, candidate.title);
-        let filename = format!("{}.osz", crate::sanitize_filename(&label, 160));
-        return crate::download_mirror_osz(app.clone(), candidate.set_id as u64, filename);
+    // Lazer keeps charts and media under unrelated content hashes. Never guess
+    // media from nearby Realm bytes: importing a full mirror set makes the
+    // normal parser choose its first chart, which can silently swap the
+    // selected chart's audio/background.
+    let assets = local_assets(&root, hash);
+    if assets.audio.is_some() || assets.background.is_some() || candidate.set_id == 0 {
+        return pack_local_map(hash, &candidate, &content, &text, assets);
     }
+
+    // A partially downloaded Lazer map may not have local media yet. Keep the
+    // public-program fallback, but only after the exact local path failed.
+    if candidate.set_id > 0 {
+        let filename = format!("henkan-lazer-{}.osz", candidate.set_id);
+        if let Ok(path) = crate::download_mirror_osz(app.clone(), candidate.set_id as u64, filename)
+        {
+            if let Ok(Some(selected)) = pack_downloaded_map(&path, hash, &candidate) {
+                return Ok(selected);
+            }
+        }
+    }
+
+    pack_local_map(hash, &candidate, &content, &text, assets)
+}
+
+#[derive(Default)]
+struct LocalAssets {
+    background: Option<Vec<u8>>,
+    audio: Option<Vec<u8>>,
+}
+
+fn audio_name(osu: &str) -> Option<String> {
+    let mut in_general = false;
+    for line in osu.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_general = line.eq_ignore_ascii_case("[General]");
+            continue;
+        }
+        if !in_general {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        if key.trim().eq_ignore_ascii_case("AudioFilename") {
+            let value = value.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn safe_asset_name(name: &str) -> Option<String> {
+    let name = name.trim().replace('\\', "/");
+    if name.is_empty()
+        || name.starts_with('/')
+        || name.contains(':')
+        || name.chars().any(|character| character.is_control())
+        || name
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
+        return None;
+    }
+    Some(name)
+}
+
+fn same_metadata(left: &Candidate, right: &Candidate) -> bool {
+    let same = |a: &str, b: &str| a.trim().eq_ignore_ascii_case(b.trim());
+    if left.map_id > 0 && right.map_id > 0 && left.map_id != right.map_id {
+        return false;
+    }
+    same(&left.artist, &right.artist)
+        && same(&left.title, &right.title)
+        && same(&left.creator, &right.creator)
+        && normalized_difficulty(&left.difficulty) == normalized_difficulty(&right.difficulty)
+}
+
+fn archive_name_matches(entry: &str, wanted: &str) -> bool {
+    let entry = entry.replace('\\', "/");
+    let wanted = wanted.replace('\\', "/");
+    entry.eq_ignore_ascii_case(&wanted)
+        || entry
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| name.eq_ignore_ascii_case(&wanted))
+}
+
+fn pack_downloaded_map(
+    archive_path: &str,
+    hash: &str,
+    selected: &Candidate,
+) -> Result<Option<String>, String> {
+    let file = fs::File::open(archive_path)
+        .map_err(|error| format!("Cannot open downloaded osu! map: {error}"))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|error| format!("Cannot read downloaded osu! map: {error}"))?;
+    let mut selected_chart = None;
+
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|error| format!("Cannot read downloaded osu! map: {error}"))?;
+        if !entry.name().to_ascii_lowercase().ends_with(".osu") {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("Cannot read downloaded chart: {error}"))?;
+        let matches = {
+            let text = String::from_utf8_lossy(&bytes);
+            let Some(candidate) = parse_candidate(
+                "0000000000000000000000000000000000000000000000000000000000000000",
+                &text,
+            ) else {
+                continue;
+            };
+            same_metadata(&candidate, selected)
+        };
+        if matches {
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            selected_chart = Some((bytes, text));
+            break;
+        }
+    }
+    drop(archive);
+
+    let Some((chart, text)) = selected_chart else {
+        return Ok(None);
+    };
+    let file = fs::File::open(archive_path)
+        .map_err(|error| format!("Cannot reopen downloaded osu! map: {error}"))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|error| format!("Cannot read downloaded osu! map: {error}"))?;
+    let mut files = vec![(selected.file.clone(), chart)];
+
+    for wanted in [
+        audio_name(&text),
+        crate::osu::background::background_name(&text),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        let Some(safe_name) = safe_asset_name(&wanted) else {
+            continue;
+        };
+        let Some(index) = (0..archive.len()).find(|index| {
+            archive
+                .by_index(*index)
+                .ok()
+                .is_some_and(|entry| archive_name_matches(entry.name(), &safe_name))
+        }) else {
+            continue;
+        };
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|error| format!("Cannot read downloaded media: {error}"))?;
+        let mut bytes = Vec::new();
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("Cannot read downloaded media: {error}"))?;
+        files.push((safe_name, bytes));
+    }
+
+    pack_files(hash, files).map(Some)
+}
+
+fn downloaded_background(
+    archive_path: &str,
+    selected: &Candidate,
+) -> Result<Option<Vec<u8>>, String> {
+    let file = fs::File::open(archive_path)
+        .map_err(|error| format!("Cannot open downloaded osu! map: {error}"))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|error| format!("Cannot read downloaded osu! map: {error}"))?;
+    let mut background_name = None;
+
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|error| format!("Cannot read downloaded osu! map: {error}"))?;
+        if !entry.name().to_ascii_lowercase().ends_with(".osu") {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("Cannot read downloaded chart: {error}"))?;
+        let text = String::from_utf8_lossy(&bytes);
+        let Some(candidate) = parse_candidate(
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            &text,
+        ) else {
+            continue;
+        };
+        if same_metadata(&candidate, selected) {
+            background_name = crate::osu::background::background_name(&text);
+            break;
+        }
+    }
+
+    let Some(background_name) = background_name.and_then(|name| safe_asset_name(&name)) else {
+        return Ok(None);
+    };
+    let Some(index) = (0..archive.len()).find(|index| {
+        archive
+            .by_index(*index)
+            .ok()
+            .is_some_and(|entry| archive_name_matches(entry.name(), &background_name))
+    }) else {
+        return Ok(None);
+    };
+    let mut entry = archive
+        .by_index(index)
+        .map_err(|error| format!("Cannot read downloaded background: {error}"))?;
+    let mut bytes = Vec::new();
+    entry
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("Cannot read downloaded background: {error}"))?;
+    if bytes.len() as u64 > crate::osu::background::MAX_IMAGE_BYTES || !is_image(&bytes) {
+        return Ok(None);
+    }
+    Ok(Some(bytes))
+}
+
+fn remote_background(
+    app: &tauri::AppHandle,
+    chart_hash: &str,
+    selected: &Candidate,
+) -> Option<Vec<u8>> {
+    if selected.set_id <= 0 {
+        return None;
+    }
+    let cache_dir = std::env::temp_dir().join("henkan-osu-hook");
+    let _ = fs::create_dir_all(&cache_dir);
+    let cache_path = cache_dir.join(format!("lazer-bg-{chart_hash}.img"));
+    if let Ok(bytes) = fs::read(&cache_path) {
+        if bytes.len() as u64 <= crate::osu::background::MAX_IMAGE_BYTES && is_image(&bytes) {
+            return Some(bytes);
+        }
+    }
+
+    let filename = format!("henkan-lazer-{}.osz", selected.set_id);
+    let archive_path =
+        crate::download_mirror_osz(app.clone(), selected.set_id as u64, filename).ok()?;
+    let bytes = downloaded_background(&archive_path, selected)
+        .ok()
+        .flatten()?;
+    let _ = fs::write(cache_path, &bytes);
+    Some(bytes)
+}
+
+fn is_image(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0xff, 0xd8, 0xff])
+        || bytes.starts_with(&[0x89, b'P', b'N', b'G'])
+        || bytes.starts_with(b"BM")
+        || (bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP"))
+}
+
+// Lazer's current Realm v24 file stores the chart and media hashes in
+// separate linked tables. Guessing based on nearby bytes can select another
+// difficulty's artwork, so local assets are intentionally left empty unless
+// an exact association is available from a downloaded chart set.
+fn local_assets(_root: &Path, _chart_hash: &str) -> LocalAssets {
+    LocalAssets::default()
+}
+
+fn pack_local_map(
+    hash: &str,
+    candidate: &Candidate,
+    chart: &[u8],
+    text: &str,
+    assets: LocalAssets,
+) -> Result<String, String> {
+    let mut files = vec![(candidate.file.clone(), chart.to_vec())];
+    if let (Some(name), Some(bytes)) = (audio_name(text), assets.audio) {
+        if let Some(name) = safe_asset_name(&name) {
+            files.push((name, bytes));
+        }
+    }
+    if let (Some(name), Some(bytes)) = (
+        crate::osu::background::background_name(text),
+        assets.background,
+    ) {
+        if let Some(name) = safe_asset_name(&name) {
+            files.push((name, bytes));
+        }
+    }
+
+    pack_files(hash, files)
+}
+
+fn pack_files(hash: &str, files: Vec<(String, Vec<u8>)>) -> Result<String, String> {
+    let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let options: zip::write::FileOptions<'_, ()> =
+        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    for (name, bytes) in files {
+        writer
+            .start_file(name, options)
+            .map_err(|error| format!("Cannot pack the osu!lazer map: {error}"))?;
+        writer
+            .write_all(&bytes)
+            .map_err(|error| format!("Cannot pack the osu!lazer map: {error}"))?;
+    }
+    let bytes = writer
+        .finish()
+        .map_err(|error| format!("Cannot pack the osu!lazer map: {error}"))?
+        .into_inner();
 
     let temp = std::env::temp_dir().join("henkan-osu-hook");
     fs::create_dir_all(&temp).map_err(|error| format!("Cannot create temp folder: {error}"))?;
-    // Unsubmitted/local maps do not have a mirror set id. Keep the chart
-    // importable and let the normal queue report missing media for those maps.
-    let path = imported_chart_path(hash);
-    fs::write(&path, content).map_err(|error| format!("Cannot write temporary .osu: {error}"))?;
+    let path = temp.join(format!("lazer-{hash}.osz"));
+    fs::write(&path, bytes).map_err(|error| format!("Cannot write temporary .osz: {error}"))?;
     Ok(path.to_string_lossy().to_string())
-}
-
-fn imported_chart_path(hash: &str) -> PathBuf {
-    std::env::temp_dir()
-        .join("henkan-osu-hook")
-        .join(format!("lazer-{hash}.osu"))
 }
 
 /// Lazer stores chart and media files under content hashes, so the chart does
 /// not sit beside its background like a stable Songs folder does. The public
 /// beatmapset cover is a small, reliable artwork fallback when the local Realm
 /// asset index cannot be resolved by the desktop bridge.
-pub fn map_background(folder: &str, _file: &str) -> Result<Vec<u8>, String> {
+pub fn map_background(
+    app: &tauri::AppHandle,
+    folder: &str,
+    _file: &str,
+) -> Result<Vec<u8>, String> {
     let hash = folder
         .strip_prefix(STORAGE_PREFIX)
         .ok_or_else(|| "That map does not come from osu!lazer.".to_string())?;
-    let root = discover_root()
-        .ok_or_else(|| "Could not find your osu!lazer data folder.".to_string())?;
+    let root =
+        discover_root().ok_or_else(|| "Could not find your osu!lazer data folder.".to_string())?;
     let source = storage_path(&root, hash)
         .filter(|path| path.is_file())
         .ok_or_else(|| "That osu!lazer map is no longer in local storage.".to_string())?;
     let content = fs::read_to_string(&source)
         .map_err(|error| format!("Cannot read the osu!lazer map: {error}"))?;
+    let assets = local_assets(&root, hash);
+    if let Some(bytes) = assets.background {
+        return Ok(bytes);
+    }
+    if let Some(candidate) = parse_candidate(hash, &content) {
+        if let Some(bytes) = remote_background(app, hash, &candidate) {
+            return Ok(bytes);
+        }
+    }
     let Some(set_id) = metadata_field(&content, "BeatmapSetID")
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|id| *id > 0)
@@ -464,6 +843,44 @@ pub fn storage_path(root: &Path, hash: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Live Windows/macOS probe for the desktop integration. Run explicitly
+    /// with `cargo test osu::lazer::tests::reads_the_running_lazer_client --
+    /// --ignored --nocapture` when osu!lazer is open.
+    #[test]
+    #[ignore]
+    fn reads_the_running_lazer_client() {
+        let watcher = Watcher::default();
+        let live = watcher.poll();
+        println!("lazer live: {live:?}");
+        assert!(live.running, "osu!lazer must be running for this test");
+        if let (Some(root), Some(map)) = (discover_root(), live.map.as_ref()) {
+            let hash = map.folder.strip_prefix(STORAGE_PREFIX).unwrap_or_default();
+            let assets = local_assets(&root, hash);
+            println!(
+                "local assets: background={} audio={}",
+                assets.background.as_ref().map_or(0, Vec::len),
+                assets.audio.as_ref().map_or(0, Vec::len)
+            );
+            let source = storage_path(&root, hash).expect("live chart path");
+            let content = fs::read(&source).expect("live chart bytes");
+            let text = String::from_utf8(content.clone()).expect("live chart text");
+            let candidate = parse_candidate(hash, &text).expect("live chart metadata");
+            let archive_path = pack_local_map(hash, &candidate, &content, &text, assets)
+                .expect("pack local chart");
+            let file = fs::File::open(archive_path).expect("open local archive");
+            let mut archive = zip::ZipArchive::new(file).expect("read local archive");
+            let names = (0..archive.len())
+                .filter_map(|index| {
+                    archive
+                        .by_index(index)
+                        .ok()
+                        .map(|entry| entry.name().to_string())
+                })
+                .collect::<Vec<_>>();
+            println!("local archive entries: {names:?}");
+        }
+    }
 
     #[test]
     fn parses_a_lazer_working_beatmap_log_line() {
@@ -549,11 +966,77 @@ mod tests {
     }
 
     #[test]
-    fn keeps_a_standalone_osu_file_for_local_maps_without_a_set_id() {
-        let path = imported_chart_path("0123456789abcdef");
+    fn selects_the_requested_chart_from_a_downloaded_set() {
+        let root =
+            std::env::temp_dir().join(format!("henkan-lazer-zip-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let archive_path = root.join("set.osz");
+        let file = fs::File::create(&archive_path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        let chart = |title: &str, version: &str, audio: &str, background: &str| {
+            format!(
+                "osu file format v14\n\n[General]\nAudioFilename: {audio}\n\n[Metadata]\nTitle:{title}\nArtist:Artist\nCreator:Mapper\nVersion:{version}\nBeatmapID:1\nBeatmapSetID:2\n\n[Events]\n0,0,\"{background}\",0,0\n"
+            )
+        };
+        for (name, content) in [
+            (
+                "Wrong.osu",
+                chart("Song", "Wrong", "wrong.mp3", "wrong.png"),
+            ),
+            (
+                "Requested.osu",
+                chart("Song", "Requested", "requested.mp3", "requested.png"),
+            ),
+        ] {
+            writer.start_file(name, options).unwrap();
+            writer.write_all(content.as_bytes()).unwrap();
+        }
+        for (name, bytes) in [
+            ("wrong.mp3", b"wrong audio".as_slice()),
+            ("wrong.png", b"\x89PNG wrong image".as_slice()),
+            ("requested.mp3", b"requested audio".as_slice()),
+            ("requested.png", b"\x89PNG requested image".as_slice()),
+        ] {
+            writer.start_file(name, options).unwrap();
+            writer.write_all(bytes).unwrap();
+        }
+        writer.finish().unwrap();
+
+        let selected_text = chart("Song", "Requested", "requested.mp3", "requested.png");
+        let selected = parse_candidate(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            &selected_text,
+        )
+        .unwrap();
         assert_eq!(
-            path.file_name().and_then(|name| name.to_str()),
-            Some("lazer-0123456789abcdef.osu")
+            downloaded_background(&archive_path.to_string_lossy(), &selected)
+                .unwrap()
+                .unwrap(),
+            b"\x89PNG requested image"
         );
+        let packed = pack_downloaded_map(
+            &archive_path.to_string_lossy(),
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            &selected,
+        )
+        .unwrap()
+        .unwrap();
+        let file = fs::File::open(&packed).unwrap();
+        let mut result = zip::ZipArchive::new(file).unwrap();
+        let names = (0..result.len())
+            .map(|index| result.by_index(index).unwrap().name().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "Requested.osu".to_string(),
+                "requested.mp3".to_string(),
+                "requested.png".to_string(),
+            ]
+        );
+        let _ = fs::remove_file(packed);
+        let _ = fs::remove_dir_all(root);
     }
 }

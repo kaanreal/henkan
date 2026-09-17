@@ -1,4 +1,4 @@
-﻿use crate::models::beatmap::{Beatmap, ExportConfig};
+use crate::models::beatmap::{Beatmap, ExportConfig};
 use crate::models::timing::ms_to_beat;
 use anyhow::Result;
 use std::fmt::Write;
@@ -18,7 +18,10 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     let mut out = String::new();
 
     // ── attribution ──────────────────────────────────────────
-    writeln!(out, "// Converted using \"https://github.com/kaanreal/henkan\"")?;
+    writeln!(
+        out,
+        "// Converted using \"https://github.com/kaanreal/henkan\""
+    )?;
 
     // ── headers ──────────────────────────────────────────────
     writeln!(out, "#TITLE:{};", escape(&beatmap.title))?;
@@ -52,7 +55,11 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     if beatmap.background_filename.is_some() {
         writeln!(out, "#BACKGROUND:bg.png;")?;
     }
-    if beatmap.banner_filename.as_ref().is_some_and(|s| !s.is_empty()) {
+    if beatmap
+        .banner_filename
+        .as_ref()
+        .is_some_and(|s| !s.is_empty())
+    {
         writeln!(out, "#BANNER:banner.png;")?;
     } else if beatmap.background_filename.is_some() {
         writeln!(out, "#BANNER:bg.png;")?;
@@ -60,15 +67,23 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     writeln!(out, "#CDTITLE:cdtitle.png;")?;
 
     // SM convention: beat 0 occurs at time -OFFSET seconds.
-    let sm_offset = if display_offset == 0.0 { 0.0 } else { -display_offset };
+    let sm_offset = if display_offset == 0.0 {
+        0.0
+    } else {
+        -display_offset
+    };
     writeln!(out, "#OFFSET:{:.3};", sm_offset)?;
 
-    let sample_start = config.sample_start.as_deref()
+    let sample_start = config
+        .sample_start
+        .as_deref()
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or(beatmap.preview_time / 1000.0);
     writeln!(out, "#SAMPLESTART:{:.3};", sample_start)?;
 
-    let sample_length = config.sample_length.as_deref()
+    let sample_length = config
+        .sample_length
+        .as_deref()
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or(10.0);
     writeln!(out, "#SAMPLELENGTH:{:.3};", sample_length)?;
@@ -80,7 +95,9 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     let bpms = compute_bpms(beatmap, beat_shift);
     out.push_str("#BPMS:");
     for (i, &(b, bpm)) in bpms.iter().enumerate() {
-        if i > 0 { out.push(','); }
+        if i > 0 {
+            out.push(',');
+        }
         out.push_str(&format!("{:.3}={:.3}", b, bpm));
     }
     writeln!(out, ";")?;
@@ -109,8 +126,16 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     };
 
     let diff_name = if let Some(ref v) = config.subtitle {
-        if v.is_empty() { &beatmap.difficulty_name } else { v }
-    } else if beatmap.difficulty_name.is_empty() { "Converted" } else { &beatmap.difficulty_name };
+        if v.is_empty() {
+            &beatmap.difficulty_name
+        } else {
+            v
+        }
+    } else if beatmap.difficulty_name.is_empty() {
+        "Converted"
+    } else {
+        &beatmap.difficulty_name
+    };
 
     let meter = compute_meter(beatmap);
     writeln!(out, "#NOTES:")?;
@@ -119,7 +144,11 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     writeln!(out, "    Challenge:")?;
     writeln!(out, "    {}:", meter)?;
     let radar = compute_radar_values(beatmap);
-    writeln!(out, "    {:.3},{:.3},{:.3},{:.3},{:.3}:", radar.0, radar.1, radar.2, radar.3, radar.4)?;
+    writeln!(
+        out,
+        "    {:.3},{:.3},{:.3},{:.3},{:.3}:",
+        radar.0, radar.1, radar.2, radar.3, radar.4
+    )?;
 
     let measures = notes_to_measures(beatmap, beat_shift);
     out.push_str(&measures);
@@ -209,13 +238,21 @@ fn compute_radar_values(beatmap: &Beatmap) -> (f64, f64, f64, f64, f64) {
 
     let mut time_counts: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
     for note in &beatmap.notes {
-        *time_counts.entry((note.time_ms * 100.0) as u64).or_default() += 1;
+        *time_counts
+            .entry((note.time_ms * 100.0) as u64)
+            .or_default() += 1;
     }
     let simultaneous: f64 = time_counts.values().filter(|&&c| c >= 2).count() as f64;
     let total_slots = time_counts.len() as f64;
-    let voltage = if total_slots > 0.0 { (simultaneous / total_slots * 2.0).clamp(0.0, 1.0) } else { 0.0 };
+    let voltage = if total_slots > 0.0 {
+        (simultaneous / total_slots * 2.0).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
 
-    let hold_ms: f64 = beatmap.notes.iter()
+    let hold_ms: f64 = beatmap
+        .notes
+        .iter()
         .filter_map(|n| n.hold_end_ms.map(|e| e - n.time_ms))
         .sum();
     let freeze = (hold_ms / beatmap.duration_ms).clamp(0.0, 1.0);
@@ -276,7 +313,9 @@ fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
         (beat * SLOTS_PER_BEAT as f64).round() as i64
     };
 
-    let end = beatmap.notes.iter()
+    let end = beatmap
+        .notes
+        .iter()
         .map(|n| n.hold_end_ms.unwrap_or(n.time_ms))
         .fold(0.0, f64::max);
     let num_meas = ((slot_of(end) / SLOTS_PER_MEASURE) + 1).max(1) as usize;
@@ -285,9 +324,13 @@ fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
         vec![vec![vec!['0'; keys]; SLOTS_PER_MEASURE as usize]; num_meas];
 
     let mut place = |slot: i64, col: usize, ch: char| -> bool {
-        if slot < 0 { return false; }
+        if slot < 0 {
+            return false;
+        }
         let mi = (slot / SLOTS_PER_MEASURE) as usize;
-        if mi >= num_meas { return false; }
+        if mi >= num_meas {
+            return false;
+        }
         let si = (slot % SLOTS_PER_MEASURE) as usize;
         grid[mi][si][col] = ch;
         true
@@ -295,7 +338,9 @@ fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
 
     for note in &beatmap.notes {
         let col = note.column as usize;
-        if col >= keys { continue; }
+        if col >= keys {
+            continue;
+        }
         let s = slot_of(note.time_ms);
 
         match note.hold_end_ms.filter(|_| note.hold) {
@@ -308,7 +353,9 @@ fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
                     place(e, col, '3');
                 }
             }
-            None => { place(s, col, '1'); }
+            None => {
+                place(s, col, '1');
+            }
         }
     }
 
@@ -316,12 +363,15 @@ fn notes_to_measures(beatmap: &Beatmap, beat_shift: f64) -> String {
     // that still holds every occupied slot.
     let mut out = String::new();
     for (i, measure) in grid.iter().enumerate() {
-        let occupied: Vec<usize> = measure.iter().enumerate()
+        let occupied: Vec<usize> = measure
+            .iter()
+            .enumerate()
             .filter(|(_, row)| row.iter().any(|&c| c != '0'))
             .map(|(si, _)| si)
             .collect();
 
-        let rows = [4usize, 8, 12, 16, 24, 32, 48, 64, 96, 192].iter()
+        let rows = [4usize, 8, 12, 16, 24, 32, 48, 64, 96, 192]
+            .iter()
             .copied()
             .find(|r| {
                 let step = SLOTS_PER_MEASURE as usize / r;
@@ -395,17 +445,29 @@ CircleSize:4
 
         // All notes should be shifted earlier with 2x rate
         for (n1, n2) in reparsed_1x.notes.iter().zip(reparsed_2x.notes.iter()) {
-            assert!(n2.time_ms < n1.time_ms,
-                "rate 2x note should be earlier: 1x={}ms 2x={}ms", n1.time_ms, n2.time_ms);
-            assert!((n2.time_ms - n1.time_ms / 2.0).abs() < 3.0,
-                "2x note time should be ~half of 1x: 1x={}ms 2x={}ms", n1.time_ms, n2.time_ms);
+            assert!(
+                n2.time_ms < n1.time_ms,
+                "rate 2x note should be earlier: 1x={}ms 2x={}ms",
+                n1.time_ms,
+                n2.time_ms
+            );
+            assert!(
+                (n2.time_ms - n1.time_ms / 2.0).abs() < 3.0,
+                "2x note time should be ~half of 1x: 1x={}ms 2x={}ms",
+                n1.time_ms,
+                n2.time_ms
+            );
         }
 
         // The total duration should be shorter with 2x
         let dur_1x = reparsed_1x.duration_ms;
         let dur_2x = reparsed_2x.duration_ms;
-        assert!(dur_2x < dur_1x,
-            "duration should be shorter with 2x: {} vs {}", dur_2x, dur_1x);
+        assert!(
+            dur_2x < dur_1x,
+            "duration should be shorter with 2x: {} vs {}",
+            dur_2x,
+            dur_1x
+        );
     }
 
     #[test]
@@ -441,11 +503,14 @@ CircleSize:4
         assert_eq!(bm.keys, 4);
         let cfg = test_config();
         let sm = convert(&bm, &cfg).unwrap();
-        assert!(sm.contains("1"));   // contains tap notes
-        assert!(sm.contains("2"));   // contains hold head
+        assert!(sm.contains("1")); // contains tap notes
+        assert!(sm.contains("2")); // contains hold head
         assert!(sm.contains("3"));
         assert!(sm.contains("4K Normal"));
-        assert!(sm.lines().any(|l| l.starts_with('1') || l.contains("1")), "no tap note row found");
+        assert!(
+            sm.lines().any(|l| l.starts_with('1') || l.contains("1")),
+            "no tap note row found"
+        );
         assert!(sm.lines().any(|l| l.starts_with('2')), "no hold head found");
         assert!(sm.lines().any(|l| l.starts_with('3')), "no hold tail found");
         println!("=== SM OUTPUT ===\n{}", sm);
@@ -484,12 +549,19 @@ CircleSize:4
         let cfg = test_config();
         let sm = convert(&bm, &cfg).unwrap();
         let reparsed = crate::parsers::etterna::parse_sm(&sm).unwrap();
-        assert_eq!(reparsed.notes.len(), bm.notes.len(),
+        assert_eq!(
+            reparsed.notes.len(),
+            bm.notes.len(),
             "roundtrip note count mismatch: {} vs {}",
-            reparsed.notes.len(), bm.notes.len());
+            reparsed.notes.len(),
+            bm.notes.len()
+        );
         // BPM should match
-        assert!((reparsed.timing_points[0].bpm() - 120.0).abs() < 1.0,
-            "roundtrip bpm mismatch: {}", reparsed.timing_points[0].bpm());
+        assert!(
+            (reparsed.timing_points[0].bpm() - 120.0).abs() < 1.0,
+            "roundtrip bpm mismatch: {}",
+            reparsed.timing_points[0].bpm()
+        );
     }
 
     #[test]
@@ -527,10 +599,18 @@ CircleSize:4
         let cfg = test_config();
         let sm = convert(&bm, &cfg).unwrap();
         let reparsed = crate::parsers::etterna::parse_sm(&sm).unwrap();
-        assert_eq!(reparsed.notes.len(), bm.notes.len(),
-            "roundtrip note count: {} vs {}", reparsed.notes.len(), bm.notes.len());
-        assert!((reparsed.timing_points[0].bpm() - 154.4).abs() < 1.0,
-            "roundtrip bpm: {}", reparsed.timing_points[0].bpm());
+        assert_eq!(
+            reparsed.notes.len(),
+            bm.notes.len(),
+            "roundtrip note count: {} vs {}",
+            reparsed.notes.len(),
+            bm.notes.len()
+        );
+        assert!(
+            (reparsed.timing_points[0].bpm() - 154.4).abs() < 1.0,
+            "roundtrip bpm: {}",
+            reparsed.timing_points[0].bpm()
+        );
     }
 
     #[test]
@@ -573,19 +653,42 @@ CircleSize:4
         // Verify no row has notes in ALL four columns (that would mean collision)
         for line in sm.lines() {
             if line == "1111" {
-                panic!("found phantom row 1111 - notes are collapsing into same row:\n{}", sm);
+                panic!(
+                    "found phantom row 1111 - notes are collapsing into same row:\n{}",
+                    sm
+                );
             }
         }
 
         // Verify the expected note rows appear (only counting note-data lines)
-        let note_rows: Vec<&str> = sm.lines()
-            .filter(|l| l.chars().all(|c| c == '0' || c == '1' || c == '2' || c == '3'))
+        let note_rows: Vec<&str> = sm
+            .lines()
+            .filter(|l| {
+                l.chars()
+                    .all(|c| c == '0' || c == '1' || c == '2' || c == '3')
+            })
             .filter(|l| l.contains('1') || l.contains('2') || l.contains('3'))
             .collect();
-        assert!(note_rows.contains(&"0001"), "missing 0001 (col 3): {:?}", note_rows);
-        assert!(note_rows.contains(&"1100"), "missing 1100 (col 0+1): {:?}", note_rows);
-        assert!(note_rows.contains(&"0010"), "missing 0010 (col 2): {:?}", note_rows);
-        assert!(note_rows.contains(&"0100"), "missing 0100 (col 1): {:?}", note_rows);
+        assert!(
+            note_rows.contains(&"0001"),
+            "missing 0001 (col 3): {:?}",
+            note_rows
+        );
+        assert!(
+            note_rows.contains(&"1100"),
+            "missing 1100 (col 0+1): {:?}",
+            note_rows
+        );
+        assert!(
+            note_rows.contains(&"0010"),
+            "missing 0010 (col 2): {:?}",
+            note_rows
+        );
+        assert!(
+            note_rows.contains(&"0100"),
+            "missing 0100 (col 1): {:?}",
+            note_rows
+        );
     }
 
     #[test]
@@ -631,17 +734,35 @@ CircleSize:4
         let sm = convert(&bm, &cfg).unwrap();
         let reparsed = crate::parsers::etterna::parse_sm(&sm).unwrap();
 
-        assert_eq!(reparsed.notes.len(), bm.notes.len(),
+        assert_eq!(
+            reparsed.notes.len(),
+            bm.notes.len(),
             "note count changed in roundtrip: {} vs {}\n{}",
-            reparsed.notes.len(), bm.notes.len(), sm);
+            reparsed.notes.len(),
+            bm.notes.len(),
+            sm
+        );
 
         for (orig, rt) in bm.notes.iter().zip(reparsed.notes.iter()) {
-            assert!((orig.time_ms - rt.time_ms).abs() < 3.0,
-                "note drifted: {}ms -> {}ms\n{}", orig.time_ms, rt.time_ms, sm);
-            assert_eq!(orig.column, rt.column, "column changed for note at {}ms", orig.time_ms);
+            assert!(
+                (orig.time_ms - rt.time_ms).abs() < 3.0,
+                "note drifted: {}ms -> {}ms\n{}",
+                orig.time_ms,
+                rt.time_ms,
+                sm
+            );
+            assert_eq!(
+                orig.column, rt.column,
+                "column changed for note at {}ms",
+                orig.time_ms
+            );
         }
 
-        let hold = reparsed.notes.iter().find(|n| n.hold).expect("hold lost in roundtrip");
+        let hold = reparsed
+            .notes
+            .iter()
+            .find(|n| n.hold)
+            .expect("hold lost in roundtrip");
         assert!((hold.time_ms - 2000.0).abs() < 3.0);
         assert!((hold.hold_end_ms.unwrap() - 3000.0).abs() < 3.0);
     }
@@ -688,15 +809,20 @@ CircleSize:4
         assert!(sm.contains("0.000="), "first BPM should be at beat 0");
         // beat 0 sits before the audio start (negative time), and SM stores
         // OFFSET = -time_of_beat0, so the written OFFSET must be positive
-        assert!(sm.contains("#OFFSET:0.802"), "expected OFFSET 0.802, got:\n{}", sm);
+        assert!(
+            sm.contains("#OFFSET:0.802"),
+            "expected OFFSET 0.802, got:\n{}",
+            sm
+        );
         // Notes count in the measures (at least 8 '1's for 8 tap notes)
         let note_count = sm.matches('1').count();
-        assert!(note_count >= 8, "expected at least 8 notes, got {}", note_count);
+        assert!(
+            note_count >= 8,
+            "expected at least 8 notes, got {}",
+            note_count
+        );
         // No negative-beat overflow issues - all notes in measures
         assert!(!sm.contains(",,\n"), "no empty measures");
         assert!(!sm.contains(",0000\n"), "no empty measures");
     }
-
 }
-
-

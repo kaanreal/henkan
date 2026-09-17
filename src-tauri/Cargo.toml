@@ -52,7 +52,11 @@ minacalc-rs = { version = "0.4", optional = true }
 rosu-mem = "3"
 winreg = "0.56"
 # Must match rosu-mem's HANDLE type so the watcher can close attachments.
-windows = { version = "0.48", features = ["Win32_Foundation"] }
+windows = { version = "0.48", features = [
+    "Win32_Foundation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
 
 [profile.release]
 lto = true

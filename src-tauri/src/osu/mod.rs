@@ -2,7 +2,6 @@
 pub(crate) mod background;
 #[cfg(windows)]
 mod install;
-#[cfg(not(windows))]
 mod lazer;
 #[cfg(windows)]
 mod memory;
@@ -31,6 +30,127 @@ fn config_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
 fn watcher(app: &tauri::AppHandle) -> tauri::State<'_, memory::Watcher> {
     use tauri::Manager;
     app.state::<memory::Watcher>()
+}
+
+#[cfg(windows)]
+fn lazer_watcher(app: &tauri::AppHandle) -> tauri::State<'_, lazer::Watcher> {
+    use tauri::Manager;
+    app.state::<lazer::Watcher>()
+}
+
+#[cfg(windows)]
+#[derive(Serialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct Live {
+    running: bool,
+    connected: bool,
+    map: Option<LiveMap>,
+    problem: Option<String>,
+    sources: Vec<LiveSource>,
+}
+
+#[cfg(windows)]
+#[derive(Serialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct LiveMap {
+    folder: String,
+    file: String,
+    artist: String,
+    title: String,
+    creator: String,
+    difficulty: String,
+    map_id: i32,
+    set_id: i32,
+    osu_root: Option<String>,
+}
+
+#[cfg(windows)]
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct LiveSource {
+    id: String,
+    client_name: String,
+    running: bool,
+    connected: bool,
+    map: Option<LiveMap>,
+    problem: Option<String>,
+}
+
+#[cfg(windows)]
+fn from_stable(live: memory::Live) -> LiveSource {
+    LiveSource {
+        id: "osu-stable".to_string(),
+        client_name: "osu!stable".to_string(),
+        running: live.running,
+        connected: live.connected,
+        map: live.map.map(|map| LiveMap {
+            folder: map.folder,
+            file: map.file,
+            artist: map.artist,
+            title: map.title,
+            creator: map.creator,
+            difficulty: map.difficulty,
+            map_id: map.map_id,
+            set_id: map.set_id,
+            osu_root: map.osu_root,
+        }),
+        problem: live.problem,
+    }
+}
+
+#[cfg(windows)]
+fn from_lazer(live: lazer::Live) -> LiveSource {
+    LiveSource {
+        id: "osu-lazer".to_string(),
+        client_name: "osu!lazer".to_string(),
+        running: live.running,
+        connected: live.connected,
+        map: live.map.map(|map| LiveMap {
+            folder: map.folder,
+            file: map.file,
+            artist: map.artist,
+            title: map.title,
+            creator: map.creator,
+            difficulty: map.difficulty,
+            map_id: map.map_id,
+            set_id: map.set_id,
+            osu_root: map.osu_root,
+        }),
+        problem: live.problem,
+    }
+}
+
+#[cfg(windows)]
+fn combined_live(stable: memory::Live, lazer: lazer::Live) -> Live {
+    let stable = from_stable(stable);
+    let lazer = from_lazer(lazer);
+
+    // Keep every running client in the payload. The UI can then present Stable
+    // and Lazer as separate cards instead of silently choosing one.
+    let sources = [stable.clone(), lazer.clone()]
+        .into_iter()
+        .filter(|source| source.running || source.map.is_some())
+        .collect::<Vec<_>>();
+
+    // The legacy top-level fields remain useful to older clients and provide a
+    // single background fallback. Prefer a source that currently has a map.
+    let active = if lazer.map.is_some() {
+        &lazer
+    } else if stable.map.is_some() {
+        &stable
+    } else if lazer.running {
+        &lazer
+    } else {
+        &stable
+    };
+
+    Live {
+        running: stable.running || lazer.running,
+        connected: active.connected,
+        map: active.map.clone(),
+        problem: active.problem.clone(),
+        sources,
+    }
 }
 
 #[cfg(windows)]
@@ -89,11 +209,20 @@ pub fn spawn_watcher(app: tauri::AppHandle) {
     {
         use tauri::{Emitter, Manager};
         app.manage(memory::Watcher::default());
+        app.manage(lazer::Watcher::default());
         std::thread::spawn(move || {
-            let mut last: Option<memory::Live> = None;
+            let mut last: Option<Live> = None;
             loop {
-                let live = app.state::<memory::Watcher>().poll();
-                let pause = live.interval();
+                let stable = app.state::<memory::Watcher>().poll();
+                let lazer = app.state::<lazer::Watcher>().poll();
+                let live = combined_live(stable, lazer);
+                let pause = if live.connected {
+                    std::time::Duration::from_millis(500)
+                } else if live.running {
+                    std::time::Duration::from_secs(1)
+                } else {
+                    std::time::Duration::from_secs(2)
+                };
                 if last.as_ref() != Some(&live) {
                     let _ = app.emit(LIVE_EVENT, &live);
                     last = Some(live);
@@ -125,7 +254,9 @@ pub fn spawn_watcher(app: tauri::AppHandle) {
 pub fn osu_live(app: tauri::AppHandle) -> serde_json::Value {
     #[cfg(windows)]
     {
-        serde_json::to_value(watcher(&app).poll()).unwrap_or(serde_json::Value::Null)
+        let stable = watcher(&app).poll();
+        let lazer = lazer_watcher(&app).poll();
+        serde_json::to_value(combined_live(stable, lazer)).unwrap_or(serde_json::Value::Null)
     }
     #[cfg(not(windows))]
     {
@@ -142,6 +273,9 @@ pub fn osu_live(app: tauri::AppHandle) -> serde_json::Value {
 pub fn osu_read_map(app: tauri::AppHandle, folder: String) -> Result<String, String> {
     #[cfg(windows)]
     {
+        if folder.starts_with("lazer:") {
+            return lazer::read_map(&app, &folder);
+        }
         let (_, songs) =
             locate(&app).ok_or_else(|| "Could not find your osu! installation.".to_string())?;
         let safe = install::safe_folder(&folder)
@@ -173,6 +307,9 @@ pub fn osu_map_background(
 ) -> Result<Vec<u8>, String> {
     #[cfg(windows)]
     {
+        if folder.starts_with("lazer:") {
+            return lazer::map_background(&app, &folder, &file);
+        }
         let (_, songs) =
             locate(&app).ok_or_else(|| "Could not find your osu! installation.".to_string())?;
         let safe = install::safe_folder(&folder)

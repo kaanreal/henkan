@@ -1,10 +1,9 @@
-﻿#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 /// Known CLI subcommands that trigger CLI/TUI mode instead of GUI.
 const CLI_COMMANDS: &[&str] = &[
-    "quick", "convert", "export", "parse", "help",
-    "results", "open", "clear", "settings", "set", "reset",
-    "exit", "quit",
+    "quick", "convert", "export", "parse", "help", "results", "open", "clear", "settings", "set",
+    "reset", "exit", "quit",
 ];
 
 fn main() {

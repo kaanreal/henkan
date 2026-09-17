@@ -30,10 +30,7 @@ pub fn parse_osu_with_source(content: &str, source_dir: &str) -> Result<Beatmap>
             .unwrap_or(""),
     );
     let hit_objects = parse_hit_objects(
-        sections
-            .get("HitObjects")
-            .map(|s| s.as_str())
-            .unwrap_or(""),
+        sections.get("HitObjects").map(|s| s.as_str()).unwrap_or(""),
         difficulty.keys,
     );
 
@@ -217,7 +214,11 @@ fn parse_timing_points(content: &str) -> Vec<TimingPoint> {
         });
     }
 
-    points.sort_by(|a, b| a.time_ms.partial_cmp(&b.time_ms).unwrap_or(std::cmp::Ordering::Equal));
+    points.sort_by(|a, b| {
+        a.time_ms
+            .partial_cmp(&b.time_ms)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     points
 }
 
@@ -259,7 +260,11 @@ fn parse_hit_objects(content: &str, keys: u32) -> Vec<Note> {
         });
     }
 
-    notes.sort_by(|a, b| a.time_ms.partial_cmp(&b.time_ms).unwrap_or(std::cmp::Ordering::Equal));
+    notes.sort_by(|a, b| {
+        a.time_ms
+            .partial_cmp(&b.time_ms)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     notes
 }
 

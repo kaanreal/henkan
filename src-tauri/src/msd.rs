@@ -74,7 +74,11 @@ fn to_mina_notes(notes: &[Note]) -> Vec<MinaNote> {
     }
 
     let mut sorted = notes.to_vec();
-    sorted.sort_by(|a, b| a.time_ms.partial_cmp(&b.time_ms).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        a.time_ms
+            .partial_cmp(&b.time_ms)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut rows: Vec<MinaNote> = Vec::new();
 

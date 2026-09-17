@@ -25,6 +25,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
 use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 use ureq::ResponseExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -2263,8 +2264,30 @@ pub fn headless_process(paths: &[String]) {
 
 #[tauri::command]
 fn download_mirror_osz(app: tauri::AppHandle, set_id: u64, filename: String) -> Result<String, String> {
+    let temp_dir = std::env::temp_dir().join("henkan-mirror");
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Create temp dir failed: {}", e))?;
+    // Reuse an archive already fetched for this set. This is especially useful
+    // when the background preview and conversion request the same difficulty.
+    let safe_name = sanitize_filename(&filename, 200);
+    if safe_name.is_empty() {
+        return Err("Invalid filename".to_string());
+    }
+    let path = temp_dir.join(&safe_name);
+    if std::fs::metadata(&path)
+        .ok()
+        .is_some_and(|metadata| metadata.len() >= 100)
+    {
+        return Ok(path.to_string_lossy().to_string());
+    }
+
     let url = format!("https://catboy.best/d/{}", set_id);
-    let mut response = ureq::get(&url)
+    // Mirror downloads are only a fallback for locally incomplete maps. Never
+    // let a stalled server keep the Convert Map button spinning forever.
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(20)))
+        .build()
+        .into();
+    let mut response = agent.get(&url)
         .header("User-Agent", "henkan/1.0")
         .call()
         .map_err(|e| format!("Download failed: {}", e))?;
@@ -2298,14 +2321,7 @@ fn download_mirror_osz(app: tauri::AppHandle, set_id: u64, filename: String) -> 
         return Err("Download returned empty or invalid data".to_string());
     }
 
-    let temp_dir = std::env::temp_dir().join("henkan-mirror");
-    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Create temp dir failed: {}", e))?;
     // filename comes from the frontend; never let it escape the temp dir
-    let safe_name = sanitize_filename(&filename, 200);
-    if safe_name.is_empty() {
-        return Err("Invalid filename".to_string());
-    }
-    let path = temp_dir.join(safe_name);
     let _ = std::fs::remove_file(&path);
     std::fs::write(&path, &bytes).map_err(|e| format!("Save file failed: {}", e))?;
 
