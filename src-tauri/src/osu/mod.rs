@@ -7,8 +7,8 @@ mod lazer;
 mod memory;
 
 use serde::Serialize;
-#[cfg(windows)]
 use std::path::{Path, PathBuf};
+use tauri::Emitter;
 
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +19,37 @@ pub struct OsuStatus {
     pub root: Option<String>,
     pub songs: Option<String>,
 }
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct LibrarySkin {
+    pub path: String,
+    pub name: String,
+    pub author: String,
+    pub file_count: usize,
+    pub archive: bool,
+    pub background_path: Option<String>,
+    pub preview_revision: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct OsuLibrary {
+    pub root: String,
+    pub skins_path: String,
+    pub skins: Vec<LibrarySkin>,
+    pub scanned_at: u64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+struct LibraryScanProgress {
+    phase: String,
+    completed: usize,
+    total: usize,
+}
+
+pub const LIBRARY_PROGRESS_EVENT: &str = "osu-library-progress";
 
 #[cfg(windows)]
 fn config_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
@@ -199,6 +230,269 @@ pub fn osu_status(app: tauri::AppHandle) -> OsuStatus {
             songs: None,
         }
     }
+}
+
+fn resolve_library_root(
+    app: &tauri::AppHandle,
+    requested: Option<&str>,
+) -> Result<PathBuf, String> {
+    let root = if let Some(requested) = requested {
+        PathBuf::from(requested)
+    } else {
+        #[cfg(windows)]
+        {
+            install::discover_root(config_dir(app).as_deref())
+                .or_else(|| watcher(app).running_root())
+                .ok_or_else(|| "Could not find an osu! installation.".to_string())?
+        }
+        #[cfg(not(windows))]
+        {
+            lazer::discover_root()
+                .ok_or_else(|| "Choose your osu! folder to scan it.".to_string())?
+        }
+    };
+
+    let root = root
+        .canonicalize()
+        .map_err(|err| format!("Cannot read the osu! folder: {err}"))?;
+    if !root.is_dir() {
+        return Err("The osu! folder is not a directory.".to_string());
+    }
+    let skins = root.join("Skins");
+    if !skins.is_dir() {
+        return Err("That folder does not contain a Skins folder.".to_string());
+    }
+
+    #[cfg(windows)]
+    if requested.is_some() && root.join("osu!.exe").is_file() {
+        if let Some(config_dir) = config_dir(app) {
+            install::write_override(&config_dir, &root)?;
+        }
+    }
+
+    Ok(root)
+}
+
+fn skin_metadata(path: &Path) -> (String, String) {
+    let fallback = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Unnamed skin".to_string());
+    let Ok(content) = std::fs::read_to_string(path.join("skin.ini")) else {
+        return (fallback, String::new());
+    };
+
+    let mut name = fallback;
+    let mut author = String::new();
+    for line in content.lines() {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        match key.trim().to_ascii_lowercase().as_str() {
+            "name" if !value.trim().is_empty() => name = value.trim().to_string(),
+            "author" if !value.trim().is_empty() => author = value.trim().to_string(),
+            _ => {}
+        }
+    }
+    (name, author)
+}
+
+fn skin_preview_revision(root: &Path) -> (usize, String) {
+    let mut file_count = 0usize;
+    let mut total_size = 0u64;
+    let mut latest_modified = 0u128;
+    std::fs::read_dir(root)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.file_type().is_ok_and(|file_type| file_type.is_file()))
+                .for_each(|entry| {
+                    file_count += 1;
+                    if let Ok(metadata) = entry.metadata() {
+                        total_size = total_size.saturating_add(metadata.len());
+                        if let Ok(modified) = metadata.modified() {
+                            if let Ok(duration) = modified.duration_since(std::time::UNIX_EPOCH) {
+                                latest_modified = latest_modified.max(duration.as_nanos());
+                            }
+                        }
+                    }
+                });
+        })
+        .ok();
+    (file_count, format!("{file_count}-{total_size}-{latest_modified}"))
+}
+
+fn archive_preview_revision(path: &Path) -> String {
+    let Ok(metadata) = path.metadata() else {
+        return "missing".to_string();
+    };
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|value| value.as_nanos())
+        .unwrap_or_default();
+    format!("{}-{modified}", metadata.len())
+}
+
+fn skin_background_path(root: &Path) -> Option<String> {
+    if let Ok(content) = std::fs::read_to_string(root.join("skin.ini")) {
+        for line in content.lines() {
+            let Some((key, value)) = line.split_once(':') else {
+                continue;
+            };
+            if key.trim().eq_ignore_ascii_case("menubackground") {
+                let configured = root.join(value.trim().trim_matches('"'));
+                if configured.is_file() {
+                    return Some(configured.to_string_lossy().into_owned());
+                }
+            }
+        }
+    }
+
+    let entries = std::fs::read_dir(root).ok()?;
+    let mut candidates = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        let extension = path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        if !matches!(
+            extension.to_ascii_lowercase().as_str(),
+            "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif"
+        ) {
+            continue;
+        }
+        let name = path
+            .file_stem()
+            .map(|value| value.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        let priority = if name.contains("menu-background") || name == "menu-bg" {
+            4
+        } else if name.contains("background") {
+            3
+        } else if name == "bg" {
+            2
+        } else {
+            1
+        };
+        let size = entry
+            .metadata()
+            .map(|metadata| metadata.len())
+            .unwrap_or_default();
+        candidates.push((priority, size, path));
+    }
+    candidates.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1)));
+    candidates
+        .first()
+        .map(|(_, _, path)| path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn osu_skin_background(path: String) -> Option<String> {
+    let root = Path::new(&path);
+    root.is_dir().then(|| skin_background_path(root)).flatten()
+}
+
+fn scan_skins<F>(skins: &Path, progress: &F) -> Vec<LibrarySkin>
+where
+    F: Fn(&str, usize, usize) + Sync,
+{
+    if !skins.is_dir() {
+        return Vec::new();
+    }
+
+    let Ok(entries) = std::fs::read_dir(skins) else {
+        return Vec::new();
+    };
+    let entries = entries.flatten().collect::<Vec<_>>();
+    let total = entries.len();
+    progress("skins", 0, total);
+    let mut result = Vec::new();
+    for (index, entry) in entries.into_iter().enumerate() {
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            let (name, author) = skin_metadata(&path);
+            let (file_count, preview_revision) = skin_preview_revision(&path);
+            result.push(LibrarySkin {
+                path: path.to_string_lossy().into_owned(),
+                name,
+                author,
+                file_count,
+                archive: false,
+                background_path: skin_background_path(&path),
+                preview_revision,
+            });
+        } else if file_type.is_file()
+            && path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("osk"))
+        {
+            let name = path
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "Unnamed skin".to_string());
+            result.push(LibrarySkin {
+                path: path.to_string_lossy().into_owned(),
+                name,
+                author: String::new(),
+                file_count: 1,
+                archive: true,
+                background_path: None,
+                preview_revision: archive_preview_revision(&path),
+            });
+        }
+        progress("skins", index + 1, total);
+    }
+
+    result.sort_by_cached_key(|skin| skin.name.to_ascii_lowercase());
+    result
+}
+
+#[tauri::command]
+pub async fn osu_scan_library(
+    app: tauri::AppHandle,
+    root: Option<String>,
+) -> Result<OsuLibrary, String> {
+    let root = resolve_library_root(&app, root.as_deref())?;
+    let skins = root.join("Skins");
+    let progress_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let progress = |phase: &str, completed: usize, total: usize| {
+            let _ = progress_app.emit(
+                LIBRARY_PROGRESS_EVENT,
+                LibraryScanProgress {
+                    phase: phase.to_string(),
+                    completed,
+                    total,
+                },
+            );
+        };
+        let skins_list = scan_skins(&skins, &progress);
+        let scanned_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        OsuLibrary {
+            root: root.to_string_lossy().into_owned(),
+            skins_path: skins.to_string_lossy().into_owned(),
+            skins: skins_list,
+            scanned_at,
+        }
+    })
+    .await
+    .map_err(|error| format!("The osu! library scan stopped: {error}"))
 }
 
 /// Event emitted when osu! opens, closes, or changes its selected map.
@@ -429,4 +723,39 @@ fn pack_folder(dir: &Path) -> Result<Vec<u8>, String> {
         .finish()
         .map(|cursor| cursor.into_inner())
         .map_err(|err| format!("Cannot pack the map: {err}"))
+}
+
+#[cfg(test)]
+mod library_tests {
+    use super::*;
+
+    #[test]
+    fn scans_skin_metadata() {
+        let base = std::env::temp_dir().join(format!("henkan-osu-library-{}", std::process::id()));
+        let skins = base.join("Skins");
+        let skin_folder = skins.join("Soft Skin");
+        let background = skin_folder.join("menu-background.jpg");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&skin_folder).unwrap();
+        std::fs::write(
+            skin_folder.join("skin.ini"),
+            "[General]\nName: Soft\nAuthor: Kaan\nMenuBackground: menu-background.jpg\n",
+        )
+        .unwrap();
+        std::fs::write(&background, b"image").unwrap();
+        std::fs::write(skin_folder.join("cursor.png"), b"image").unwrap();
+
+        let found_skins = scan_skins(&skins, &|_, _, _| {});
+
+        assert_eq!(found_skins.len(), 1);
+        assert_eq!(found_skins[0].name, "Soft");
+        assert_eq!(found_skins[0].author, "Kaan");
+        assert_eq!(found_skins[0].file_count, 3);
+        assert_eq!(
+            found_skins[0].background_path.as_deref(),
+            Some(background.to_str().unwrap())
+        );
+
+        let _ = std::fs::remove_dir_all(base);
+    }
 }

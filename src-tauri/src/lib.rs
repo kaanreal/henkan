@@ -21,7 +21,7 @@ fn try_compute_msd(_bm: &Beatmap) -> Option<f64> {
 pub use parsers::etterna::parse_sm;
 pub use parsers::osu::parse_osu;
 pub use models::beatmap::{Beatmap, DiffInfo, ExportConfig, PackEntry, SourceFormat};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
 use std::sync::{LazyLock, Mutex};
@@ -2034,7 +2034,191 @@ fn directory_contains_skin(path: String) -> bool {
 }
 
 #[tauri::command]
-fn archive_directory(path: String) -> Result<Vec<u8>, String> {
+async fn archive_directory(path: String) -> Result<Vec<u8>, String> {
+    tauri::async_runtime::spawn_blocking(move || archive_directory_sync(path))
+        .await
+        .map_err(|error| format!("Skin archive task stopped: {error}"))?
+}
+
+#[tauri::command]
+async fn archive_skin_preview(path: String) -> Result<Vec<u8>, String> {
+    tauri::async_runtime::spawn_blocking(move || archive_skin_preview_sync(path))
+        .await
+        .map_err(|error| format!("Skin preview task stopped: {error}"))?
+}
+
+fn preview_reference_stem(value: &str) -> String {
+    value
+        .split("//")
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .trim_matches('"')
+        .replace('\\', "/")
+        .trim_start_matches("./")
+        .trim_start_matches('/')
+        .to_ascii_lowercase()
+        .trim_end_matches(|character| character == ' ')
+        .trim_end_matches(|character| character == '.')
+        .trim_end_matches("png")
+        .trim_end_matches("jpg")
+        .trim_end_matches("jpeg")
+        .trim_end_matches("bmp")
+        .trim_end_matches("gif")
+        .trim_end_matches("webp")
+        .trim_end_matches('.')
+        .to_string()
+}
+
+fn preview_asset_references(skin_ini: &str) -> HashSet<String> {
+    let mut mania_sections = Vec::<HashMap<String, String>>::new();
+    let mut current: Option<HashMap<String, String>> = None;
+
+    for source_line in skin_ini.trim_start_matches('\u{feff}').lines() {
+        let line = source_line.trim();
+        if line.is_empty() || line.starts_with("//") || line.starts_with(';') {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            if let Some(section) = current.take() {
+                mania_sections.push(section);
+            }
+            current = line[1..line.len() - 1]
+                .trim()
+                .eq_ignore_ascii_case("mania")
+                .then(HashMap::new);
+            continue;
+        }
+        let Some(section) = current.as_mut() else {
+            continue;
+        };
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        section.insert(key.trim().to_ascii_lowercase(), value.trim().to_string());
+    }
+    if let Some(section) = current {
+        mania_sections.push(section);
+    }
+
+    let mut references = HashSet::new();
+    if let Some(mania) = mania_sections.iter().find(|section| {
+        section.get("keys").is_some_and(|keys| {
+            keys.split("//").next().unwrap_or_default().trim() == "4"
+        })
+    }) {
+        for lane in 0..4 {
+            for suffix in ["", "h", "l", "t"] {
+                if let Some(value) = mania.get(&format!("noteimage{lane}{suffix}")) {
+                    references.insert(preview_reference_stem(value));
+                }
+            }
+            for suffix in ["", "d"] {
+                if let Some(value) = mania.get(&format!("keyimage{lane}{suffix}")) {
+                    references.insert(preview_reference_stem(value));
+                }
+            }
+        }
+    }
+
+    for lane in 0..4 {
+        let note = if lane == 0 || lane == 3 { "mania-note1" } else { "mania-note2" };
+        references.insert(note.to_string());
+        references.insert(format!("{note}h"));
+        references.insert(format!("{note}l"));
+        references.insert(format!("{note}t"));
+        references.insert(format!("mania-key{}", lane + 1));
+        references.insert(format!("mania-key{}d", lane + 1));
+        references.insert(format!("mania-key{}", if lane % 2 == 0 { 1 } else { 2 }));
+        references.insert(format!("mania-key{}d", if lane % 2 == 0 { 1 } else { 2 }));
+    }
+    references.retain(|reference| !reference.is_empty());
+    references
+}
+
+fn archive_skin_preview_sync(path: String) -> Result<Vec<u8>, String> {
+    use std::io::{Cursor, Write};
+
+    fn image_stem(path: &Path, base: &Path) -> Option<String> {
+        let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+        if !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp") {
+            return None;
+        }
+        let relative = path.strip_prefix(base).ok()?.to_string_lossy().replace('\\', "/");
+        Some(preview_reference_stem(&relative))
+    }
+
+    fn matches_reference(stem: &str, reference: &str) -> bool {
+        let matches = |candidate: &str| {
+            stem == candidate || stem.ends_with(&format!("/{candidate}"))
+        };
+        matches(reference)
+            || matches(&format!("{reference}@2x"))
+            || matches(&format!("{reference}-0"))
+            || matches(&format!("{reference}-0@2x"))
+    }
+
+    fn walk(
+        dir: &Path,
+        base: &Path,
+        skin_ini: &Path,
+        references: &HashSet<String>,
+        files: &mut Vec<PathBuf>,
+    ) -> Result<(), String> {
+        let entries = fs::read_dir(dir).map_err(|error| format!("Failed to read skin folder: {error}"))?;
+        for entry in entries.flatten() {
+            let child = entry.path();
+            if child.is_dir() {
+                walk(&child, base, skin_ini, references, files)?;
+                continue;
+            }
+            let selected = child == skin_ini
+                || image_stem(&child, base).is_some_and(|stem| {
+                    references.iter().any(|reference| matches_reference(&stem, reference))
+                });
+            if selected {
+                files.push(child);
+            }
+        }
+        Ok(())
+    }
+
+    let folder = PathBuf::from(path);
+    if !folder.is_dir() {
+        return Err("The skin path is not a folder.".to_string());
+    }
+    let skin_ini = fs::read_dir(&folder)
+        .map_err(|error| format!("Failed to read skin folder: {error}"))?
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|entry| {
+            entry.is_file()
+                && entry.file_name().and_then(|name| name.to_str())
+                    .is_some_and(|name| name.eq_ignore_ascii_case("skin.ini"))
+        })
+        .ok_or_else(|| "This skin folder does not contain skin.ini.".to_string())?;
+    let skin_ini_bytes = fs::read(&skin_ini)
+        .map_err(|error| format!("Failed to read skin.ini: {error}"))?;
+    let skin_ini_text = String::from_utf8_lossy(&skin_ini_bytes);
+    let references = preview_asset_references(&skin_ini_text);
+    let mut files = Vec::new();
+    walk(&folder, &folder, &skin_ini, &references, &mut files)?;
+
+    let cursor = Cursor::new(Vec::new());
+    let mut writer = zip::ZipWriter::new(cursor);
+    let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored);
+    for file in files {
+        let relative = file.strip_prefix(&folder).unwrap_or(&file).to_string_lossy().replace('\\', "/");
+        writer.start_file(&relative, options).map_err(|error| format!("Zip error: {error}"))?;
+        writer.write_all(&fs::read(&file).map_err(|error| format!("Failed to read {relative}: {error}"))?)
+            .map_err(|error| format!("Zip write error: {error}"))?;
+    }
+    let cursor = writer.finish().map_err(|error| format!("Zip finalize error: {error}"))?;
+    Ok(cursor.into_inner())
+}
+
+fn archive_directory_sync(path: String) -> Result<Vec<u8>, String> {
     use std::io::{Cursor, Write};
 
     fn walk(
@@ -2046,14 +2230,14 @@ fn archive_directory(path: String) -> Result<Vec<u8>, String> {
     ) -> Result<(), String> {
         let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read folder: {e}"))?;
         for entry in entries.flatten() {
-            *count += 1;
-            if *count > 4_000 {
-                return Err("This skin folder contains more than 4,000 files.".to_string());
-            }
             let child = entry.path();
             if child.is_dir() {
                 walk(zip_w, &child, base, opts, count)?;
                 continue;
+            }
+            *count += 1;
+            if *count > 4_000 {
+                return Err("This skin folder contains more than 4,000 files.".to_string());
             }
             let relative = child.strip_prefix(base).unwrap_or(&child).to_string_lossy().replace('\\', "/");
             let bytes = fs::read(&child).map_err(|e| format!("Failed to read {relative}: {e}"))?;
@@ -2075,7 +2259,6 @@ fn archive_directory(path: String) -> Result<Vec<u8>, String> {
     let cursor = zip_w.finish().map_err(|e| format!("Zip finalize error: {e}"))?;
     Ok(cursor.into_inner())
 }
-
 
 /// After sorting by computed meter, reassign meters sequentially (1, 2, 3, …)
 /// so the .sm file always starts at meter 1.
@@ -2461,6 +2644,7 @@ pub fn run() {
             create_dummy_diff,
             zip_folder,
             archive_directory,
+            archive_skin_preview,
             save_file,
             write_file_bytes,
             clean_dir,
@@ -2477,6 +2661,8 @@ pub fn run() {
             lookup_beatmap_set,
             extract_osz_media,
             osu::osu_status,
+            osu::osu_scan_library,
+            osu::osu_skin_background,
             osu::osu_live,
             osu::osu_read_map,
             osu::osu_map_background,
@@ -2492,6 +2678,58 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn skin_preview_references_use_the_4k_mania_section() {
+        let skin_ini = r#"
+[Mania]
+Keys: 7
+NoteImage0: seven-note
+
+[Mania]
+Keys: 4 // gameplay mode
+NoteImage0: custom/left-note.png
+NoteImage1L: custom/hold-body
+KeyImage0: custom/receptor@2x.png
+"#;
+
+        let references = preview_asset_references(skin_ini);
+
+        assert!(references.contains("custom/left-note"));
+        assert!(references.contains("custom/hold-body"));
+        assert!(references.contains("custom/receptor@2x"));
+        assert!(references.contains("mania-note1"));
+        assert!(!references.contains("seven-note"));
+    }
+
+    #[test]
+    fn skin_preview_archive_only_contains_gameplay_assets() {
+        let base = std::env::temp_dir().join(format!("henkan-skin-preview-{}", std::process::id()));
+        let custom = base.join("custom");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&custom).unwrap();
+        fs::write(
+            base.join("skin.ini"),
+            "[Mania]\nKeys: 4\nNoteImage0: custom/left-note\nKeyImage0: custom/receptor\n",
+        )
+        .unwrap();
+        fs::write(custom.join("left-note.png"), b"note").unwrap();
+        fs::write(custom.join("receptor@2x.png"), b"key").unwrap();
+        fs::write(base.join("menu-background.jpg"), b"background").unwrap();
+
+        let bytes = archive_skin_preview_sync(base.to_string_lossy().into_owned()).unwrap();
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let names = (0..archive.len())
+            .map(|index| archive.by_index(index).unwrap().name().to_string())
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"skin.ini".to_string()));
+        assert!(names.contains(&"custom/left-note.png".to_string()));
+        assert!(names.contains(&"custom/receptor@2x.png".to_string()));
+        assert!(!names.contains(&"menu-background.jpg".to_string()));
+
+        let _ = fs::remove_dir_all(base);
+    }
 
     #[test]
     fn test_parse_ffmpeg_audio_bitrate() {

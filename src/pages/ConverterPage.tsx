@@ -31,6 +31,7 @@ import { PackSettingsDialog } from '../components/PackSettingsDialog'
 import { DiffPresetManager } from '../components/DiffPresetManager'
 import { UpdateDialog } from '../components/UpdateDialog'
 import { BeatmapMirrorDialog } from '../components/BeatmapMirrorDialog'
+import { OsuLibraryPrompt } from '../components/OsuLibraryPrompt'
 import { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { isTauri } from '../services/environment'
 import {
@@ -69,6 +70,7 @@ import { osuReadMap, type OsuSelectedMap } from '../lib/osuDesktop'
 import { useEtternaLive } from '../hooks/useEtternaLive'
 import { useEtternaMapBackground } from '../hooks/useEtternaMapBackground'
 import { etternaClientName, etternaReadMap } from '../lib/etternaDesktop'
+import { useOsuLibraryStore } from '../stores/useOsuLibraryStore'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
@@ -263,6 +265,17 @@ async function resolveBeatmapMedia(bm: Beatmap, opts: MediaLoadOptions = {}): Pr
 export default function ConverterPage() {
   const navigate = useNavigate()
   const t = useT()
+  const osuLibrary = useOsuLibraryStore(s => s.library)
+  const osuLibraryStatus = useOsuLibraryStore(s => s.status)
+  const osuLibraryScanning = useOsuLibraryStore(s => s.scanning)
+  const osuLibraryProgress = useOsuLibraryStore(s => s.scanProgress)
+  const osuLibraryHydrating = useOsuLibraryStore(s => s.hydrating)
+  const osuLibraryError = useOsuLibraryStore(s => s.error)
+  const osuLibraryPromptSeen = useOsuLibraryStore(s => s.promptSeen)
+  const refreshOsuStatus = useOsuLibraryStore(s => s.refreshStatus)
+  const scanOsuLibrary = useOsuLibraryStore(s => s.scan)
+  const markOsuPromptSeen = useOsuLibraryStore(s => s.markPromptSeen)
+  const showOsuLibraryPrompt = isTauri() && !osuLibraryHydrating && !osuLibraryPromptSeen && !osuLibrary
   const {
     beatmap,
     config,
@@ -281,6 +294,26 @@ export default function ConverterPage() {
     setDragging,
     reset,
   } = useConverterStore()
+
+  useEffect(() => {
+    if (!isTauri() || osuLibraryPromptSeen || osuLibrary) return
+    void refreshOsuStatus()
+  }, [osuLibrary, osuLibraryPromptSeen, refreshOsuStatus])
+
+  const handleOsuLibraryScanPrompt = async () => {
+    let root = osuLibraryStatus?.root ?? null
+    if (!root) root = await dialogOpenDirectory({ title: t('osuLibrary.chooseFolderTitle') })
+    if (!root) return
+    const result = await scanOsuLibrary(root)
+    if (result) {
+      markOsuPromptSeen()
+      navigate('/osu-library')
+    }
+  }
+
+  const dismissOsuLibraryPrompt = () => {
+    markOsuPromptSeen()
+  }
 
   const [lastExportPath, setLastExportPath] = useState<string | null>(null)
   const [showPreview, setShowPreview] = useState(false)
@@ -2580,6 +2613,17 @@ export default function ConverterPage() {
             {volumeToast.msg}
           </div>
         </div>
+      )}
+
+      {showOsuLibraryPrompt && (
+        <OsuLibraryPrompt
+          status={osuLibraryStatus}
+          scanning={osuLibraryScanning}
+          progress={osuLibraryProgress}
+          error={osuLibraryError}
+          onConfirm={() => void handleOsuLibraryScanPrompt()}
+          onLater={dismissOsuLibraryPrompt}
+        />
       )}
     </ErrorBoundary>
   )

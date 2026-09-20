@@ -76,6 +76,24 @@ export function Header({
           {stars !== null ? stars : '-'}
         </button>
 
+        <Link
+          to="/osu-library"
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-surface-400 hover:text-surface-200 text-xs font-medium transition-all duration-75"
+        >
+          {t('header.library')}
+        </Link>
+
+        <Link
+          to="/settings"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-surface-400 hover:text-surface-200 text-xs font-medium transition-all duration-75"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 3.75h3l.55 2.2a6.75 6.75 0 011.7.98l2.12-.72 1.5 2.6-1.57 1.64c.2.58.3 1.17.3 1.8s-.1 1.22-.3 1.8l1.57 1.64-1.5 2.6-2.12-.72a6.75 6.75 0 01-1.7.98l-.55 2.2h-3l-.55-2.2a6.75 6.75 0 01-1.7-.98l-2.12.72-1.5-2.6 1.57-1.64a6.75 6.75 0 01-.3-1.8c0-.63.1-1.22.3-1.8L4.63 8.8l1.5-2.6 2.12.72a6.75 6.75 0 011.7-.98l.55-2.2z" />
+            <circle cx="12" cy="12" r="2.4" />
+          </svg>
+          <span className="hidden lg:inline">{t('header.settings')}</span>
+        </Link>
+
         <LanguageSwitcher />
       </div>
 

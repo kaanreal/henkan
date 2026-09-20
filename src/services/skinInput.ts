@@ -92,3 +92,11 @@ export async function archiveSkinFolderPath(path: string): Promise<File> {
   const name = path.split(/[/\\]+/).filter(Boolean).pop() || 'skin'
   return new File([Uint8Array.from(bytes)], `${name}.zip`, { type: 'application/zip' })
 }
+
+export async function archiveSkinPreviewPath(path: string): Promise<File> {
+  if (!isTauri()) throw new Error('Native skin folders are only available in the desktop app.')
+  const { invoke } = await import('@tauri-apps/api/core')
+  const bytes = await invoke<number[]>('archive_skin_preview', { path })
+  const name = path.split(/[/\\]+/).filter(Boolean).pop() || 'skin'
+  return new File([Uint8Array.from(bytes)], `${name}.zip`, { type: 'application/zip' })
+}

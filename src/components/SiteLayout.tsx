@@ -9,6 +9,8 @@ const NAV_LINKS: Array<{ to: string; labelKey: MessageKey }> = [
   { to: '/skin-converter', labelKey: 'siteHeader.skins' },
   { to: '/osu-mania-pack-creator', labelKey: 'siteHeader.packCreator' },
   { to: '/osu-mania-map-viewer', labelKey: 'siteHeader.mapViewer' },
+  { to: '/osu-library', labelKey: 'siteHeader.library' },
+  { to: '/settings', labelKey: 'siteHeader.settings' },
 ]
 
 export function SiteHeader() {
