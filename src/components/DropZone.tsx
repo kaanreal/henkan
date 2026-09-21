@@ -40,7 +40,7 @@ export function DropZone({ dragging, onFilesSelected }: DropZoneProps) {
     <div
       onClick={handleClick}
         className={`
-        relative w-full max-w-lg cursor-pointer rounded-3xl border-2 border-dashed
+        relative w-full max-w-3xl cursor-pointer rounded-3xl border-2 border-dashed
         transition-all duration-150 ease-out overflow-hidden
         ${dragging
           ? 'border-accent bg-accent/5 scale-[1.02]'

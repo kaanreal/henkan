@@ -35,7 +35,7 @@ export function LanguageSwitcher() {
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-surface-400 hover:text-surface-200 text-xs font-medium transition-all duration-75"
       >
         <GlobeIcon />
-        <span className="hidden sm:inline">{currentLabel}</span>
+        <span className="hidden lg:inline">{currentLabel}</span>
       </button>
 
       {open && (

@@ -32,7 +32,7 @@ export function OsuMapPrompt({ map, busy = false, onConvert, sourceLabel, backgr
   return (
     <section
       aria-label={hookTitle}
-      className="relative z-20 w-full min-w-0 max-w-lg min-h-[8rem] flex-none overflow-hidden rounded-xl border border-white/10 bg-surface-950/90 text-left shadow-xl animate-slide-up"
+      className="relative z-20 w-full min-w-0 max-w-3xl min-h-[8rem] flex-none overflow-hidden rounded-xl border border-white/10 bg-surface-950/90 text-left shadow-xl animate-slide-up"
     >
       <div className="flex items-center gap-2 border-b border-white/8 px-4 py-2.5">
         <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden="true" />
@@ -164,7 +164,7 @@ export function LiveMapStack({
 
   return (
     <div
-      className={`live-map-stack relative w-full max-w-lg ${stacked ? 'live-map-stack--stacked' : ''}`}
+      className={`live-map-stack relative w-full max-w-3xl ${stacked ? 'live-map-stack--stacked' : ''}`}
       role={stacked ? 'group' : undefined}
       aria-label={stacked ? `${items.length} live maps available` : undefined}
       onMouseLeave={clearPreview}

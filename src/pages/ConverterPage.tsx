@@ -25,13 +25,13 @@ import { MultiAudioWarning } from '../components/MultiAudioWarning'
 import { MirrorDownloadWarning } from '../components/MirrorDownloadWarning'
 import { BulkConvertDialog } from '../components/BulkConvertDialog'
 import { PackBrowser } from '../components/PackBrowser'
-import { FallingArrows } from '../components/FallingArrows'
 import { LiveMapStack, type LiveMapStackItem, OsuBackground } from '../components/OsuMapPrompt'
 import { PackSettingsDialog } from '../components/PackSettingsDialog'
 import { DiffPresetManager } from '../components/DiffPresetManager'
 import { UpdateDialog } from '../components/UpdateDialog'
 import { BeatmapMirrorDialog } from '../components/BeatmapMirrorDialog'
 import { OsuLibraryPrompt } from '../components/OsuLibraryPrompt'
+import { HomeReveal } from '../components/HomeReveal'
 import { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { isTauri } from '../services/environment'
 import {
@@ -1971,7 +1971,7 @@ export default function ConverterPage() {
   return (
     <ErrorBoundary>
       <div
-        className="h-full flex flex-col relative overflow-hidden animate-app-entrance select-none hide-scrollbar"
+        className="min-h-screen w-full flex flex-col relative animate-app-entrance select-none hide-scrollbar"
         onContextMenu={(e) => e.preventDefault()}
         onDragOver={(e) => {
           e.preventDefault()
@@ -2054,32 +2054,27 @@ export default function ConverterPage() {
           if (filePaths.length > 0) handleMainFilesSelected(filePaths)
         }}
       >
+        <section className="converter-first-screen relative flex min-h-0 w-full shrink-0 flex-col overflow-hidden">
         {(mediaUrls.background || liveBackgroundUrl) && (
-          <div className="absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute inset-0 z-0 overflow-hidden">
             {mediaUrls.background ? (
               <div
                 className="w-full h-full bg-cover bg-center animate-bg-fade-in"
                 style={{
                   backgroundImage: `url(${mediaUrls.background})`,
-                  filter: 'blur(20px) brightness(0.5) saturate(0.5)',
+                  filter: 'blur(22px) brightness(0.4) saturate(0.45)',
                 }}
               />
             ) : (
               <OsuBackground url={liveBackgroundUrl} />
             )}
-            <div className="absolute inset-0 bg-[#0c1a35]/18" />
+            <div className="absolute inset-0 bg-surface-950/50" />
           </div>
         )}
-        {!mediaUrls.background && !liveBackgroundUrl && <div className="absolute inset-0 -z-10 bg-surface-950" />}
+        {!mediaUrls.background && !liveBackgroundUrl && <div className="absolute inset-0 z-0 bg-surface-950" />}
 
-        <div className="relative z-10 flex flex-col h-full">
+        <div className="relative z-10 flex min-h-[100dvh] flex-1 flex-col">
           <Header
-            direction={direction}
-            onSetDirection={(dir) => {
-              setDirection(dir)
-              queueClearAll()
-              reset()
-            }}
             appVersion={appVersion}
             onShowVersionDialog={() => {
               setShowVersionDialog(true)
@@ -2100,7 +2095,7 @@ export default function ConverterPage() {
             onClearAll={handleQueueClearAll}
           />
 
-          <main className="min-h-0 min-w-0 flex-1 flex flex-col items-center p-4 sm:p-6 gap-3 sm:gap-5 overflow-auto hide-scrollbar">
+          <main className="min-w-0 flex-1 flex flex-col items-center p-4 sm:p-6 gap-3 sm:gap-5">
             {packFolder && packEditing === null && (
               <PackBrowser
                 entries={packEntries}
@@ -2159,10 +2154,9 @@ export default function ConverterPage() {
             )}
 
             {!packFolder && queueItems.length === 0 && !beatmap && !packLoading && (
-              <>
+              <div className="converter-home">
                 <LiveMapStack items={livePromptItems} onPriorityChange={setLivePriorityId} />
-                <FallingArrows />
-                <div className="flex flex-col items-center gap-4 w-full max-w-lg my-auto relative z-10">
+                <div className="converter-home__import">
                   <DropZone dragging={dragging} onFilesSelected={handleMainFilesSelected} direction={direction} />
                   <div className="flex items-center gap-3 w-full max-w-md">
                     <div className="flex-1 h-px bg-white/5" />
@@ -2196,12 +2190,12 @@ export default function ConverterPage() {
                   </button>
                   <Link
                     to="/skin-converter"
-                    className="text-xs text-surface-500 hover:text-surface-300 transition-colors duration-75"
+                    className="mt-2 text-xs text-surface-500 transition-colors duration-75 hover:text-surface-300"
                   >
                     {t('converter.convertSkinInstead')} →
                   </Link>
                 </div>
-              </>
+              </div>
             )}
 
             {!packFolder && packLoading && (
@@ -2329,7 +2323,7 @@ export default function ConverterPage() {
           )}
 
           {!beatmap && !packFolder && (
-            <footer className="px-4 sm:px-6 py-2 sm:py-3 border-t border-surface-800/50 text-center text-[10px] sm:text-xs text-surface-500">
+            <footer className="relative z-20 shrink-0 bg-gradient-to-t from-surface-950 via-surface-950/95 to-transparent px-4 pb-2 pt-5 text-center text-[10px] text-surface-500 sm:px-6 sm:pb-3 sm:text-xs">
               © {new Date().getFullYear()} {t('converter.madeBy')}{' '}
               <a
                 href="https://github.com/kaanreal"
@@ -2343,6 +2337,10 @@ export default function ConverterPage() {
             </footer>
           )}
         </div>
+
+        </section>
+
+        {!beatmap && !packFolder && queueItems.length === 0 && !packLoading && <HomeReveal />}
 
         {/* Preview overlay */}
         {showPreview && beatmap && mediaUrls.audio && (

@@ -2,7 +2,6 @@
 import { Link } from 'react-router'
 import { useT } from '../i18n'
 import { getGithubStars, openUrl } from '../services/platform'
-import type { ConvertDirection } from '../types/beatmap'
 import { LanguageSwitcher } from './LanguageSwitcher'
 
 const REPO = 'kaanreal/henkan'
@@ -10,12 +9,8 @@ const GITHUB_URL = `https://github.com/${REPO}`
 const SUPPORTER_URL = 'https://buymeacoffee.com/kaandev'
 
 interface HeaderProps {
-  direction?: ConvertDirection
-  onSetDirection?: (dir: ConvertDirection) => void
   appVersion: string | null
   onShowVersionDialog?: () => void
-  directionLabels?: readonly [string, string]
-  directionAriaLabel?: string
 }
 
 function GithubIcon() {
@@ -27,12 +22,8 @@ function GithubIcon() {
 }
 
 export function Header({
-  direction,
-  onSetDirection,
   appVersion,
   onShowVersionDialog,
-  directionLabels = ['.osu / .osz', '.sm'],
-  directionAriaLabel,
 }: HeaderProps) {
   const t = useT()
   const [stars, setStars] = useState<string | null>(null)
@@ -46,12 +37,12 @@ export function Header({
   }, [])
 
   const versionClass =
-    'hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md border border-white/5 bg-white/[0.03] text-surface-500 text-[11px] font-mono font-medium'
+    'hidden sm:flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-md border border-white/5 bg-white/[0.03] text-surface-500 text-[11px] font-mono font-medium'
 
   return (
-    <header className="app-header px-3 sm:px-6 py-3 border-b border-white/5 bg-black/20 backdrop-blur-md grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-3 items-center shrink-0 animate-fade-in gap-3">
+    <header className="app-header flex shrink-0 items-center justify-between gap-3 border-b border-white/5 bg-black/20 px-3 py-3 backdrop-blur-md animate-fade-in sm:px-6">
       <div className="flex items-center gap-2.5 min-w-0">
-        <Link to="/" className="flex items-center gap-2.5 min-w-0" title={t('header.backToConverter')}>
+        <Link to="/" className="flex shrink-0 items-center gap-2.5" title={t('header.backToConverter')}>
           <img src="/logo.png" alt="Henkan" className="w-8 h-8 rounded-lg shrink-0" />
           <span className="hidden sm:inline text-base font-semibold tracking-tight text-surface-100">Henkan</span>
         </Link>
@@ -70,68 +61,39 @@ export function Header({
 
         <button
           onClick={() => openUrl(GITHUB_URL)}
-          className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-surface-400 hover:text-surface-200 text-[11px] font-medium transition-all duration-75"
+          className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-surface-400 transition-all duration-75 hover:bg-white/[0.08] hover:text-surface-200"
+          aria-label="GitHub"
         >
           <GithubIcon />
-          {stars !== null ? stars : '-'}
+          <span className="hidden sm:inline">{stars !== null ? stars : '-'}</span>
         </button>
 
         <Link
           to="/osu-library"
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-surface-400 hover:text-surface-200 text-xs font-medium transition-all duration-75"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-surface-400 transition-all duration-75 hover:bg-white/[0.08] hover:text-surface-200"
+          title={t('header.library')}
         >
-          {t('header.library')}
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75A2.25 2.25 0 016 4.5h4.19c.6 0 1.17.24 1.59.66l1.06 1.06c.42.42.99.66 1.59.66H18A2.25 2.25 0 0120.25 9v8.25A2.25 2.25 0 0118 19.5H6a2.25 2.25 0 01-2.25-2.25V6.75z" />
+          </svg>
+          <span className="hidden md:inline">{t('header.library')}</span>
         </Link>
 
         <Link
           to="/settings"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-surface-400 hover:text-surface-200 text-xs font-medium transition-all duration-75"
+          className="flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-surface-400 hover:text-surface-200 text-xs font-medium transition-all duration-75"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 3.75h3l.55 2.2a6.75 6.75 0 011.7.98l2.12-.72 1.5 2.6-1.57 1.64c.2.58.3 1.17.3 1.8s-.1 1.22-.3 1.8l1.57 1.64-1.5 2.6-2.12-.72a6.75 6.75 0 01-1.7.98l-.55 2.2h-3l-.55-2.2a6.75 6.75 0 01-1.7-.98l-2.12.72-1.5-2.6 1.57-1.64a6.75 6.75 0 01-.3-1.8c0-.63.1-1.22.3-1.8L4.63 8.8l1.5-2.6 2.12.72a6.75 6.75 0 011.7-.98l.55-2.2z" />
             <circle cx="12" cy="12" r="2.4" />
           </svg>
-          <span className="hidden lg:inline">{t('header.settings')}</span>
+          <span className="hidden xl:inline">{t('header.settings')}</span>
         </Link>
 
         <LanguageSwitcher />
       </div>
 
-      <div className="flex justify-end md:justify-center">
-        {direction && onSetDirection && (
-          <div
-            className="header-direction flex bg-white/[0.04] rounded-lg border border-white/5 p-0.5 gap-0.5"
-            role="group"
-            aria-label={directionAriaLabel ?? t('header.directionAria')}
-          >
-            <button
-              onClick={() => onSetDirection('osu-to-etterna')}
-              aria-pressed={direction === 'osu-to-etterna'}
-              className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all duration-75 ${
-                direction === 'osu-to-etterna'
-                  ? 'bg-accent text-white shadow-sm'
-                  : 'text-surface-400 hover:text-surface-200'
-              }`}
-            >
-              {directionLabels[0]}
-            </button>
-            <span className="text-surface-600 self-center text-xs">→</span>
-            <button
-              onClick={() => onSetDirection('etterna-to-osu')}
-              aria-pressed={direction === 'etterna-to-osu'}
-              className={`px-2 sm:px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all duration-75 ${
-                direction === 'etterna-to-osu'
-                  ? 'bg-accent text-white shadow-sm'
-                  : 'text-surface-400 hover:text-surface-200'
-              }`}
-            >
-              {directionLabels[1]}
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="hidden md:flex justify-end">
+      <div className="hidden shrink-0 justify-end lg:flex">
         <button
           onClick={() => openUrl(SUPPORTER_URL)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#FFDD00]/40 hover:border-[#FFDD00] bg-[#FFDD00]/[0.06] hover:bg-[#FFDD00]/[0.12] text-surface-300 hover:text-white text-xs font-medium transition-all duration-75 shrink-0"
