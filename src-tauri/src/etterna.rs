@@ -449,6 +449,7 @@ fn open_paths(pid: u32) -> Vec<String> {
         .ok()
         .into_iter()
         .flatten()
+        .filter_map(Result::ok)
         .filter_map(|entry| fs::read_link(entry.path()).ok())
         .filter_map(|path| path.to_str().map(str::to_string))
         .collect()
