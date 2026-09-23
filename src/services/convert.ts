@@ -242,6 +242,14 @@ export async function selectDifficulty(
   return beatmap
 }
 
+export async function selectDifficulties(path: string, indices: number[]): Promise<Beatmap[]> {
+  if (isTauri()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    return await invoke<Beatmap[]>('select_difficulties', { path, indices })
+  }
+  return await Promise.all(indices.map(index => selectDifficulty(path, index)))
+}
+
 export async function parseSmAll(pathOrContent: string): Promise<Beatmap[]> {
   if (isTauri()) {
     const { invoke } = await import('@tauri-apps/api/core')

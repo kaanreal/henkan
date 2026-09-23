@@ -296,6 +296,26 @@ pub fn extract_osz_all(path: &str) -> Result<OszResult, String> {
 }
 
 #[tauri::command]
+fn select_difficulties(path: String, indices: Vec<usize>) -> Result<Vec<Beatmap>, String> {
+    if !path.to_lowercase().ends_with(".osz") {
+        return indices.into_iter().map(|index| select_difficulty(path.clone(), index)).collect();
+    }
+    // Extract media once for the whole export, not once per selected song.
+    let (main, entries, source_dir) = extract_osz_all(&path)?;
+    indices.into_iter().map(|index| {
+        let (name, text) = entries.get(index)
+            .ok_or_else(|| format!("Difficulty index {} out of range", index))?;
+        let mut beatmap = parsers::osu::parse_osu(text)
+            .map_err(|e| format!("Parse error in {}: {}", name, e))?;
+        beatmap.source_file = path.clone();
+        beatmap.source_dir = source_dir.clone();
+        beatmap.available_difficulties = main.available_difficulties.clone();
+        beatmap.compute_duration();
+        Ok(beatmap)
+    }).collect()
+}
+
+#[tauri::command]
 fn select_difficulty(path: String, index: usize) -> Result<Beatmap, String> {
     let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
 
@@ -2634,6 +2654,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             parse_file,
             select_difficulty,
+            select_difficulties,
             expand_diff_name,
             resolve_file,
             resolve_audio_fallback,
@@ -2677,6 +2698,45 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "requires HENKAN_TEST_OSU_PACK pointing to a local osu folder"]
+    fn separate_pack_source_metadata() {
+        use super::*;
+        use std::io::Write;
+        let source = std::env::var("HENKAN_TEST_OSU_PACK").unwrap();
+        let base = std::env::temp_dir().join(format!("henkan-pack-check-{}", std::process::id()));
+        fs::create_dir_all(&base).unwrap();
+        let archive_path = base.join("source.osz");
+        let mut archive = zip::ZipWriter::new(fs::File::create(&archive_path).unwrap());
+        let mut count = 0;
+        for entry in fs::read_dir(source).unwrap().flatten() {
+            if entry.path().extension().and_then(|s| s.to_str()) != Some("osu") { continue; }
+            archive.start_file(entry.file_name().to_string_lossy(), zip::write::SimpleFileOptions::default()).unwrap();
+            archive.write_all(&fs::read(entry.path()).unwrap()).unwrap();
+            count += 1;
+        }
+        archive.finish().unwrap();
+        let start = std::time::Instant::now();
+        let maps = select_difficulties(archive_path.to_string_lossy().into_owned(), (0..count).collect()).unwrap();
+        let mut subtitles = HashSet::new();
+        for (index, bm) in maps.into_iter().enumerate() {
+            let config = ExportConfig {
+                title: bm.title.clone(), artist: bm.artist.clone(), creator: bm.creator.clone(),
+                difficulty_name: bm.difficulty_name.clone(), audio_filename: bm.audio_filename.clone(),
+                source: bm.source.clone(), tags: bm.tags.clone(), preview_time: bm.preview_time,
+                ..ExportConfig::default()
+            };
+            let sm = convert_beatmap(bm.clone(), config).unwrap();
+            let expected = bm.difficulty_name.replace(';', "\\;");
+            assert!(sm.contains(&format!("#SUBTITLE:{};", expected)), "{}", bm.difficulty_name);
+            assert!(sm.contains(&format!("    {}:", expected)), "chart name: {}", bm.difficulty_name);
+            subtitles.insert(expected);
+            fs::write(base.join(format!("{}.sm", index)), sm).unwrap();
+        }
+        assert_eq!(subtitles.len(), count);
+        println!("Verified {} distinct subtitles and chart names in {:?}: {:?}", count, start.elapsed(), base);
+    }
+
     use super::*;
 
     #[test]

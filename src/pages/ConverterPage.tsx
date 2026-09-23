@@ -41,7 +41,7 @@ import {
 } from '../services/dialogs'
 import { fileInputCache, getCachedFile, clearFileCache } from '../services/fileCache'
 import { readFileAsDataUrl, resolveMediaFile, resolveAudioFallback, saveBlobToFile } from '../services/files'
-import { parseFile, selectDifficulty, convertBeatmap, expandDiffName, ensureOszMediaCached } from '../services/convert'
+import { parseFile, selectDifficulty, selectDifficulties, convertBeatmap, expandDiffName, ensureOszMediaCached } from '../services/convert'
 import { fetchMissingMedia, type MirrorProgress, type FetchLookupInfo } from '../services/mirrorMedia'
 import { exportBeatmap, exportAllBeatmaps, zipFolder, addCdtitleToZip } from '../services/export'
 import {
@@ -71,6 +71,15 @@ import { useEtternaLive } from '../hooks/useEtternaLive'
 import { useEtternaMapBackground } from '../hooks/useEtternaMapBackground'
 import { etternaClientName, etternaReadMap } from '../lib/etternaDesktop'
 import { useOsuLibraryStore } from '../stores/useOsuLibraryStore'
+import { useConversionLibraryStore } from '../stores/useConversionLibraryStore'
+import { useInterfaceSettingsStore } from '../stores/useInterfaceSettingsStore'
+import { consumePendingConversionReplay, type PackReplay } from '../services/conversionLibrary'
+import {
+  configForSeparateBeatmap,
+  normalizeCompilationMetadata,
+  normalizeParsedOsuPackMetadata,
+  packEntryMetadata,
+} from '../lib/packMetadata'
 
 const ACCEPTED_EXTS = ['.osu', '.osz', '.sm']
 
@@ -1128,15 +1137,13 @@ export default function ConverterPage() {
             for (const idx of indices) {
               const bm = await selectDifficulty(beatmap.source_file, idx)
               const diffLabel = bm.difficulty_name || `Diff ${idx}`
+              const sourceConfig = configForSeparateBeatmap(cur, bm)
               const safeDiff = diffLabel.replace(/[/\\?%*:|"<>]/g, '_')
               const diffCfg = {
-                ...cur,
-                audio_filename: bm.audio_filename || cur.audio_filename,
-                background_filename: bm.background_filename ?? cur.background_filename,
+                ...sourceConfig,
                 difficulty_name: diffNameTemplate
-                  ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate)
-                  : cur.difficulty_name || bm.difficulty_name,
-                preview_time: bm.preview_time,
+                  ? await expandDiffName(diffNameTemplate, bm, sourceConfig, sourceConfig.conversion_rate)
+                  : bm.difficulty_name,
               }
               const content = await convertBeatmap(bm, diffCfg)
               const ext = bm.source_format === 'OsuMania' ? '.sm' : '.osu'
@@ -1182,17 +1189,15 @@ export default function ConverterPage() {
             allPaths.push(zipName)
           } else if (isTauri() && indices.length > 1) {
             // Desktop multi-diff
-            for (const idx of indices) {
-              const bm = await selectDifficulty(beatmap.source_file, idx)
-              const diffLabel = bm.difficulty_name || `Diff ${idx}`
+            const selectedBeatmaps = await selectDifficulties(beatmap.source_file, indices)
+            for (const [position, bm] of selectedBeatmaps.entries()) {
+              const diffLabel = bm.difficulty_name || `Diff ${indices[position]}`
+              const sourceConfig = configForSeparateBeatmap(cur, bm)
               const diffCfg = {
-                ...cur,
-                audio_filename: bm.audio_filename || cur.audio_filename,
-                background_filename: bm.background_filename ?? cur.background_filename,
+                ...sourceConfig,
                 difficulty_name: diffNameTemplate
-                  ? await expandDiffName(diffNameTemplate, bm, cur, cur.conversion_rate)
-                  : cur.difficulty_name || bm.difficulty_name,
-                preview_time: bm.preview_time,
+                  ? await expandDiffName(diffNameTemplate, bm, sourceConfig, sourceConfig.conversion_rate)
+                  : bm.difficulty_name,
               }
               const content = await convertBeatmap(bm, diffCfg)
               const songName = cur.title || beatmap?.title || 'export'
