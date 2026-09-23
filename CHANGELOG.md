@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.8.2](https://github.com/kaanreal/henkan/compare/v1.8.1...v1.8.2) (2026-09-23)
+
+## What's new
+
+- Save conversions straight into detected osu!stable and Etterna song folders from the desktop app.
+- Browse conversion history and the local osu! skin library from the redesigned desktop navigation.
+- Control osu! and Etterna live-map hooks separately in desktop settings.
+- Select pack difficulties directly, review per-song metadata, and convert multi-audio packs as separate songs by default.
+- Keep the last opened map background on the converter home screen, including after restarting.
+- Added cleaner loading states, consistent buttons, fixed navigation, refreshed docs, and the new `henkan.kaan.moe` domain.
+
+## Fixed
+
+- Preserve each map's own artist, title, subtitle, audio, and background when converting full packs.
+- Use osu! difficulty versions as Etterna titles while keeping the osu! title as the subtitle for compilation-style packs.
+- Improve pack conversion speed and avoid repeated media work.
+- Improve Etterna timing conversion and current-song detection.
+- Preserve source audio bitrate during rate changes.
+- Fix platform builds for the osu!lazer background bridge on macOS and Etterna song detection on Linux.
+
+
 ## [1.7.0](https://github.com/kaanreal/henkan/compare/v1.6.1...v1.7.0) (2026-09-06)
 
 
