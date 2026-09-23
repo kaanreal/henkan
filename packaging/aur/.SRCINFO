@@ -1,6 +1,6 @@
 pkgbase = henkan-bin
 	pkgdesc = osu!mania to Etterna and StepMania converter (desktop and CLI)
-	pkgver = 1.8.0
+	pkgver = 1.7.0
 	pkgrel = 1
 	url = https://github.com/kaanreal/henkan
 	arch = x86_64
@@ -8,9 +8,9 @@ pkgbase = henkan-bin
 	provides = henkan
 	conflicts = henkan
 	options = !strip
-	source = Henkan-1.8.0.AppImage::https://github.com/kaanreal/henkan/releases/download/v1.8.0/Henkan-v1.8.0-linux.AppImage
+	source = Henkan-1.7.0.AppImage::https://github.com/kaanreal/henkan/releases/download/v1.7.0/Henkan-v1.7.0-linux.AppImage
 	source = LICENSE
-	sha256sums = 238b5d804d3f4808231ab7015dd8afa050ebbd78e10bbd1f84b5a8e3537e7970
+	sha256sums = 3656270e6bb729cf923847956f599b5807a79e162663178d7b5d22ca8349feaa
 	sha256sums = ccaccd972ac49ea3ce4f6ca62056b2532631839bf5c92b6c2adc797d597de78b
 
 pkgname = henkan-bin
