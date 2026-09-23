@@ -1,7 +1,7 @@
 {
   "name": "henkan",
   "private": true,
-  "version": "1.8.3",
+  "version": "1.8.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
