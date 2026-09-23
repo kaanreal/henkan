@@ -1,16 +1,23 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { useT } from '../i18n'
+import { isTauri } from '../services/environment'
 import { getGithubStars, openUrl } from '../services/platform'
 import { LanguageSwitcher } from './LanguageSwitcher'
+import { DesktopAppMenu } from './DesktopAppMenu'
+import { scrollAppToTop } from '../lib/appScroll'
 
 const REPO = 'kaanreal/henkan'
 const GITHUB_URL = `https://github.com/${REPO}`
 const SUPPORTER_URL = 'https://buymeacoffee.com/kaandev'
+const DESKTOP_HINT_LAST_SHOWN = 'henkan.desktop-app-hint.last-shown'
+const DESKTOP_HINT_DISMISSED = 'henkan.desktop-app-hint.dismissed'
+const DESKTOP_HINT_COOLDOWN = 1000 * 60 * 60 * 24 * 7
 
 interface HeaderProps {
   appVersion: string | null
   onShowVersionDialog?: () => void
+  onHomeClick?: () => void
 }
 
 function GithubIcon() {
@@ -24,9 +31,13 @@ function GithubIcon() {
 export function Header({
   appVersion,
   onShowVersionDialog,
+  onHomeClick,
 }: HeaderProps) {
   const t = useT()
   const [stars, setStars] = useState<string | null>(null)
+  const [desktopMenuOpen, setDesktopMenuOpen] = useState(false)
+  const [desktopHintOpen, setDesktopHintOpen] = useState(false)
+  const web = !isTauri()
 
   useEffect(() => {
     getGithubStars(REPO)
@@ -36,13 +47,59 @@ export function Header({
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    if (!web || desktopMenuOpen) return
+    try {
+      if (localStorage.getItem(DESKTOP_HINT_DISMISSED)) return
+      const lastShown = Number(localStorage.getItem(DESKTOP_HINT_LAST_SHOWN) || 0)
+      if (Date.now() - lastShown < DESKTOP_HINT_COOLDOWN) return
+    } catch {
+      // Private browsing can block localStorage. The hint can still show once.
+    }
+
+    let hideTimer: number | undefined
+    const timer = window.setTimeout(() => {
+      if (Math.random() > 0.68) return
+      try {
+        localStorage.setItem(DESKTOP_HINT_LAST_SHOWN, String(Date.now()))
+      } catch {
+        // Keep the hint non-blocking if storage is unavailable.
+      }
+      setDesktopHintOpen(true)
+      hideTimer = window.setTimeout(() => setDesktopHintOpen(false), 9000)
+    }, 16000)
+
+    return () => {
+      window.clearTimeout(timer)
+      if (hideTimer !== undefined) window.clearTimeout(hideTimer)
+    }
+  }, [desktopMenuOpen, web])
+
+  const dismissDesktopHint = () => {
+    setDesktopHintOpen(false)
+    try {
+      localStorage.setItem(DESKTOP_HINT_DISMISSED, '1')
+    } catch {
+      // Dismissing the hint still works for this session without storage.
+    }
+  }
+
   const versionClass =
     'hidden sm:flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-md border border-white/5 bg-white/[0.03] text-surface-500 text-[11px] font-mono font-medium'
 
   return (
-    <header className="app-header flex shrink-0 items-center justify-between gap-3 border-b border-white/5 bg-black/20 px-3 py-3 backdrop-blur-md animate-fade-in sm:px-6">
+    <>
+    <header className="app-header sticky top-0 z-50 flex shrink-0 items-center justify-between gap-3 border-b border-white/5 bg-surface-950/85 px-3 py-3 backdrop-blur-md animate-fade-in sm:px-6">
       <div className="flex items-center gap-2.5 min-w-0">
-        <Link to="/" className="flex shrink-0 items-center gap-2.5" title={t('header.backToConverter')}>
+        <Link
+          to="/"
+          onClick={() => {
+            onHomeClick?.()
+            scrollAppToTop()
+          }}
+          className="flex shrink-0 items-center gap-2.5"
+          title={t('header.backToConverter')}
+        >
           <img src="/logo.png" alt="Henkan" className="w-8 h-8 rounded-lg shrink-0" />
           <span className="hidden sm:inline text-base font-semibold tracking-tight text-surface-100">Henkan</span>
         </Link>
@@ -90,10 +147,51 @@ export function Header({
           <span className="hidden xl:inline">{t('header.settings')}</span>
         </Link>
 
+        <Link
+          to="/docs"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-surface-400 transition-all duration-75 hover:bg-white/[0.08] hover:text-surface-200"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 5.25A2.25 2.25 0 016.75 3h4.5A2.25 2.25 0 0113.5 5.25v15A2.25 2.25 0 0011.25 18h-4.5a2.25 2.25 0 00-2.25 2.25v-15z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 5.25A2.25 2.25 0 0017.25 3h-1.5a2.25 2.25 0 00-2.25 2.25v15A2.25 2.25 0 0115.75 18h1.5a2.25 2.25 0 012.25 2.25v-15z" />
+          </svg>
+          <span className="hidden xl:inline">{t('siteHeader.docs')}</span>
+        </Link>
+
         <LanguageSwitcher />
       </div>
 
-      <div className="hidden shrink-0 justify-end lg:flex">
+      <div className="hidden shrink-0 items-center justify-end gap-2 lg:flex">
+        {web && (
+          <div className="desktop-app-button-wrap relative">
+            <button
+              type="button"
+              onClick={() => { setDesktopHintOpen(false); setDesktopMenuOpen(true) }}
+              className="flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3.5 py-1.5 text-xs font-semibold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent-hover hover:shadow-lg hover:shadow-accent/20"
+            >
+              Get the desktop app
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l4-4m-4 4l-4-4M5 21h14" />
+              </svg>
+            </button>
+            {desktopHintOpen && (
+              <div className="desktop-app-hint absolute right-0 top-[calc(100%+12px)] z-50 w-64 rounded-xl border border-accent/25 bg-surface-950 p-3.5 text-left shadow-xl shadow-black/35" role="status">
+                <span className="desktop-app-hint__arrow" aria-hidden="true" />
+                <div className="flex items-start gap-2.5">
+                  <span className="desktop-app-hint__spark mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent/15 text-sm text-accent-muted">✦</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-surface-100">A tiny desktop tip</p>
+                    <p className="mt-1 text-[11px] leading-5 text-surface-400">The desktop app can watch osu! and Etterna for you.</p>
+                  </div>
+                  <button type="button" onClick={dismissDesktopHint} className="-mr-1 -mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-surface-600 transition-colors hover:bg-white/[0.06] hover:text-surface-200" aria-label="Dismiss desktop app tip">
+                    <span aria-hidden="true">×</span>
+                  </button>
+                </div>
+                <button type="button" onClick={() => { setDesktopHintOpen(false); setDesktopMenuOpen(true) }} className="mt-3 text-[11px] font-semibold text-accent-muted transition-colors hover:text-accent">Show me around <span aria-hidden="true">↗</span></button>
+              </div>
+            )}
+          </div>
+        )}
         <button
           onClick={() => openUrl(SUPPORTER_URL)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#FFDD00]/40 hover:border-[#FFDD00] bg-[#FFDD00]/[0.06] hover:bg-[#FFDD00]/[0.12] text-surface-300 hover:text-white text-xs font-medium transition-all duration-75 shrink-0"
@@ -102,5 +200,20 @@ export function Header({
         </button>
       </div>
     </header>
+    {web && <DesktopAppMenu open={desktopMenuOpen} onClose={() => setDesktopMenuOpen(false)} />}
+    </>
   )
+}
+
+export function AppHeader() {
+  const [appVersion, setAppVersion] = useState<string | null>(import.meta.env.VITE_APP_VERSION || null)
+
+  useEffect(() => {
+    if (!isTauri()) return
+    import('@tauri-apps/api/app').then(({ getVersion }) => {
+      getVersion().then(setAppVersion)
+    })
+  }, [])
+
+  return <Header appVersion={appVersion} />
 }

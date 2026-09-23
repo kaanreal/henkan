@@ -18,8 +18,14 @@ interface Props {
   onUpdateConfig: (partial: Partial<ExportConfig>) => void
   onChangeFile: (field: string, current: string | null) => void
   onConvert: () => void
+  directSaveLabel?: string | null
+  onDirectSave?: () => void
   onReset: () => void
   onSelectDifficulty: (index: number) => void
+  selectedDifficultyIndices: number[]
+  onToggleDifficulty: (index: number) => void
+  onSelectAllDifficulties: () => void
+  onDeselectAllDifficulties: () => void
   onUpdateDiffNameTemplate: (template: string) => void
   onOpenPresetManager: () => void
 }
@@ -41,7 +47,9 @@ function BpmDisplay(timing_points: Beatmap['timing_points']) {
 export function MetadataPanel({
   beatmap, config, mediaUrls, tapCount, holdCount,
   isConverting, switchingDifficulty, direction, diffNameTemplate,
-  onUpdateConfig, onChangeFile, onConvert, onReset, onSelectDifficulty,
+  onUpdateConfig, onChangeFile, onConvert, directSaveLabel, onDirectSave,
+  onReset, onSelectDifficulty, selectedDifficultyIndices, onToggleDifficulty,
+  onSelectAllDifficulties, onDeselectAllDifficulties,
   onUpdateDiffNameTemplate, onOpenPresetManager,
 }: Props) {
   const t = useT()
@@ -92,31 +100,66 @@ export function MetadataPanel({
           <div className="flex items-center gap-2 mb-2.5">
             <h2 className="text-[11px] font-semibold text-surface-500 tracking-widest uppercase">{t('metadataPanel.difficulties')}</h2>
             <div className="h-px flex-1 bg-white/5" />
+            <span className="text-[10px] tabular-nums text-surface-600">
+              {selectedDifficultyIndices.length}/{beatmap.available_difficulties.length}
+            </span>
+            <button
+              type="button"
+              onClick={onSelectAllDifficulties}
+              className="text-[10px] text-surface-500 transition-colors hover:text-surface-200"
+            >
+              {t('common.selectAll')}
+            </button>
+            <button
+              type="button"
+              onClick={onDeselectAllDifficulties}
+              className="text-[10px] text-surface-500 transition-colors hover:text-surface-200"
+            >
+              {t('common.deselectAll')}
+            </button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {beatmap.available_difficulties.map((d, i) => {
               const active = d.name === beatmap.difficulty_name
+              const selected = selectedDifficultyIndices.includes(i)
               return (
-                <button
+                <div
                   key={i}
-                  onClick={() => onSelectDifficulty(i)}
-                  disabled={switchingDifficulty}
                   className={`
-                    relative text-left px-3.5 py-2.5 rounded-xl text-xs font-medium
-                    transition-all duration-100 active:scale-[0.97]
+                    relative flex items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-medium
+                    transition-all duration-100
                     ${active
-                      ? 'bg-accent/15 border border-accent/40 text-accent-muted'
+                      ? 'bg-accent/15 border-accent/40 text-accent-muted'
                       : switchingDifficulty
-                        ? 'bg-white/[0.02] border border-white/5 text-surface-500 cursor-wait'
-                        : 'bg-white/[0.03] border border-white/5 text-surface-400 hover:bg-white/[0.06] hover:text-surface-200 hover:border-white/10'
+                        ? 'bg-white/[0.02] border-white/5 text-surface-500'
+                        : 'bg-white/[0.03] border-white/5 text-surface-400 hover:border-white/10'
                     }
                   `}
                 >
-                  <div className="font-medium mb-0.5">{d.name}</div>
-                  <div className={`text-[10px] ${active ? 'text-accent/60' : 'text-surface-500'}`}>
-                    {active && switchingDifficulty ? t('common.loading') : t('convertDialog.notes', { keys: d.keys, count: d.note_count })}
-                  </div>
-                </button>
+                  <button
+                    type="button"
+                    data-henkan-control
+                    onClick={() => onToggleDifficulty(i)}
+                    aria-label={`${selected ? t('common.deselectAll') : t('common.selectAll')}: ${d.name}`}
+                    className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border transition-colors ${selected ? 'border-accent bg-accent text-white' : 'border-white/15 bg-black/10 text-transparent hover:border-white/30'}`}
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    data-henkan-control
+                    onClick={() => onSelectDifficulty(i)}
+                    disabled={switchingDifficulty}
+                    className="min-w-0 flex-1 text-left disabled:cursor-wait"
+                  >
+                    <div className="truncate font-medium mb-0.5">{d.name}</div>
+                    <div className={`text-[10px] ${active ? 'text-accent/60' : 'text-surface-500'}`}>
+                      {active && switchingDifficulty ? t('common.loading') : t('convertDialog.notes', { keys: d.keys, count: d.note_count })}
+                    </div>
+                  </button>
+                </div>
               )
             })}
           </div>
@@ -321,6 +364,7 @@ export function MetadataPanel({
                   {['YES', 'NO', 'ROULETTE'].map(o => (
                     <button
                       key={o}
+                      data-henkan-control
                       onClick={() => onUpdateConfig({ selectable: o === 'YES' ? null : o })}
                       className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-75
                         ${(config.selectable ?? 'YES') === o
@@ -355,10 +399,21 @@ export function MetadataPanel({
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-2 pt-1 animate-fade-in">
+      <div className="flex flex-wrap items-center gap-2 pt-1 animate-fade-in">
+        {directSaveLabel && onDirectSave && (
+          <button
+            onClick={onDirectSave}
+            disabled={isConverting || selectedDifficultyIndices.length === 0}
+            className="h-11 flex-1 rounded-xl border border-accent/25 bg-accent/10 px-4 text-sm font-medium text-accent-muted
+              hover:border-accent/40 hover:bg-accent/15 active:scale-[0.97] transition-all duration-75
+              disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {directSaveLabel}
+          </button>
+        )}
         <button
           onClick={onConvert}
-          disabled={isConverting}
+          disabled={isConverting || selectedDifficultyIndices.length === 0}
           className="flex-1 h-11 rounded-xl text-sm font-medium
             bg-white/[0.04] border border-white/8 text-surface-400
             hover:bg-white/[0.07] hover:text-surface-200 active:scale-[0.97] transition-all duration-75
@@ -472,6 +527,7 @@ function FormatToggle({ options, value, onChange }: {
       {options.map(o => (
         <button
           key={o.value}
+          data-henkan-control
           onClick={() => onChange(o.value)}
           className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all duration-75
             ${o.value === value

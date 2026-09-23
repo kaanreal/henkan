@@ -5,6 +5,8 @@ import { openDirectory } from '../services/dialogs'
 import { scanPack } from '../services/pack'
 import { selectDifficulty, convertBeatmap } from '../services/convert'
 import { exportBeatmap } from '../services/export'
+import { useConversionLibraryStore } from '../stores/useConversionLibraryStore'
+import { LoadingScreen } from './LoadingScreen'
 
 interface Props {
   open: boolean
@@ -145,6 +147,29 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
 
         const content = await convertBeatmap(bm, cfg)
         const result = await exportBeatmap(bm, cfg, content, exportDir)
+        useConversionLibraryStore.getState().remember({
+          kind: 'beatmap',
+          title: bm.title,
+          artist: bm.artist,
+          creator: bm.creator,
+          sourceName: entry.source_file.split(/[/\\]+/).pop() || entry.source_file,
+          sourceFormat: bm.source_format,
+          direction: 'etterna-to-osu',
+          outputFormat: cfg.output_format,
+          outputNames: [result],
+          outputPath: exportDir,
+          itemCount: 1,
+          difficulty: bm.difficulty_name || null,
+          sourcePath: entry.source_file,
+          replay: {
+            sourcePath: entry.source_file,
+            config: { ...cfg },
+            difficultyIndices: [di],
+            separateSongs: false,
+            packSettings: null,
+            skinOptions: null,
+          },
+        })
         results.push(result)
         converted++
       }
@@ -218,6 +243,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
                       {/* Song header */}
                       <div className="flex items-center gap-2 px-1 py-1">
                         <button
+                          data-henkan-control
                           onClick={() => toggleFile(fi)}
                           className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 transition-all duration-75
                             ${allInFile
@@ -247,6 +273,7 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
                           return (
                             <button
                               key={di}
+                              data-henkan-control
                               onClick={() => toggleDiff(fi, di)}
                               className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-left text-xs transition-all duration-75
                                 ${checked ? 'text-surface-200' : 'text-surface-500 hover:text-surface-400'}
@@ -288,15 +315,6 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
             </>
           )}
 
-          {scanning && (
-            <div className="px-5 py-8 text-center text-xs text-surface-500">
-              <div className="animate-pulse-soft mb-2">{t('bulkConvert.scanningFolder')}</div>
-              <div className="h-0.5 w-full bg-white/[0.04] rounded-full overflow-hidden">
-                <div className="h-full w-1/3 bg-accent/40 rounded-full animate-pulse" />
-              </div>
-            </div>
-          )}
-
           {entries.length === 0 && !scanning && folder && (
             <div className="px-5 py-8 text-center text-xs text-surface-500">
               {t('bulkConvert.noSmFiles')}
@@ -307,7 +325,6 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
           {progress && (
             <div className="px-5 pb-2">
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/[0.06] border border-accent/10 text-xs text-surface-400">
-                {converting && <div className="w-2 h-2 rounded-full bg-accent animate-pulse-soft shrink-0" />}
                 <span className="truncate">{progress}</span>
               </div>
             </div>
@@ -340,6 +357,11 @@ export function BulkConvertDialog({ open, onCancel }: Props) {
           </div>
         </div>
       </div>
+      <LoadingScreen
+        show={scanning || converting}
+        label={converting ? t('common.converting') : t('bulkConvert.scanningFolder')}
+        detail={progress}
+      />
     </div>
   )
 }

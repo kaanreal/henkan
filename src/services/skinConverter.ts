@@ -1566,7 +1566,7 @@ async function convertOsuToEtterna(input: File | string): Promise<SkinConversion
     'Do not create another folder around the folder already in this ZIP.',
   ].join('\n'))
   return {
-    blob: await output.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } }),
+    blob: await output.generateAsync({ type: 'blob', compression: 'STORE' }),
     filename: `${safeName(inspection.name)}.zip`,
     inspection,
   }
@@ -1712,7 +1712,7 @@ async function convertEtternaToOsu(
   output.file('_blank.png', await transparentPng())
 
   return {
-    blob: await output.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } }),
+    blob: await output.generateAsync({ type: 'blob', compression: 'STORE' }),
     filename: `${skinName}.osk`,
     inspection,
   }

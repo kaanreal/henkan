@@ -94,6 +94,7 @@ export function ConversionQueue({
             return (
               <button
                 key={item.id}
+                data-henkan-control
                 onClick={() => onSelect(item)}
                 className={`
                   group relative flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-xs font-medium

@@ -61,6 +61,7 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
             </p>
             <div className="mt-4 space-y-2">
               <button
+                data-henkan-control
                 onClick={handleSeparate}
                 className={`w-full flex items-start gap-3 px-3.5 py-3 rounded-xl text-left text-sm border transition-all duration-150
                   ${choice === 'separate'
@@ -88,6 +89,7 @@ export function MultiAudioWarning({ onSeparateSongs, onCombineAnyway, onCancel }
                 </div>
               </button>
               <button
+                data-henkan-control
                 onClick={handleCombine}
                 className={`w-full flex items-start gap-3 px-3.5 py-3 rounded-xl text-left text-sm border transition-all duration-150
                   ${choice === 'combine'

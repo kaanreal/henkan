@@ -19,6 +19,13 @@ export type EtternaLive = {
   problem: string | null
 }
 
+export type EtternaStatus = {
+  supported: boolean
+  installed: boolean
+  root: string | null
+  songs: string | null
+}
+
 export const ETTERNA_LIVE_EVENT = 'henkan://etterna-live'
 export const ETTERNA_OFFLINE: EtternaLive = {
   running: false,
@@ -39,6 +46,11 @@ export async function etternaLive(): Promise<EtternaLive> {
   } catch {
     return ETTERNA_OFFLINE
   }
+}
+
+export async function etternaStatus(): Promise<EtternaStatus> {
+  if (!isTauri()) return { supported: false, installed: false, root: null, songs: null }
+  return await (await invoker())<EtternaStatus>('etterna_status')
 }
 
 export async function watchEtternaLive(onLive: (live: EtternaLive) => void): Promise<() => void> {

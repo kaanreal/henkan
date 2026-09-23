@@ -125,12 +125,8 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
         _ => "dance-single",
     };
 
-    let diff_name = if let Some(ref v) = config.subtitle {
-        if v.is_empty() {
-            &beatmap.difficulty_name
-        } else {
-            v
-        }
+    let diff_name = if !config.difficulty_name.is_empty() {
+        &config.difficulty_name
     } else if beatmap.difficulty_name.is_empty() {
         "Converted"
     } else {
@@ -514,6 +510,40 @@ CircleSize:4
         assert!(sm.lines().any(|l| l.starts_with('2')), "no hold head found");
         assert!(sm.lines().any(|l| l.starts_with('3')), "no hold tail found");
         println!("=== SM OUTPUT ===\n{}", sm);
+    }
+
+    #[test]
+    fn test_subtitle_does_not_replace_chart_name() {
+        let osu = r#"osu file format v14
+
+[General]
+AudioFilename: audio.mp3
+Mode: 3
+
+[Metadata]
+Title:Community Pack 3
+Artist:Various Artists
+Creator:Mapper
+Version:Artist - Song
+
+[Difficulty]
+CircleSize:4
+
+[TimingPoints]
+0,500,4,0,0,100,1,0
+
+[HitObjects]
+64,192,1000,1,0,0:0:0:0:
+"#;
+        let bm = parse_osu(osu).unwrap();
+        let mut cfg = test_config();
+        cfg.subtitle = Some("Community Pack 3".to_string());
+        cfg.difficulty_name = "Artist - Song".to_string();
+
+        let sm = convert(&bm, &cfg).unwrap();
+
+        assert!(sm.contains("#SUBTITLE:Community Pack 3;"));
+        assert!(sm.contains("#NOTES:\n    dance-single:\n    Artist - Song:"));
     }
 
     #[test]

@@ -132,7 +132,12 @@ export async function resolveMediaFile(
     // Skip files that are clearly not backgrounds (banners, cd titles)
     const candidates = files.filter(f => {
       const stem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
-      return !['cdtitle', 'cd', 'bn', 'banner'].includes(stem) && !stem.includes('cdtitle')
+      return !['cdtitle', 'cd', 'bn', 'banner'].includes(stem) &&
+        !stem.includes('cdtitle') &&
+        !stem.includes('banner') &&
+        !stem.endsWith(' bn') &&
+        !stem.endsWith('_bn') &&
+        !stem.endsWith('-bn')
     })
     if (candidates.length === 0) return null
     // Prefer file with "bg" or "background" in the name
@@ -164,7 +169,7 @@ export async function resolveMediaFile(
   // 2. Stem match (same base name, different extension)
   const stem = baseLower.replace(/\.[^.]+$/, '')
   const isImageOrVideoReq = /\.(png|jpg|jpeg|gif|bmp|webp|avi|mpg|mpeg|webm|mp4)$/i.test(filename) || stem.includes('bg') || stem.includes('background')
-  const isAudioReq = /\.(mp3|ogg|wav|flac)$/i.test(filename)
+  const isAudioReq = /\.(mp3|ogg|wav|flac|m4a|wma)$/i.test(filename)
 
   const byStem = inDir.find(f => {
     const fStem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
@@ -174,7 +179,7 @@ export async function resolveMediaFile(
 
     // Ensure the matched file is of the same media category as the requested file
     const fIsImageOrVideo = /\.(png|jpg|jpeg|gif|bmp|webp|avi|mpg|mpeg|webm|mp4)$/i.test(f.name)
-    const fIsAudio = /\.(mp3|ogg|wav|flac)$/i.test(f.name)
+    const fIsAudio = /\.(mp3|ogg|wav|flac|m4a|wma)$/i.test(f.name)
     
     if (isImageOrVideoReq && !fIsImageOrVideo) return false
     if (isAudioReq && !fIsAudio) return false

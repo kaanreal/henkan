@@ -179,7 +179,7 @@ export function LiveMapStack({
 
           return (
             <div
-              key={item.id}
+              key={`${item.id}:${item.map.folder}:${item.map.file}`}
               className={`live-map-stack__item ${isFront ? 'live-map-stack__item--front' : 'live-map-stack__item--behind'} ${isHovered && !isFront ? 'live-map-stack__item--hovered' : ''}`}
               style={
                 {
@@ -221,8 +221,11 @@ export function OsuBackground({ url }: { url: string | null }) {
 
   useEffect(() => {
     if (!url) {
-      setCurrentUrl(null)
-      setIncomingUrl(null)
+      const timeout = window.setTimeout(() => {
+        setCurrentUrl(null)
+        setIncomingUrl(null)
+      }, 900)
+      return () => window.clearTimeout(timeout)
     } else if (!currentUrl) {
       setCurrentUrl(url)
       setIncomingUrl(null)

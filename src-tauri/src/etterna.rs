@@ -35,6 +35,15 @@ pub struct Live {
     pub problem: Option<String>,
 }
 
+#[derive(Serialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Status {
+    pub supported: bool,
+    pub installed: bool,
+    pub root: Option<String>,
+    pub songs: Option<String>,
+}
+
 impl Live {
     pub fn interval(&self) -> Duration {
         POLL_INTERVAL
@@ -174,6 +183,19 @@ pub fn etterna_live(app: tauri::AppHandle) -> serde_json::Value {
 }
 
 #[tauri::command]
+pub fn etterna_status() -> Status {
+    let root = discover_root();
+    Status {
+        supported: true,
+        installed: root.is_some(),
+        songs: root
+            .as_ref()
+            .and_then(|path| path.join("Songs").to_str().map(str::to_string)),
+        root: root.and_then(|path| path.to_str().map(str::to_string)),
+    }
+}
+
+#[tauri::command]
 pub fn etterna_read_map(folder: String, file: String) -> Result<String, String> {
     read_map(&folder, &file)
 }
@@ -211,6 +233,10 @@ pub fn discover_root() -> Option<PathBuf> {
             PathBuf::from(r"C:\Etterna"),
             PathBuf::from(r"C:\Games\Etterna"),
         ]);
+        if let Some(system_drive) = std::env::var_os("SystemDrive") {
+            let drive_root = PathBuf::from(format!("{}\\", system_drive.to_string_lossy()));
+            roots.extend(portable_roots_on(&drive_root));
+        }
     }
     #[cfg(not(windows))]
     {
@@ -244,6 +270,24 @@ pub fn discover_root() -> Option<PathBuf> {
     }
 
     roots.into_iter().find(|root| root.join("Songs").is_dir())
+}
+
+#[cfg(windows)]
+fn portable_roots_on(drive: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(drive) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            entry
+                .file_type()
+                .ok()?
+                .is_dir()
+                .then_some(entry.path().join("Etterna"))
+        })
+        .filter(|root| root.join("Songs").is_dir())
+        .collect()
 }
 
 fn running_root() -> Option<PathBuf> {
@@ -969,6 +1013,20 @@ mod tests {
             );
             let _ = fs::remove_dir_all(root);
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn finds_portable_etterna_one_folder_below_a_drive_root() {
+        let drive =
+            std::env::temp_dir().join(format!("henkan-etterna-drive-{}", std::process::id()));
+        let root = drive.join("STUFF/Etterna");
+        let _ = fs::remove_dir_all(&drive);
+        fs::create_dir_all(root.join("Songs")).unwrap();
+
+        assert_eq!(portable_roots_on(&drive), vec![root]);
+
+        let _ = fs::remove_dir_all(drive);
     }
 
     #[test]

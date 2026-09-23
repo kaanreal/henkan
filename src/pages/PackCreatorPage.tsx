@@ -1,7 +1,8 @@
 import { Link } from 'react-router'
 import { Trans, useT } from '../i18n'
 import { SEO } from '../components/SEO'
-import { SiteHeader, SiteFooter } from '../components/SiteLayout'
+import { SiteFooter } from '../components/SiteLayout'
+import { AppHeader } from '../components/Header'
 
 const code = (key: string) => (
   <code className="text-surface-300 bg-surface-800/50 px-1.5 py-0.5 rounded text-xs">{key}</code>
@@ -16,7 +17,7 @@ export function PackCreatorPage() {
         description={t('packCreator.seoDescription')}
         path="/osu-mania-pack-creator"
       />
-      <SiteHeader />
+      <AppHeader />
 
       <main className="flex-1">
         <section className="max-w-3xl mx-auto px-4 sm:px-6 pt-16 pb-12">
@@ -76,11 +77,11 @@ export function PackCreatorPage() {
           </div>
 
           <div className="mt-12 flex flex-col sm:flex-row gap-3">
-            <Link to="/" className="px-6 py-3 rounded-xl bg-accent text-white font-medium text-sm text-center hover:bg-accent-hover transition-colors">
+            <Link to="/" className="henkan-button px-6 py-3 rounded-xl bg-accent text-white font-medium text-sm text-center hover:bg-accent-hover transition-colors">
               {t('landing.openConverter')}
             </Link>
-            <Link to="/how-to-convert-osu-mania-to-stepmania" className="px-6 py-3 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-300 font-medium text-sm text-center hover:bg-surface-700 hover:text-surface-100 transition-colors">
-              {t('landing.readConversionGuide')}
+            <Link to="/docs#batch-conversion" className="henkan-button px-6 py-3 rounded-xl bg-surface-800 border border-surface-700/40 text-surface-300 font-medium text-sm text-center hover:bg-surface-700 hover:text-surface-100 transition-colors">
+              {t('siteHeader.docs')}
             </Link>
           </div>
         </section>

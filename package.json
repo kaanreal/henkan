@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/check-wasm.mjs && tsc -b && vite build",
     "test:updater": "node --test scripts/generate-updater-manifest.test.mjs",
     "test:release": "node --test scripts/generate-updater-manifest.test.mjs scripts/prepare-release.test.mjs scripts/sync-release-notes.test.mjs",
     "test": "vitest run",
@@ -14,6 +14,7 @@
     "tauri": "node scripts/tauri.mjs",
     "cli": "cargo run --manifest-path src-tauri/Cargo.toml --package henkan --bin henkan-cli",
     "build:wasm": "node scripts/build-wasm.mjs",
+    "check:wasm": "node scripts/check-wasm.mjs",
     "build:skin-template": "node scripts/build-osu-skin-template.mjs",
     "build:logo": "node scripts/build-logo.mjs",
     "audit:assets": "node scripts/audit-assets.mjs",

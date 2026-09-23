@@ -56,5 +56,5 @@ export function useEtternaLive(enabled = true): { live: EtternaLive } {
     }
   }, [enabled])
 
-  return { live }
+  return { live: enabled ? live : ETTERNA_OFFLINE }
 }

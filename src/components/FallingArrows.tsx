@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-const IMAGES = ['arrow1.png', 'arrow2.png']
+const IMAGES = ['/arrow1.png', '/arrow2.png']
 
 export function FallingArrows() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -48,7 +48,8 @@ export function FallingArrows() {
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 overflow-hidden pointer-events-none -z-5"
+      className="absolute inset-0 z-[1] overflow-hidden pointer-events-none"
+      aria-hidden="true"
     />
   )
 }

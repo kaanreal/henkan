@@ -79,7 +79,7 @@ try {
 const html = readFileSync(resolve(root, 'index.html'), 'utf8')
 check(html.includes('og:image:width" content="1731"'), 'index.html: OG width does not match public/og.png')
 check(html.includes('og:image:height" content="909"'), 'index.html: OG height does not match public/og.png')
-check(html.includes('https://henkan.kaanreal.me/og.png'), 'index.html: OG URL must use the live canonical domain')
+check(html.includes('https://henkan.kaan.moe/og.png'), 'index.html: OG URL must use the live canonical domain')
 
 if (failures.length) {
   console.error(failures.map((failure) => `- ${failure}`).join('\n'))

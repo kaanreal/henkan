@@ -75,7 +75,9 @@ export async function archiveSkinFolderFiles(files: File[], folderName: string):
     const path = (file.webkitRelativePath || file.name).replace(/\\/g, '/')
     zip.file(path, file)
   }
-  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } })
+  // Skin artwork is already compressed. Storing it avoids a long CPU-bound
+  // deflate pass while the folder is being prepared.
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' })
   return new File([blob], `${folderName || 'skin'}.zip`, { type: 'application/zip' })
 }
 

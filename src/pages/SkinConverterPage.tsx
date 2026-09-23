@@ -3,11 +3,14 @@ import type { CSSProperties } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { t, useT } from '../i18n'
 import { Header } from '../components/Header'
+import { LoadingScreen } from '../components/LoadingScreen'
 import { trackEvent } from '../services/analytics'
 import { openFiles, saveFile } from '../services/dialogs'
 import { isTauri } from '../services/environment'
 import { fileInputCache } from '../services/fileCache'
 import { saveBlobToFile } from '../services/files'
+import { useConversionLibraryStore } from '../stores/useConversionLibraryStore'
+import { consumePendingConversionReplay, type ConversionReplay } from '../services/conversionLibrary'
 import {
   archiveSkinFolderFiles,
   archiveSkinFolderPath,
@@ -82,20 +85,20 @@ function ArchiveIcon() {
   )
 }
 
-async function persistArchive(blob: Blob, filename: string): Promise<boolean> {
+async function persistArchive(blob: Blob, filename: string): Promise<string | null> {
   if (!isTauri()) {
     await saveBlobToFile(blob, filename)
-    return true
+    return filename
   }
   const path = await saveFile({
     title: t('skinConverter.saveConvertedSkin'),
     defaultPath: filename,
     filters: [{ name: filename.endsWith('.osk') ? t('skinConverter.filterOsuSkin') : t('skinConverter.filterEtternaSkin'), extensions: [filename.endsWith('.osk') ? 'osk' : 'zip'] }],
   })
-  if (!path) return false
+  if (!path) return null
   const { invoke } = await import('@tauri-apps/api/core')
   await invoke('write_file_bytes', { path, content: Array.from(new Uint8Array(await blob.arrayBuffer())) })
-  return true
+  return path
 }
 
 export function SkinConverterPage() {
@@ -128,14 +131,14 @@ export function SkinConverterPage() {
     setPreviewUrls(nextUrls)
   }, [])
 
-  const loadInput = useCallback(async (nextInput: SkinInput) => {
+  const loadInput = useCallback(async (nextInput: SkinInput, replayOptions?: ConversionReplay['skinOptions']) => {
     selectedInputRef.current = nextInput
     setInput(nextInput)
     setDirection(null)
     setInspection(null)
     replacePreview(null)
-    setHitPosition(DEFAULT_OSU_HIT_POSITION)
-    setColumnWidth(DEFAULT_OSU_COLUMN_WIDTH)
+    setHitPosition(replayOptions?.hitPosition ?? DEFAULT_OSU_HIT_POSITION)
+    setColumnWidth(replayOptions?.columnWidth ?? DEFAULT_OSU_COLUMN_WIDTH)
     setError(null)
     setStatus('inspecting')
     try {
@@ -191,33 +194,56 @@ export function SkinConverterPage() {
     if (!input || !inspection || !direction || (status !== 'idle' && status !== 'complete')) return
     setStatus('converting')
     setError(null)
-    replacePreview(null)
     try {
-      // Let React revoke preview object URLs before conversion allocates its
-      // larger long-note canvases. This matters for image-heavy skins.
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
       const result = await convertSkinArchive(input, direction, { hitPosition, columnWidth })
       const saved = await persistArchive(result.blob, result.filename)
       setInspection(result.inspection)
       setStatus(saved ? 'complete' : 'idle')
       if (saved) {
+        useConversionLibraryStore.getState().remember({
+          kind: 'skin',
+          title: result.inspection.name,
+          artist: '',
+          creator: '',
+          sourceName: fileLabel(input),
+          sourceFormat: null,
+          direction,
+          outputFormat: result.filename.split('.').pop() || 'archive',
+          outputNames: [result.filename],
+          outputPath: isTauri() ? saved : null,
+          itemCount: 1,
+          difficulty: null,
+          sourcePath: typeof input === 'string' ? input : null,
+          replay: {
+            sourcePath: typeof input === 'string' ? input : null,
+            config: null,
+            difficultyIndices: null,
+            separateSongs: null,
+            packSettings: null,
+            skinOptions: { hitPosition, columnWidth },
+          },
+        })
         void trackEvent('skin_conversion_completed', { direction })
-        void buildSkinPreview(input, direction).then((nextPreview) => {
-          if (selectedInputRef.current === input) replacePreview(nextPreview)
-        }).catch(() => {})
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t('skinConverter.convertFailed'))
       setStatus('idle')
       void trackEvent('skin_conversion_failed', { direction })
     }
-  }, [columnWidth, direction, hitPosition, input, inspection, replacePreview, status, t])
+  }, [columnWidth, direction, hitPosition, input, inspection, status, t])
 
   useEffect(() => {
     return () => revokePreviewObjectUrls(previewUrlsRef.current)
   }, [])
 
   useEffect(() => {
+    const pendingReplay = consumePendingConversionReplay()
+    if (pendingReplay) {
+      if (pendingReplay.kind === 'skin') {
+        queueMicrotask(() => void loadInput(pendingReplay.sourcePath, pendingReplay.replay.skinOptions))
+      }
+      return
+    }
     const pending = consumePendingSkinInput()
     if (pending) queueMicrotask(() => void loadInput(pending))
   }, [loadInput, t])
@@ -391,6 +417,7 @@ export function SkinConverterPage() {
 
           <button
             type="button"
+            data-henkan-control
             className={`skin-drop w-full min-h-40 rounded-2xl border-2 border-dashed px-5 py-6 flex items-center justify-center gap-4 text-left transition-colors duration-75 ${dragging ? 'border-accent bg-accent/5' : input ? 'border-white/10 bg-white/[0.04]' : 'border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]'}`}
             onClick={chooseArchive}
             onDragOver={(event) => { event.preventDefault(); setDragging(true) }}
@@ -602,7 +629,7 @@ export function SkinConverterPage() {
             data-state={status}
             onClick={convert}
           >
-            {status === 'converting' ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" /> {t('common.converting')}</> : status === 'complete' ? t('skinConverter.convertAgain') : direction === 'osu-to-etterna' ? t('skinConverter.convertToEtterna') : direction === 'etterna-to-osu' ? t('skinConverter.convertToOsu') : t('skinConverter.convert')}
+            {status === 'converting' ? t('common.converting') : status === 'complete' ? t('skinConverter.convertAgain') : direction === 'osu-to-etterna' ? t('skinConverter.convertToEtterna') : direction === 'etterna-to-osu' ? t('skinConverter.convertToOsu') : t('skinConverter.convert')}
           </button>
           <p className="mt-2 text-center text-[11px] text-surface-600">{
             status === 'complete'
@@ -611,6 +638,11 @@ export function SkinConverterPage() {
           }</p>
         </section>
       </main>
+      <LoadingScreen
+        show={status === 'inspecting' || status === 'converting'}
+        label={status === 'converting' ? t('common.converting') : t('skinConverter.readingArchive')}
+        detail={input ? fileLabel(input) : null}
+      />
     </div>
   )
 }

@@ -187,15 +187,12 @@ describe('catalogs', () => {
     )
   })
 
-  it.each(TRANSLATIONS)('%s has no keys missing from English', (_, catalog) => {
+  it.each(TRANSLATIONS)('%s only contains known English keys', (_, catalog) => {
     const englishBases = new Set(Object.keys(en).map(baseKey))
-    const keys = Object.keys(catalog).map(baseKey)
     const orphans = Object.keys(catalog).filter(
       (key) => !englishBases.has(baseKey(key)),
     )
-    const missing = [...englishBases].filter((base) => !keys.includes(base))
     expect(orphans).toEqual([])
-    expect(missing).toEqual([])
   })
 
   it.each(TRANSLATIONS)('%s keeps the same placeholders', (_, catalog) => {

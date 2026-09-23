@@ -120,6 +120,13 @@ pub fn cli_export_beatmap(beatmap: &Beatmap, config: &ExportConfig, converted_co
     cli_export_beatmap_named(beatmap, config, converted_content, output_dir, None, false)
 }
 
+fn background_output_name(source_format: &SourceFormat) -> &'static str {
+    match source_format {
+        SourceFormat::OsuMania => "bg.png",
+        SourceFormat::Etterna => "bg.jpg",
+    }
+}
+
 /// Like `cli_export_beatmap` but allows overriding the folder name.
 /// When `folder_name` is `Some`, it is used directly as the output folder name
 /// (instead of deriving from `title [creator]`).
@@ -167,7 +174,12 @@ pub fn cli_export_beatmap_named(beatmap: &Beatmap, config: &ExportConfig, conver
         .map_err(|e| format!("Failed to write .{}: {}", out_ext, e))?;
     if let Some(ref bg) = config.background_filename {
         if !bg.is_empty() {
-            copy_media(&beatmap.source_dir, bg, &export_path, "bg.png")?;
+            copy_media(
+                &beatmap.source_dir,
+                bg,
+                &export_path,
+                background_output_name(&beatmap.source_format),
+            )?;
         }
     }
     if beatmap.source_format == SourceFormat::OsuMania {
@@ -450,10 +462,11 @@ fn parse_file(path: String, direction: String) -> Result<Beatmap, String> {
 
 #[tauri::command]
 fn resolve_file(source_dir: String, filename: String) -> Result<String, String> {
-    let found = resolve_media_file(&source_dir, &filename, &[
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
-        ".mp3", ".ogg", ".wav", ".m4a", ".flac",
-    ]);
+    let found = resolve_media_file(
+        &source_dir,
+        &filename,
+        media_extensions_for(&filename),
+    );
     match found {
         Some(p) => p.canonicalize()
             .map(|p| p.to_string_lossy().to_string())
@@ -508,6 +521,34 @@ pub fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&s
         }
     }
 
+    // Some packs contain double extensions such as "decode.png.jpg" while
+    // still declaring "decode.png" in the SM header. Match that declared name
+    // as the candidate's stem, but keep the requested media category.
+    if let Ok(entries) = fs::read_dir(source_dir) {
+        let lower = filename.to_lowercase();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let extension = path
+                .extension()
+                .and_then(|value| value.to_str())
+                .map(|value| format!(".{}", value.to_lowercase()));
+            if !extension
+                .as_deref()
+                .is_some_and(|ext| alt_extensions.contains(&ext))
+            {
+                continue;
+            }
+            let candidate_stem = path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_lowercase();
+            if candidate_stem == lower {
+                return Some(path);
+            }
+        }
+    }
+
     // 5. Scan for any plausible image when the exact name doesn't exist.
     //    Filters out CD titles and banners, then prefers files with "bg"/"background"
     //    in the name; otherwise picks the largest remaining image.
@@ -530,7 +571,16 @@ pub fn scan_source_dir_for_bg(source_dir: &str) -> Option<PathBuf> {
             if !IMAGE_EXTS.contains(&format!(".{}", ext).as_str()) { continue; }
             let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
             // Skip files that are clearly not backgrounds (CD titles, banners)
-            if stem.contains("cdtitle") || stem == "cd" || stem == "bn" || stem == "banner" { continue; }
+            if stem.contains("cdtitle")
+                || stem == "cd"
+                || stem == "bn"
+                || stem.contains("banner")
+                || stem.ends_with(" bn")
+                || stem.ends_with("_bn")
+                || stem.ends_with("-bn")
+            {
+                continue;
+            }
             // Prefer files with "bg" or "background" in the name
             if stem.contains("bg") || stem.contains("background") {
                 return Some(p);
@@ -550,6 +600,19 @@ pub fn scan_source_dir_for_bg(source_dir: &str) -> Option<PathBuf> {
 pub const IMAGE_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"];
 
 pub const AUDIO_EXTS: &[&str] = &[".mp3", ".ogg", ".wav", ".m4a", ".flac", ".wma"];
+
+fn media_extensions_for(filename: &str) -> &'static [&'static str] {
+    let extension = Path::new(filename)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| format!(".{}", value.to_lowercase()));
+
+    if extension.as_deref().is_some_and(|ext| AUDIO_EXTS.contains(&ext)) {
+        AUDIO_EXTS
+    } else {
+        IMAGE_EXTS
+    }
+}
 
 /// Scan source_dir for the largest audio file. Mirrors the background
 /// heuristic for images, so a mismatched `AudioFilename` still previews.
@@ -770,7 +833,7 @@ fn convert_beatmap(
 }
 
 pub fn read_file_bytes(source_dir: &str, filename: &str) -> Result<(Vec<u8>, String), String> {
-    let resolved = resolve_media_file(source_dir, filename, &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".mp3", ".ogg", ".wav", ".flac", ".m4a"])
+    let resolved = resolve_media_file(source_dir, filename, media_extensions_for(filename))
         .ok_or_else(|| format!("File not found: {} (looked in {})", filename, source_dir))?;
     let bytes = fs::read(&resolved).map_err(|e| format!("Failed to read {}: {}", filename, e))?;
     let ext = resolved
@@ -1184,10 +1247,15 @@ fn export_beatmap(
         fs::write(export_path.join(&out_filename), &out_content)
             .map_err(|e| format!("Failed to write .{}: {}", out_ext, e))?;
 
-        // Copy background as "bg.png"
+        // Match the fixed name written by the target-format converter.
         if let Some(ref bg) = config.background_filename {
             if !bg.is_empty() {
-                copy_media(&beatmap.source_dir, bg, &export_path, "bg.png")?;
+                copy_media(
+                    &beatmap.source_dir,
+                    bg,
+                    &export_path,
+                    background_output_name(&beatmap.source_format),
+                )?;
             }
         }
 
@@ -1459,6 +1527,12 @@ fn export_all_beatmaps(
                 .to_string();
             let raw = content.replace("\r\n", "\n");
             let sections = parsers::etterna::extract_all_notes_sections(&raw);
+            let selected_indices = indices
+                .clone()
+                .unwrap_or_else(|| (0..sections.len()).collect());
+            if selected_indices.iter().any(|index| *index >= sections.len()) {
+                return Err("Difficulty index out of range".to_string());
+            }
 
             // Resolve filenames from SM header when config provides defaults
             let audio_filename = if config.audio_filename.is_empty() {
@@ -1493,7 +1567,7 @@ fn export_all_beatmaps(
                     .compression_method(zip::CompressionMethod::Deflated);
 
                 let mut media_added = false;
-                for i in 0..sections.len() {
+                for i in selected_indices.iter().copied() {
                     let mut bm = parsers::etterna::parse_sm_difficulty(&content, i)
                         .map_err(|e| format!("Parse error: {}", e))?;
                     let original_creator = bm.creator.clone();
@@ -1613,7 +1687,7 @@ fn export_all_beatmaps(
                     safe.clone() 
                 };
 
-                for i in 0..sections.len() {
+                for i in selected_indices.iter().copied() {
                     let mut bm = parsers::etterna::parse_sm_difficulty(&content, i)
                         .map_err(|e| format!("Parse error: {}", e))?;
                     let original_creator = bm.creator.clone();
@@ -1734,7 +1808,7 @@ fn export_all_beatmaps(
                     }
                     if let Some(ref bg) = background_filename {
                         if !bg.is_empty() {
-                            copy_media(&source_dir, bg, &out_folder, "bg.png")?;
+                            copy_media(&source_dir, bg, &out_folder, "bg.jpg")?;
                         }
                     }
                 }
@@ -2274,7 +2348,7 @@ fn archive_directory_sync(path: String) -> Result<Vec<u8>, String> {
     let cursor = Cursor::new(Vec::new());
     let mut zip_w = zip::ZipWriter::new(cursor);
     let opts: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
+        .compression_method(zip::CompressionMethod::Stored);
     walk(&mut zip_w, folder, folder, &opts, &mut 0)?;
     let cursor = zip_w.finish().map_err(|e| format!("Zip finalize error: {e}"))?;
     Ok(cursor.into_inner())
@@ -2316,7 +2390,7 @@ pub fn extract_sm_header_field(content: &str, field: &str) -> Option<String> {
 }
 
 pub fn copy_media(source_dir: &str, filename: &str, dest: &Path, dest_name: &str) -> Result<(), String> {
-    let resolved = resolve_media_file(source_dir, filename, &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"])
+    let resolved = resolve_media_file(source_dir, filename, media_extensions_for(filename))
         .ok_or_else(|| format!("File not found: {} (looked in {})", filename, source_dir))?;
     fs::copy(&resolved, dest.join(dest_name))
         .map_err(|e| format!("Failed to copy {}: {}", dest_name, e))?;
@@ -2454,7 +2528,12 @@ pub fn headless_process(paths: &[String]) {
         }
         if let Some(ref bg) = config.background_filename {
             if !bg.is_empty() {
-                let _ = copy_media(&beatmap.source_dir, bg, &export_path, "bg.png");
+                let _ = copy_media(
+                    &beatmap.source_dir,
+                    bg,
+                    &export_path,
+                    background_output_name(&beatmap.source_format),
+                );
             }
         }
 
@@ -2688,6 +2767,7 @@ pub fn run() {
             osu::osu_read_map,
             osu::osu_map_background,
             etterna::etterna_live,
+            etterna::etterna_status,
             etterna::etterna_read_map,
             etterna::etterna_map_background
         ])
@@ -2698,6 +2778,74 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn direct_osu_folder_export_respects_selected_difficulties() {
+        use super::*;
+
+        let base = std::env::temp_dir().join(format!(
+            "henkan-direct-osu-export-{}",
+            std::process::id()
+        ));
+        let source = base.join("source.sm");
+        let output = base.join("Songs");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&output).unwrap();
+        fs::write(
+            &source,
+            r#"#TITLE:Direct save;
+#ARTIST:Test;
+#BPMS:0.000=120.000;
+#OFFSET:0.000;
+#NOTES:
+     dance-single:
+     Easy:
+     Challenge:
+     3:
+     0,0,0,0,0:
+0000
+1000
+0000
+0000
+;
+#NOTES:
+     dance-single:
+     Hard:
+     Challenge:
+     8:
+     0,0,0,0,0:
+0000
+0100
+0000
+0000
+;
+"#,
+        )
+        .unwrap();
+
+        let config = ExportConfig {
+            title: "Direct save".to_string(),
+            artist: "Test".to_string(),
+            creator: "Mapper".to_string(),
+            output_format: "folder".to_string(),
+            ..ExportConfig::default()
+        };
+        let exported = export_all_beatmaps(
+            source.to_string_lossy().into_owned(),
+            config,
+            output.to_string_lossy().into_owned(),
+            Some(vec![1]),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(exported.len(), 1);
+        assert!(exported[0].contains("Hard"));
+        assert!(!exported[0].contains("Easy"));
+        assert!(Path::new(&exported[0]).is_file());
+
+        let _ = fs::remove_dir_all(base);
+    }
+
     #[test]
     #[ignore = "requires HENKAN_TEST_OSU_PACK pointing to a local osu folder"]
     fn separate_pack_source_metadata() {
@@ -2788,6 +2936,27 @@ KeyImage0: custom/receptor@2x.png
         assert!(names.contains(&"custom/receptor@2x.png".to_string()));
         assert!(!names.contains(&"menu-background.jpg".to_string()));
 
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn image_lookup_does_not_fall_back_to_same_named_audio() {
+        let base =
+            std::env::temp_dir().join(format!("henkan-media-category-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        fs::write(base.join("Decode.mp3"), b"audio").unwrap();
+        fs::write(base.join("decode.png.jpg"), b"image").unwrap();
+        fs::write(base.join("decode bn.png"), b"larger banner").unwrap();
+
+        let found = resolve_media_file(
+            &base.to_string_lossy(),
+            "decode.png",
+            media_extensions_for("decode.png"),
+        )
+        .unwrap();
+
+        assert_eq!(found.file_name().unwrap(), "decode.png.jpg");
         let _ = fs::remove_dir_all(base);
     }
 

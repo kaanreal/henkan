@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://henkan.kaanreal.me/sitemap.xml
+Sitemap: https://henkan.kaan.moe/sitemap.xml

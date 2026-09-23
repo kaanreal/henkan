@@ -34,5 +34,9 @@ export function useOsuLive(enabled = true): {
     }
   }, [enabled])
 
-  return { live, connectedAt, acknowledge: () => setConnectedAt(null) }
+  return {
+    live: enabled ? live : OSU_OFFLINE,
+    connectedAt: enabled ? connectedAt : null,
+    acknowledge: () => setConnectedAt(null),
+  }
 }

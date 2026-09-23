@@ -2,6 +2,55 @@ use crate::models::beatmap::{Beatmap, ExportConfig};
 use crate::models::timing::{snap_to_osu_grid, TimingPoint};
 use anyhow::Result;
 
+const MAX_OSU_BPM: f64 = 1000.0;
+const MAX_CONVERTIBLE_BPM: f64 = 6000.0;
+
+fn normalize_timing_point(tp: &TimingPoint) -> Option<f64> {
+    if !tp.uninherited || tp.beat_length <= 0.0 {
+        return Some(tp.beat_length);
+    }
+
+    if 60_000.0 / tp.beat_length > MAX_CONVERTIBLE_BPM {
+        return None;
+    }
+
+    let mut beat_length = tp.beat_length;
+    while 60_000.0 / beat_length > MAX_OSU_BPM {
+        beat_length *= 2.0;
+    }
+
+    Some(beat_length)
+}
+
+fn dominant_bpm(beatmap: &Beatmap) -> f64 {
+    let mut timing_points: Vec<(f64, f64)> = beatmap
+        .timing_points
+        .iter()
+        .filter(|tp| tp.uninherited)
+        .filter_map(|tp| normalize_timing_point(tp).map(|beat_length| (tp.time_ms, beat_length)))
+        .collect();
+    timing_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    timing_points
+        .iter()
+        .enumerate()
+        .max_by(|(a_index, (a_time, _)), (b_index, (b_time, _))| {
+            let a_end = timing_points
+                .get(a_index + 1)
+                .map(|(time, _)| *time)
+                .unwrap_or(beatmap.duration_ms);
+            let b_end = timing_points
+                .get(b_index + 1)
+                .map(|(time, _)| *time)
+                .unwrap_or(beatmap.duration_ms);
+            (a_end - a_time)
+                .partial_cmp(&(b_end - b_time))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(_, (_, beat_length))| 60_000.0 / beat_length)
+        .unwrap_or(120.0)
+}
+
 pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     let global_timing_ms = config.global_timing_ms;
     let mut output = String::new();
@@ -76,31 +125,27 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     let shift_tp = |t: f64| t - global_timing_ms;
     let shift_note = |t: f64| (t - global_timing_ms).max(0.0);
 
-    // Skip uninherited timing points with extremely short beat lengths (>6000 BPM).
-    // Etterna charts sometimes use absurdly high BPM values as micro-segments
-    // (e.g. 27469 BPM for 4 beats ≈ 8ms). These create meaningless timing
-    // segments in osu and should be omitted. Notes are still timestamped
-    // correctly because build_timing used the full BPM list.
-    let is_extreme =
-        |tp: &TimingPoint| tp.uninherited && tp.beat_length > 0.0 && tp.beat_length < 10.0;
-
+    // Fold four-digit Etterna BPMs down by powers of two for osu's timing grid.
+    // osu!mania also changes scroll speed with BPM, so add inverse SV at each
+    // redline to keep the whole map at its dominant section's visual speed.
     output.push_str("[TimingPoints]\n");
 
     // collect BPM points and SV (inherited) points, then emit them in one
     // time-sorted list - osu expects [TimingPoints] in chronological order,
     // with the uninherited point first when both share a timestamp
     let mut lines: Vec<(f64, u8, String)> = Vec::new();
-
+    let base_bpm = dominant_bpm(beatmap);
+    let mut previous_scroll_multiplier = 1.0;
     for tp in &beatmap.timing_points {
-        if is_extreme(tp) {
+        let Some(normalized_beat_length) = normalize_timing_point(tp) else {
             continue;
-        }
+        };
         // Round to 12 decimal places to match osu! editor's output precision.
         // At this magnitude f64 has enough precision for 12 digits, and osu!
         // parses the timing point string back to f64 using the same number of
         // digits - producing the exact same internal value used for grid math.
         let raw = if tp.beat_length > 0.0 {
-            tp.beat_length
+            normalized_beat_length
         } else {
             -100.0
         };
@@ -121,6 +166,29 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
                 0
             ),
         ));
+
+        if tp.uninherited && beat_length > 0.0 {
+            let current_bpm = 60_000.0 / beat_length;
+            let scroll_multiplier = base_bpm / current_bpm;
+            if (scroll_multiplier - previous_scroll_multiplier).abs() > 0.000_001 {
+                lines.push((
+                    t,
+                    1,
+                    format!(
+                        "{},{:.12},{},{},{},{},{},{}",
+                        t.round() as i64,
+                        -100.0 / scroll_multiplier,
+                        tp.meter,
+                        0,
+                        0,
+                        100,
+                        0,
+                        0
+                    ),
+                ));
+                previous_scroll_multiplier = scroll_multiplier;
+            }
+        }
     }
 
     for sv in &beatmap.sv_events {
@@ -164,14 +232,15 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     let osu_tps: Vec<TimingPoint> = beatmap
         .timing_points
         .iter()
-        .filter(|tp| !is_extreme(tp))
-        .map(|tp| TimingPoint {
-            time_ms: shift_tp(tp.time_ms).round(),
-            // Round to 12 decimal places so snap_to_osu_grid uses the same
-            // beat_length that osu! will parse from the timing point string.
-            beat_length: (tp.beat_length * 1e12).round() / 1e12,
-            meter: tp.meter,
-            uninherited: tp.uninherited,
+        .filter_map(|tp| {
+            normalize_timing_point(tp).map(|beat_length| TimingPoint {
+                time_ms: shift_tp(tp.time_ms).round(),
+                // Round to 12 decimal places so snap_to_osu_grid uses the same
+                // beat_length that osu! will parse from the timing point string.
+                beat_length: (beat_length * 1e12).round() / 1e12,
+                meter: tp.meter,
+                uninherited: tp.uninherited,
+            })
         })
         .collect();
 
@@ -193,4 +262,32 @@ pub fn convert(beatmap: &Beatmap, config: &ExportConfig) -> Result<String> {
     }
 
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn timing_point(bpm: f64) -> TimingPoint {
+        TimingPoint {
+            time_ms: 0.0,
+            beat_length: 60_000.0 / bpm,
+            meter: 4,
+            uninherited: true,
+        }
+    }
+
+    #[test]
+    fn normalizes_four_digit_bpm_for_osu_timing() {
+        let beat_length = normalize_timing_point(&timing_point(1000.0)).unwrap();
+        assert!((60_000.0 / beat_length - 1000.0).abs() < 0.001);
+
+        let beat_length = normalize_timing_point(&timing_point(1333.333)).unwrap();
+        assert!((60_000.0 / beat_length - 666.6665).abs() < 0.001);
+
+        let beat_length = normalize_timing_point(&timing_point(2474.227)).unwrap();
+        assert!((60_000.0 / beat_length - 618.55675).abs() < 0.001);
+
+        assert!(normalize_timing_point(&timing_point(27469.0)).is_none());
+    }
 }

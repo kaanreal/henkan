@@ -130,15 +130,41 @@ pub fn snap_time_ms(time_ms: f64, tps: &[TimingPoint]) -> f64 {
 /// Flooring guarantees every note lands at or before its grid line, keeping
 /// the practical unsnap at 0 for all divisors.
 pub fn snap_to_osu_grid(time_ms: f64, tps: &[TimingPoint]) -> f64 {
-    let beat = ms_to_beat(time_ms, tps);
     let divisors = [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0];
+
+    // osu! treats every red timing point as a fresh grid origin. Carrying a
+    // cumulative beat through a rounded timing-point timestamp shifts the
+    // local phase, which makes otherwise valid notes fail AIMod by 1-2 ms.
+    let active = tps
+        .iter()
+        .filter(|tp| tp.uninherited && tp.beat_length > 0.0)
+        .filter(|tp| tp.time_ms <= time_ms)
+        .max_by(|a, b| {
+            a.time_ms
+                .partial_cmp(&b.time_ms)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .or_else(|| {
+            tps.iter()
+                .filter(|tp| tp.uninherited && tp.beat_length > 0.0)
+                .min_by(|a, b| {
+                    a.time_ms
+                        .partial_cmp(&b.time_ms)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+        });
+
+    let Some(active) = active else {
+        return time_ms.floor().max(0.0);
+    };
+    let local_beat = (time_ms - active.time_ms) / active.beat_length;
 
     let mut best_time = time_ms.floor();
     let mut best_error = f64::INFINITY;
 
     for &d in &divisors {
-        let snapped_beat = (beat * d).round() / d;
-        let snapped_ms = beat_to_ms(snapped_beat, tps);
+        let snapped_beat = (local_beat * d).round() / d;
+        let snapped_ms = active.time_ms + snapped_beat * active.beat_length;
         let floored_ms = snapped_ms.floor();
         let error = (time_ms - floored_ms).abs();
         if error < best_error {
@@ -263,6 +289,15 @@ mod tests {
                 "1/{d} after bpm change: snapped to {snapped}ms, grid error {err}ms"
             );
         }
+    }
+
+    #[test]
+    fn snap_uses_the_rounded_redline_as_its_grid_origin() {
+        let tps = [tp_at(164.0, 978.0), tp_at(164.088, 159_027.0)];
+        let snapped = snap_to_osu_grid(159_940.924, &tps);
+        let err = min_grid_error(snapped, &tps[1]);
+
+        assert!(err < 1.0, "snapped to {snapped}ms, grid error {err}ms");
     }
 
     #[test]

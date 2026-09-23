@@ -54,21 +54,15 @@ export function useOsuMapBackground(map: OsuSelectedMap | null): string | null {
       return
     }
     let live = true
-    // Do not leave the previous song's artwork attached to the new map while
-    // the native bridge is reading the next asset. OsuBackground handles the
-    // short dark transition; retaining the old URL here makes a slow read look
-    // like the new song has the wrong background.
-    queueMicrotask(() => {
-      if (live) setLoaded({ key, url: null })
-    })
+    // Keep the current artwork while the native bridge reads the next song.
+    // OsuBackground crossfades once this request resolves, so a slow read does
+    // not briefly unmount the whole background layer.
     void load(key, map).then((next) => {
       if (live) setLoaded({ key, url: next })
     })
     return () => { live = false }
   }, [key])
 
-  // Keep the previous artwork visible only while the live source disappears.
-  // During a song change, a null result means the current map is still being
-  // read and must not display the previous song's artwork.
-  return key && loaded.key === key ? loaded.url : key ? null : loaded.url
+  // Keep the previous artwork visible until the next song's artwork is ready.
+  return loaded.url
 }

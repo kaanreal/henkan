@@ -30,7 +30,7 @@ appimageTools.wrapType2 {
 
   meta = {
     description = "osu!mania to Etterna and StepMania converter";
-    homepage = "https://henkan.kaanreal.me/";
+    homepage = "https://henkan.kaan.moe/";
     downloadPage = "https://github.com/kaanreal/henkan/releases";
     license = lib.licenses.mit;
     sourceProvenance = with lib.sourceTypes; [ binaryNativeCode ];

@@ -4,12 +4,14 @@ import { useT } from '../i18n'
 import { isTauri } from '../services/environment'
 import { openDirectory } from '../services/dialogs'
 import { openFile } from '../services/platform'
-import { archiveSkinFolderPath, setPendingSkinInput } from '../services/skinInput'
+import { archiveSkinPreviewPath, setPendingSkinInput } from '../services/skinInput'
 import type { OsuLibrarySkin } from '../lib/osuLibrary'
 import { useOsuLibraryStore } from '../stores/useOsuLibraryStore'
 import { OsuLibraryProgress } from '../components/OsuLibraryProgress'
 import { SkinLibraryPreview } from '../components/SkinLibraryPreview'
-import { SiteFooter, SiteHeader } from '../components/SiteLayout'
+import { ConversionHistoryPanel } from '../components/ConversionHistoryPanel'
+import { SiteFooter } from '../components/SiteLayout'
+import { AppHeader } from '../components/Header'
 
 function skinSearchText(skin: OsuLibrarySkin): string {
   return [skin.name, skin.author, skin.path].join(' ').toLowerCase()
@@ -19,12 +21,21 @@ function SkinCard({ skin }: { skin: OsuLibrarySkin }) {
   const t = useT()
   const navigate = useNavigate()
   const [noteIcon, setNoteIcon] = useState<string | null>(null)
+  const [opening, setOpening] = useState(false)
   const handleNoteIcon = useCallback((url: string | null) => setNoteIcon(url), [])
   const addToConverter = useCallback(async () => {
-    const input = skin.archive ? skin.path : await archiveSkinFolderPath(skin.path)
-    setPendingSkinInput(input)
-    navigate('/skin-converter')
-  }, [navigate, skin.archive, skin.path])
+    if (opening) return
+    setOpening(true)
+    try {
+      // Skin conversion only needs the mapped gameplay artwork. Avoid zipping
+      // the entire installed skin, which can include large menu/audio assets.
+      const input = skin.archive ? skin.path : await archiveSkinPreviewPath(skin.path)
+      setPendingSkinInput(input)
+      navigate('/skin-converter')
+    } finally {
+      setOpening(false)
+    }
+  }, [navigate, opening, skin.archive, skin.path])
   return (
     <article className="skin-library-card group">
       <div className="skin-library-card__preview">
@@ -39,12 +50,12 @@ function SkinCard({ skin }: { skin: OsuLibrarySkin }) {
             <h3 className="truncate text-sm font-medium text-surface-200" title={skin.path}>{skin.name}</h3>
             <p className="mt-0.5 truncate text-xs text-surface-500">{skin.author || t('osuLibrary.unknownAuthor')}</p>
           </div>
-          <button type="button" onClick={() => void addToConverter()} className="skin-library-card__open shrink-0" aria-label={t('osuLibrary.open')}>
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <button type="button" onClick={() => void addToConverter()} disabled={opening} className="skin-library-card__open shrink-0 disabled:cursor-wait disabled:opacity-60" aria-label={t('osuLibrary.open')}>
+            {opening ? <span className="h-3.5 w-3.5 animate-spin rounded-full border border-current border-t-transparent" /> : <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5H19.5V10.5" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 13.5L19.25 4.75" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5V18.25C19.5 18.94 18.94 19.5 18.25 19.5H5.75C5.06 19.5 4.5 18.94 4.5 18.25V5.75C4.5 5.06 5.06 4.5 5.75 4.5H10.5" />
-            </svg>
+            </svg>}
           </button>
         </div>
         <div className="skin-library-card__meta">
@@ -58,6 +69,7 @@ function SkinCard({ skin }: { skin: OsuLibrarySkin }) {
 
 export function OsuLibraryPage() {
   const t = useT()
+  const [activeTab, setActiveTab] = useState<'conversions' | 'skins'>('conversions')
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query.trim().toLowerCase())
   const library = useOsuLibraryStore(s => s.library)
@@ -97,15 +109,15 @@ export function OsuLibraryPage() {
 
   return (
     <div className="min-h-screen bg-surface-950 text-surface-200">
-      <SiteHeader />
+      <AppHeader />
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
         <div className="flex flex-col gap-5 border-b border-white/8 pb-7 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="mb-2 text-xs font-medium uppercase tracking-widest text-accent">{t('osuLibrary.badge')}</p>
-            <h1 className="text-3xl font-bold tracking-tight text-surface-100 sm:text-4xl">{t('osuLibrary.title')}</h1>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-surface-500">{t('osuLibrary.description')}</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-widest text-accent">{t('library.badge')}</p>
+            <h1 className="text-3xl font-bold tracking-tight text-surface-100 sm:text-4xl">{t('library.title')}</h1>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-surface-500">{t('library.description')}</p>
           </div>
-          {library && (
+          {activeTab === 'skins' && library && (
             <div className="max-w-xs border-l border-white/10 pl-4 text-right">
               <p className="text-[10px] font-medium uppercase tracking-widest text-surface-600">{t('settings.installationFolder')}</p>
               <p className="mt-1 truncate font-mono text-xs text-surface-400" title={library.root}>{library.root}</p>
@@ -113,7 +125,28 @@ export function OsuLibraryPage() {
           )}
         </div>
 
-        {!isTauri() ? (
+        <div className="mt-5 flex gap-1 border-b border-white/8">
+          <button
+            type="button"
+            data-henkan-control
+            onClick={() => { setQuery(''); setActiveTab('conversions') }}
+            className={`rounded-t-lg px-3 py-2 text-xs font-medium transition-colors ${activeTab === 'conversions' ? 'border-b-2 border-accent text-surface-200' : 'text-surface-500 hover:text-surface-300'}`}
+          >
+            {t('library.conversions')}
+          </button>
+          <button
+            type="button"
+            data-henkan-control
+            onClick={() => { setQuery(''); setActiveTab('skins') }}
+            className={`rounded-t-lg px-3 py-2 text-xs font-medium transition-colors ${activeTab === 'skins' ? 'border-b-2 border-accent text-surface-200' : 'text-surface-500 hover:text-surface-300'}`}
+          >
+            {t('library.skins')}
+          </button>
+        </div>
+
+        {activeTab === 'conversions' ? (
+          <ConversionHistoryPanel />
+        ) : !isTauri() ? (
           <div className="mt-10 rounded-2xl border border-white/8 bg-white/[0.03] p-6 text-sm text-surface-400">
             {t('osuLibrary.desktopOnly')}
           </div>

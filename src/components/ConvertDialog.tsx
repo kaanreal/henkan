@@ -11,13 +11,29 @@ interface Props {
   open: boolean
   difficulties: Difficulty[]
   currentIndex: number
+  initialSelected?: number[] | null
   onConfirm: (indices: number[]) => void
+  directSaveLabel?: string | null
+  onDirectSave?: (indices: number[]) => void
   onCancel: () => void
 }
 
-export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onCancel }: Props) {
+export function ConvertDialog({
+  open,
+  difficulties,
+  currentIndex,
+  initialSelected,
+  onConfirm,
+  directSaveLabel,
+  onDirectSave,
+  onCancel,
+}: Props) {
   const t = useT()
-  const [selected, setSelected] = useState<Set<number>>(new Set([currentIndex]))
+  const selectionForOpen = () => {
+    const valid = initialSelected?.filter(index => index >= 0 && index < difficulties.length) || []
+    return new Set(valid.length > 0 ? valid : [currentIndex])
+  }
+  const [selected, setSelected] = useState<Set<number>>(selectionForOpen)
   const [leaving, setLeaving] = useState(false)
   const [lastOpen, setLastOpen] = useState(open)
 
@@ -26,7 +42,7 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
   if (open !== lastOpen) {
     setLastOpen(open)
     if (open) {
-      setSelected(new Set([currentIndex]))
+      setSelected(selectionForOpen())
       setLeaving(false)
     }
   }
@@ -55,9 +71,9 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
     setTimeout(() => onCancel(), 200)
   }
 
-  function handleConfirm() {
+  function handleConfirm(action = onConfirm) {
     setLeaving(true)
-    setTimeout(() => onConfirm([...selected]), 200)
+    setTimeout(() => action([...selected]), 200)
   }
 
   if (!open && !leaving) return null
@@ -96,6 +112,7 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
               return (
                 <button
                   key={i}
+                  data-henkan-control
                   onClick={() => toggle(i)}
                   style={{ animationDelay: `${i * 45}ms` }}
                   className={`
@@ -148,29 +165,42 @@ export function ConvertDialog({ open, difficulties, currentIndex, onConfirm, onC
           </div>
 
           {/* Footer */}
-          <div className="flex items-center gap-2 px-5 pb-5 pt-1">
-            <button
-              onClick={handleCancel}
-              className="flex-1 h-10 rounded-xl text-sm font-medium
-                bg-white/[0.04] border border-white/8 text-surface-400
-                hover:bg-white/[0.07] hover:text-surface-200
-                transition-all duration-75"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              onClick={handleConfirm}
-              disabled={selected.size === 0}
-              className="flex-1 h-10 rounded-xl text-sm font-medium
-                bg-accent text-white
-                hover:bg-accent-hover active:scale-[0.97]
-                transition-all duration-75
-                disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {selected.size === difficulties.length
-                ? t('convertDialog.convertAll')
-                : t('convertDialog.convertWithCount', { count: selected.size })}
-            </button>
+          <div className="space-y-2 px-5 pb-5 pt-1">
+            {directSaveLabel && onDirectSave && (
+              <button
+                onClick={() => handleConfirm(onDirectSave)}
+                disabled={selected.size === 0}
+                className="h-10 w-full rounded-xl border border-accent/25 bg-accent/10 text-sm font-medium text-accent-muted
+                  hover:border-accent/40 hover:bg-accent/15 active:scale-[0.99]
+                  transition-all duration-75 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {directSaveLabel}
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCancel}
+                className="flex-1 h-10 rounded-xl text-sm font-medium
+                  bg-white/[0.04] border border-white/8 text-surface-400
+                  hover:bg-white/[0.07] hover:text-surface-200
+                  transition-all duration-75"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={() => handleConfirm()}
+                disabled={selected.size === 0}
+                className="flex-1 h-10 rounded-xl text-sm font-medium
+                  bg-accent text-white
+                  hover:bg-accent-hover active:scale-[0.97]
+                  transition-all duration-75
+                  disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {selected.size === difficulties.length
+                  ? t('convertDialog.convertAll')
+                  : t('convertDialog.convertWithCount', { count: selected.size })}
+              </button>
+            </div>
           </div>
         </div>
       </div>

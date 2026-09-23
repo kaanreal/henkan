@@ -92,12 +92,14 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
             {/* Mode toggle */}
             <div className="flex gap-1.5 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06]">
               <button
+                data-henkan-control
                 onClick={() => update('mode', 'folder')}
                 className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'folder' ? 'bg-accent text-white' : 'text-surface-400 hover:text-surface-200'}`}
               >
                 {t('packSettings.folder')}
               </button>
               <button
+                data-henkan-control
                 onClick={() => update('mode', 'osz')}
                 className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'osz' ? 'bg-accent text-white' : 'text-surface-400 hover:text-surface-200'}`}
               >

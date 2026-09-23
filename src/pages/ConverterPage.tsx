@@ -20,17 +20,18 @@ import { ConversionQueue } from '../components/ConversionQueue'
 import { MetadataPanel } from '../components/MetadataPanel'
 import { AudioPlayer } from '../components/AudioPlayer'
 import { PreviewOverlay } from '../components/PreviewOverlay'
-import { ConvertDialog } from '../components/ConvertDialog'
-import { MultiAudioWarning } from '../components/MultiAudioWarning'
+import { LoadingScreen } from '../components/LoadingScreen'
 import { MirrorDownloadWarning } from '../components/MirrorDownloadWarning'
 import { BulkConvertDialog } from '../components/BulkConvertDialog'
 import { PackBrowser } from '../components/PackBrowser'
+import { FallingArrows } from '../components/FallingArrows'
 import { LiveMapStack, type LiveMapStackItem, OsuBackground } from '../components/OsuMapPrompt'
 import { PackSettingsDialog } from '../components/PackSettingsDialog'
+import { PackReviewDialog, type PackReviewItem } from '../components/PackReviewDialog'
 import { DiffPresetManager } from '../components/DiffPresetManager'
 import { UpdateDialog } from '../components/UpdateDialog'
 import { BeatmapMirrorDialog } from '../components/BeatmapMirrorDialog'
-import { OsuLibraryPrompt } from '../components/OsuLibraryPrompt'
+import { GameIntegrationPrompt } from '../components/GameIntegrationPrompt'
 import { HomeReveal } from '../components/HomeReveal'
 import { WebAudioPlayer } from '../lib/WebAudioPlayer'
 import { isTauri } from '../services/environment'
@@ -72,8 +73,12 @@ import { useEtternaMapBackground } from '../hooks/useEtternaMapBackground'
 import { etternaClientName, etternaReadMap } from '../lib/etternaDesktop'
 import { useOsuLibraryStore } from '../stores/useOsuLibraryStore'
 import { useConversionLibraryStore } from '../stores/useConversionLibraryStore'
+import { useGameIntegrationsStore } from '../stores/useGameIntegrationsStore'
+import { directSaveFolder, hasDetectedGame } from '../lib/gameIntegrations'
+import { scrollAppToTop } from '../lib/appScroll'
 import { useInterfaceSettingsStore } from '../stores/useInterfaceSettingsStore'
 import { consumePendingConversionReplay, type PackReplay } from '../services/conversionLibrary'
+import { loadLastOpenedMapBackground, saveLastOpenedMapBackground } from '../services/lastOpenedMapBackground'
 import {
   configForSeparateBeatmap,
   normalizeCompilationMetadata,
@@ -104,21 +109,22 @@ async function resolveUpdateBody(version: string, body: string | null): Promise<
   }
 }
 
-function configFromEntry(entry: PackEntry): ExportConfig {
+function configFromEntry(entry: PackEntry, useDifficultyAsTitle = false): ExportConfig {
   const fallback =
     entry.source_file
       .split(/[/\\]+/)
       .filter(Boolean)
       .pop()
       ?.replace(/\.[^.]+$/, '') || 'Untitled'
+  const metadata = packEntryMetadata(entry, useDifficultyAsTitle)
   return {
-    title: entry.title || fallback,
-    artist: entry.artist,
+    title: metadata.title || fallback,
+    artist: metadata.artist,
     creator: '',
-    difficulty_name: '',
+    difficulty_name: metadata.difficultyName,
     source: '',
     tags: '',
-    audio_filename: '',
+    audio_filename: metadata.audioFilename,
     background_filename: entry.background_filename,
     banner_filename: null,
     cdtitle_filename: null,
@@ -129,7 +135,7 @@ function configFromEntry(entry: PackEntry): ExportConfig {
     preview_time: 0,
     conversion_rate: 1,
     preserve_pitch: true,
-    subtitle: null,
+    subtitle: metadata.subtitle,
     title_translit: null,
     subtitle_translit: null,
     artist_translit: null,
@@ -143,6 +149,19 @@ function configFromEntry(entry: PackEntry): ExportConfig {
   }
 }
 
+function normalizePackConfig(
+  entry: PackEntry,
+  entries: PackEntry[],
+  config: ExportConfig,
+  compilationStyle: boolean,
+): ExportConfig {
+  if (!compilationStyle) return config
+  return {
+    ...config,
+    ...normalizeCompilationMetadata(entry, entries, config),
+  }
+}
+
 async function loadMediaAsDataUrl(sourceDir: string, filename: string | null | undefined): Promise<string | null> {
   try {
     const resolved = await resolveMediaFile(sourceDir, filename ?? '')
@@ -153,7 +172,58 @@ async function loadMediaAsDataUrl(sourceDir: string, filename: string | null | u
   }
 }
 
+async function loadBackgroundAsDataUrl(
+  sourceDir: string,
+  filename: string | null | undefined,
+): Promise<string | null> {
+  try {
+    const resolved = await resolveMediaFile(sourceDir, filename ?? '')
+    if (!resolved) return null
+    if (!isTauri()) {
+      const file = getCachedFile(resolved)
+      if (file) return await backgroundBlobToDataUrl(file)
+    }
+    return await readFileAsDataUrl(resolved)
+  } catch {
+    return null
+  }
+}
+
+async function loadBackgroundBlob(url: string): Promise<Blob | null> {
+  try {
+    if (url.startsWith('data:')) {
+      const comma = url.indexOf(',')
+      if (comma < 0) return null
+      const metadata = url.slice(5, comma)
+      const data = url.slice(comma + 1)
+      const mimeType = metadata.split(';')[0]
+      if (metadata.toLowerCase().includes(';base64')) {
+        const binary = atob(data)
+        const bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
+        return new Blob([bytes], { type: mimeType })
+      }
+      return new Blob([decodeURIComponent(data)], { type: mimeType })
+    }
+
+    const response = await fetch(url)
+    return response.ok ? await response.blob() : null
+  } catch {
+    return null
+  }
+}
+
+function backgroundBlobToDataUrl(blob: Blob): Promise<string | null> {
+  return new Promise(resolve => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(blob)
+  })
+}
+
 const _avatarCache = new Map<string, string>()
+const BACKGROUND_PARALLAX_PX = 10
+const BACKGROUND_PARALLAX_EASE = 7
 
 async function loadCdtitleAsDataUrl(
   sourceDir: string,
@@ -263,7 +333,7 @@ async function resolveBeatmapMedia(bm: Beatmap, opts: MediaLoadOptions = {}): Pr
   const audioFile = audioPath ? (getCachedFile(audioPath) ?? null) : null
   const [audio, background, banner, cdtitle, bgName] = await Promise.all([
     audioFile ? readFileAsDataUrl(audioFile) : loadMediaAsDataUrl(sourceDir, audioFilename),
-    loadMediaAsDataUrl(sourceDir, backgroundFilename),
+    loadBackgroundAsDataUrl(sourceDir, backgroundFilename),
     loadMediaAsDataUrl(sourceDir, bannerFilename),
     loadCdtitleAsDataUrl(sourceDir, cdtitleFilename, creator),
     opts.resolveBgName ? resolveMediaName(sourceDir, backgroundFilename) : Promise.resolve(null),
@@ -274,17 +344,21 @@ async function resolveBeatmapMedia(bm: Beatmap, opts: MediaLoadOptions = {}): Pr
 export default function ConverterPage() {
   const navigate = useNavigate()
   const t = useT()
-  const osuLibrary = useOsuLibraryStore(s => s.library)
-  const osuLibraryStatus = useOsuLibraryStore(s => s.status)
-  const osuLibraryScanning = useOsuLibraryStore(s => s.scanning)
-  const osuLibraryProgress = useOsuLibraryStore(s => s.scanProgress)
-  const osuLibraryHydrating = useOsuLibraryStore(s => s.hydrating)
-  const osuLibraryError = useOsuLibraryStore(s => s.error)
-  const osuLibraryPromptSeen = useOsuLibraryStore(s => s.promptSeen)
-  const refreshOsuStatus = useOsuLibraryStore(s => s.refreshStatus)
-  const scanOsuLibrary = useOsuLibraryStore(s => s.scan)
+  const showFallingArrows = useInterfaceSettingsStore(s => s.showFallingArrows)
+  const osuHookEnabled = useInterfaceSettingsStore(s => s.osuHookEnabled)
+  const etternaHookEnabled = useInterfaceSettingsStore(s => s.etternaHookEnabled)
   const markOsuPromptSeen = useOsuLibraryStore(s => s.markPromptSeen)
-  const showOsuLibraryPrompt = isTauri() && !osuLibraryHydrating && !osuLibraryPromptSeen && !osuLibrary
+  const installations = useGameIntegrationsStore(s => s.installations)
+  const integrationsChecked = useGameIntegrationsStore(s => s.checked)
+  const integrationsEnabled = useGameIntegrationsStore(s => s.enabled)
+  const integrationsPromptSeen = useGameIntegrationsStore(s => s.promptSeen)
+  const detectGameIntegrations = useGameIntegrationsStore(s => s.detect)
+  const acceptGameIntegrations = useGameIntegrationsStore(s => s.accept)
+  const dismissGameIntegrations = useGameIntegrationsStore(s => s.dismiss)
+  const showGameIntegrationPrompt = isTauri()
+    && integrationsChecked
+    && !integrationsPromptSeen
+    && hasDetectedGame(installations)
   const {
     beatmap,
     config,
@@ -303,35 +377,145 @@ export default function ConverterPage() {
     setDragging,
     reset,
   } = useConverterStore()
+  const directOutputDir = integrationsEnabled
+    ? directSaveFolder(installations, direction)
+    : null
+  const directSaveLabel = directOutputDir
+    ? direction === 'osu-to-etterna'
+      ? t('convertDialog.saveIntoEtterna')
+      : t('convertDialog.saveIntoOsu')
+    : null
+  const allDifficultyIndices = useMemo(
+    () => beatmap?.available_difficulties.map((_, index) => index) ?? [],
+    [beatmap?.available_difficulties],
+  )
 
   useEffect(() => {
-    if (!isTauri() || osuLibraryPromptSeen || osuLibrary) return
-    void refreshOsuStatus()
-  }, [osuLibrary, osuLibraryPromptSeen, refreshOsuStatus])
+    if (!isTauri()) return
+    void detectGameIntegrations()
+  }, [detectGameIntegrations])
 
-  const handleOsuLibraryScanPrompt = async () => {
-    let root = osuLibraryStatus?.root ?? null
-    if (!root) root = await dialogOpenDirectory({ title: t('osuLibrary.chooseFolderTitle') })
-    if (!root) return
-    const result = await scanOsuLibrary(root)
-    if (result) {
-      markOsuPromptSeen()
-      navigate('/osu-library')
-    }
+  const enableGameIntegrations = () => {
+    acceptGameIntegrations()
+    markOsuPromptSeen()
   }
 
-  const dismissOsuLibraryPrompt = () => {
+  const skipGameIntegrations = () => {
+    dismissGameIntegrations()
     markOsuPromptSeen()
   }
 
   const [lastExportPath, setLastExportPath] = useState<string | null>(null)
+  const [lastExportWasDirect, setLastExportWasDirect] = useState(false)
+  const [lastOpenedMapBackgroundUrl, setLastOpenedMapBackgroundUrl] = useState<string | null>(null)
+  const backgroundSectionRef = useRef<HTMLElement | null>(null)
+  const backgroundLayerRef = useRef<HTMLDivElement | null>(null)
+  const lastOpenedBackgroundRevisionRef = useRef(0)
+  useEffect(() => {
+    let cancelled = false
+    const revision = lastOpenedBackgroundRevisionRef.current
+    void loadLastOpenedMapBackground().then((blob) => {
+      if (cancelled || !blob || revision !== lastOpenedBackgroundRevisionRef.current) return
+      void backgroundBlobToDataUrl(blob).then((url) => {
+        if (cancelled || !url || revision !== lastOpenedBackgroundRevisionRef.current) return
+        setLastOpenedMapBackgroundUrl(url)
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    const section = backgroundSectionRef.current
+    const layer = backgroundLayerRef.current
+    if (!section || !layer || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    const parallax = { x: 0, y: 0, targetX: 0, targetY: 0 }
+    let frame = 0
+    let previousTime = 0
+
+    const animate = (time: number) => {
+      const dt = previousTime ? Math.min((time - previousTime) / 1000, 0.05) : 1 / 60
+      previousTime = time
+      const amount = 1 - Math.exp(-BACKGROUND_PARALLAX_EASE * dt)
+      let moving = false
+      const dx = parallax.targetX - parallax.x
+      const dy = parallax.targetY - parallax.y
+      if (Math.abs(dx) < 0.05) {
+        if (parallax.x !== parallax.targetX) moving = true
+        parallax.x = parallax.targetX
+      } else {
+        parallax.x += dx * amount
+        moving = true
+      }
+      if (Math.abs(dy) < 0.05) {
+        if (parallax.y !== parallax.targetY) moving = true
+        parallax.y = parallax.targetY
+      } else {
+        parallax.y += dy * amount
+        moving = true
+      }
+
+      layer.style.transform = `translate3d(${parallax.x}px, ${parallax.y}px, 0)`
+      if (moving) frame = window.requestAnimationFrame(animate)
+      else frame = 0
+    }
+
+    const schedule = () => {
+      if (frame) return
+      previousTime = 0
+      frame = window.requestAnimationFrame(animate)
+    }
+
+    const clamp = (value: number) => Math.max(-BACKGROUND_PARALLAX_PX, Math.min(BACKGROUND_PARALLAX_PX, value))
+    const move = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') return
+      const bounds = section.getBoundingClientRect()
+      if (bounds.width < 1 || bounds.height < 1) return
+      parallax.targetX = clamp(((event.clientX - bounds.left) / bounds.width - 0.5) * 2 * BACKGROUND_PARALLAX_PX)
+      parallax.targetY = clamp(((event.clientY - bounds.top) / bounds.height - 0.5) * 2 * BACKGROUND_PARALLAX_PX)
+      schedule()
+    }
+    const leave = () => {
+      parallax.targetX = 0
+      parallax.targetY = 0
+      schedule()
+    }
+
+    section.addEventListener('pointermove', move, { passive: true })
+    section.addEventListener('pointerleave', leave)
+    return () => {
+      section.removeEventListener('pointermove', move)
+      section.removeEventListener('pointerleave', leave)
+      if (frame) window.cancelAnimationFrame(frame)
+      layer.style.transform = ''
+    }
+  }, [])
+
+  const rememberLastOpenedBackground = useCallback(async (backgroundUrl: string | null) => {
+    if (!backgroundUrl) return
+    const revision = ++lastOpenedBackgroundRevisionRef.current
+    const blob = await loadBackgroundBlob(backgroundUrl)
+    if (!blob || revision !== lastOpenedBackgroundRevisionRef.current || !blob.size || blob.type.startsWith('video/')) return
+    const durableUrl = await backgroundBlobToDataUrl(blob)
+    if (!durableUrl || revision !== lastOpenedBackgroundRevisionRef.current) return
+    setLastOpenedMapBackgroundUrl(durableUrl)
+    await saveLastOpenedMapBackground(blob)
+  }, [])
+
+  useEffect(() => {
+    if (!mediaUrls.background) return
+    void rememberLastOpenedBackground(mediaUrls.background)
+  }, [mediaUrls.background, rememberLastOpenedBackground])
+
   const [showPreview, setShowPreview] = useState(false)
   const [switchingDifficulty, setSwitchingDifficulty] = useState(false)
-  const [showConvertDialog, setShowConvertDialog] = useState(false)
-  const [showMultiAudioWarning, setShowMultiAudioWarning] = useState(false)
-  const pendingIndicesRef = useRef<number[]>([])
+  const [difficultySelection, setDifficultySelection] = useState<number[] | null>(null)
+  const [reconvertPackSettings, setReconvertPackSettings] = useState<PackReplay | null>(null)
   const [showBulkConvert, setShowBulkConvert] = useState(false)
   const [showPackSettings, setShowPackSettings] = useState(false)
+  const [packReviewItems, setPackReviewItems] = useState<PackReviewItem[] | null>(null)
   const [mirrorFetchRequest, setMirrorFetchRequest] = useState<{
     resolve: (ok: boolean) => void
     title: string
@@ -344,7 +528,7 @@ export default function ConverterPage() {
   const [osuHookBusy, setOsuHookBusy] = useState(false)
   const [etternaHookBusy, setEtternaHookBusy] = useState(false)
   const [livePriorityId, setLivePriorityId] = useState('')
-  const { live: osuLive } = useOsuLive(isTauri())
+  const { live: osuLive } = useOsuLive(isTauri() && osuHookEnabled)
   const osuSelected = osuLive.connected ? osuLive.map : null
   const osuSources = osuLive.sources ?? []
   const stableSource = osuSources.find((source) => source.id === 'osu-stable')
@@ -353,7 +537,7 @@ export default function ConverterPage() {
   const lazerSelected = lazerSource?.map ?? (osuSelected?.folder.startsWith('lazer:') ? osuSelected : null)
   const stableBackgroundUrl = useOsuMapBackground(stableSelected)
   const lazerBackgroundUrl = useOsuMapBackground(lazerSelected)
-  const { live: etternaLive } = useEtternaLive(isTauri())
+  const { live: etternaLive } = useEtternaLive(isTauri() && etternaHookEnabled)
   const etternaSelected = etternaLive.connected ? etternaLive.map : null
   const etternaBackgroundUrl = useEtternaMapBackground(etternaSelected)
   const livePromptItems = ([
@@ -390,6 +574,7 @@ export default function ConverterPage() {
   ] as (LiveMapStackItem | null)[]).filter((item): item is LiveMapStackItem => item !== null)
   const priorityItem = livePromptItems.find((item) => item.id === livePriorityId) ?? livePromptItems[0]
   const liveBackgroundUrl = priorityItem?.backgroundUrl ?? null
+  const menuBackgroundUrl = mediaUrls.background ?? lastOpenedMapBackgroundUrl
 
   const routeSkinInput = useCallback(
     async (input: SkinInput): Promise<boolean> => {
@@ -421,7 +606,9 @@ export default function ConverterPage() {
   const [checkResult, setCheckResult] = useState<'up-to-date' | 'update-found' | 'error' | null>(null)
 
   // Beatmap mirror state
-  const [showMirror, setShowMirror] = useState(false)
+  const [showMirror, setShowMirror] = useState(() => (
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tool') === 'mirror'
+  ))
 
   // Queue state
   const queueItems = useQueueStore((s) => s.items)
@@ -444,6 +631,10 @@ export default function ConverterPage() {
   const [packBannerPath, setPackBannerPath] = useState<string | null>(null)
   const packBannerFileRef = useRef<File | null>(null)
   const packConfigsRef = useRef<Map<number, ExportConfig>>(new Map())
+  // Opening multiple .osu files through the pack browser means each file is a
+  // song entry. Do not rely on scanned audio metadata here: some packs reuse or
+  // omit it, while Version is still the per-song name users see in osu.
+  const usePackDifficultyTitles = packType === 'osu' && packEntries.length > 1
 
   // Diff name template state
   const [diffNameTemplate, setDiffNameTemplate] = useState('')
@@ -704,7 +895,7 @@ export default function ConverterPage() {
   )
 
   const handleFilesSelected = useCallback(
-    async (paths: string[]) => {
+    async (paths: string[], forceActivate = false) => {
       const newIds: string[] = []
       for (const path of paths) {
         const id = generateId()
@@ -739,7 +930,7 @@ export default function ConverterPage() {
           queueUpdateItem(id, { beatmap: result, config: cfg, status: 'ready' })
 
           // Auto-activate the first newly added item
-          if (i === 0 && queueItems.length === 0) {
+          if (i === 0 && (queueItems.length === 0 || forceActivate)) {
             queueSetActiveId(id)
             setDirection(dir)
             setBeatmap(result, dir)
@@ -761,7 +952,8 @@ export default function ConverterPage() {
   )
 
   const handleMainFilesSelected = useCallback(
-    async (paths: string[]) => {
+    async (paths: string[], forceActivate = false) => {
+      setDifficultySelection(null)
       const skinPath = paths.find(isSkinArchiveName)
       if (skinPath) {
         const input = getCachedFile(skinPath) || skinPath
@@ -769,7 +961,7 @@ export default function ConverterPage() {
         setError(t('converter.notReadableSkin'))
         return
       }
-      await handleFilesSelected(paths)
+      await handleFilesSelected(paths, forceActivate)
     },
     [handleFilesSelected, routeSkinInput, setError, t],
   )
@@ -822,6 +1014,7 @@ export default function ConverterPage() {
       audioPlayerRef.current?.stop()
       setAudioPlaying(false)
       setLastExportPath(null)
+      setDifficultySelection(null)
       setError(null)
       // Load the new item's data
       queueSetActiveId(item.id)
@@ -953,6 +1146,7 @@ export default function ConverterPage() {
     setConverting(true)
     setError(null)
     setLastExportPath(null)
+    setLastExportWasDirect(false)
 
     const baseDir = isTauri() ? await dialogOpenDirectory({ title: t('dialogs.titleExportAllFolder') }) : ''
     if (baseDir === null) {
@@ -966,6 +1160,7 @@ export default function ConverterPage() {
       const cfg = { ...item.config, output_format: activeCfg.output_format }
       queueUpdateItem(item.id, { status: 'converting' })
       try {
+        const itemPathStart = allPaths.length
         const diffCount = item.beatmap?.available_difficulties?.length || 1
 
         if (isTauri()) {
@@ -1072,7 +1267,35 @@ export default function ConverterPage() {
           const result = await exportBeatmap(bm, cfg, content, '', bm.difficulty_name)
           allPaths.push(result)
         }
-        queueUpdateItem(item.id, { status: 'completed', exportPath: allPaths[allPaths.length - 1], config: cfg })
+        const itemPaths = allPaths.slice(itemPathStart)
+        queueUpdateItem(item.id, { status: 'completed', exportPath: itemPaths[itemPaths.length - 1], config: cfg })
+        if (item.beatmap && itemPaths.length > 0) {
+          useConversionLibraryStore.getState().remember({
+            kind: 'beatmap',
+            title: cfg.title || item.beatmap.title || item.fileName,
+            artist: cfg.artist || item.beatmap.artist,
+            creator: cfg.creator || item.beatmap.creator,
+            sourceName: item.filePath.split(/[/\\]+/).pop() || item.fileName,
+            sourceFormat: item.beatmap.source_format,
+            direction: item.direction,
+            outputFormat: cfg.output_format,
+            outputNames: itemPaths,
+            outputPath: isTauri() ? baseDir : null,
+            itemCount: diffCount,
+            difficulty: diffCount === 1
+              ? item.beatmap.available_difficulties?.[0]?.name || cfg.difficulty_name || null
+              : null,
+            sourcePath: item.filePath,
+            replay: {
+              sourcePath: item.filePath,
+              config: { ...cfg },
+              difficultyIndices: Array.from({ length: diffCount }, (_, index) => index),
+              separateSongs: diffCount > 1,
+              packSettings: null,
+              skinOptions: null,
+            },
+          })
+        }
       } catch (e: unknown) {
         const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.conversionFailed')
         queueUpdateItem(item.id, { status: 'error', error: msg, config: cfg })
@@ -1087,24 +1310,24 @@ export default function ConverterPage() {
     setConverting(false)
   }, [queueItems, queueActiveId, isConverting, queueUpdateItem, setConverting, setError, setExportPath, t])
 
-  const handleConvert = useCallback(() => {
-    if (!beatmap) return
-    setShowConvertDialog(true)
-  }, [beatmap])
-
   const doConversion = useCallback(
-    async (indices: number[], separateSongs: boolean) => {
+    async (indices: number[], separateSongs: boolean, directOutput: string | null = null) => {
       if (!beatmap?.source_file || indices.length === 0) return
       setConverting(true)
       setError(null)
       setLastExportPath(null)
 
-      const cur = useConverterStore.getState().config
+      const currentConfig = useConverterStore.getState().config
+      const cur = directOutput
+        ? { ...currentConfig, output_format: 'folder' as const }
+        : currentConfig
       try {
         let exportDir: string | null = null
 
         if (isTauri()) {
-          if (cur.output_format === 'osz') {
+          if (directOutput) {
+            exportDir = directOutput
+          } else if (cur.output_format === 'osz') {
             exportDir = await dialogSaveFile({
               title: t('dialogs.titleExportOsz'),
               defaultPath: `${cur.artist} - ${cur.title} (${cur.creator}).osz`,
@@ -1235,7 +1458,10 @@ export default function ConverterPage() {
         } else {
           const allAtOne = Math.abs(cur.conversion_rate - 1) < 0.01
           const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
-          if (isOsz && direction === 'osu-to-etterna' && indices.length > 1 && allAtOne) {
+          if (directOutput && direction === 'etterna-to-osu' && indices.length > 1) {
+            const paths = await exportAllBeatmaps(beatmap.source_file, cur, exportDir, indices)
+            allPaths.push(...paths)
+          } else if (isOsz && direction === 'osu-to-etterna' && indices.length > 1 && allAtOne) {
             // Apply template to config before passing to exportAllBeatmaps
             const cfgWithTemplate = diffNameTemplate
               ? { ...cur, difficulty_name: await expandDiffName(diffNameTemplate, beatmap!, cur, cur.conversion_rate) }
@@ -1258,7 +1484,35 @@ export default function ConverterPage() {
           }
         }
 
+        if (allPaths.length > 0) {
+          useConversionLibraryStore.getState().remember({
+            kind: 'beatmap',
+            title: cur.title || beatmap.title,
+            artist: cur.artist || beatmap.artist,
+            creator: cur.creator || beatmap.creator,
+            sourceName: beatmap.source_file.split(/[/\\]+/).pop() || beatmap.source_file,
+            sourceFormat: beatmap.source_format,
+            direction: direction || (beatmap.source_format === 'OsuMania' ? 'osu-to-etterna' : 'etterna-to-osu'),
+            outputFormat: cur.output_format,
+            outputNames: allPaths,
+            outputPath: isTauri() ? exportDir : null,
+            itemCount: indices.length,
+            difficulty: indices.length === 1
+              ? beatmap.available_difficulties?.[indices[0]]?.name || cur.difficulty_name || null
+              : null,
+            sourcePath: beatmap.source_file,
+            replay: {
+              sourcePath: beatmap.source_file,
+              config: { ...cur },
+              difficultyIndices: [...indices],
+              separateSongs,
+              packSettings: null,
+              skinOptions: null,
+            },
+          })
+        }
         setLastExportPath(allPaths.join('\n'))
+        setLastExportWasDirect(Boolean(directOutput))
         setExportPath(exportDir)
         if (queueActiveId) {
           queueUpdateItem(queueActiveId, {
@@ -1283,10 +1537,9 @@ export default function ConverterPage() {
     [beatmap, direction, diffNameTemplate, queueActiveId, queueUpdateItem, setConverting, setError, setExportPath, t],
   )
 
-  const handleConvertDialogConfirm = useCallback(
-    async (indices: number[]) => {
+  const handleConvertSelection = useCallback(
+    async (indices: number[], directOutput: string | null = null) => {
       if (!beatmap?.source_file || indices.length === 0) return
-      setShowConvertDialog(false)
 
       const isOsz = beatmap.source_file.toLowerCase().endsWith('.osz')
       const curRate = useConverterStore.getState().config.conversion_rate
@@ -1296,36 +1549,49 @@ export default function ConverterPage() {
           indices.map((i) => beatmap.available_difficulties[i]?.audio_filename).filter(Boolean),
         )
         if (audioFiles.size > 1) {
-          pendingIndicesRef.current = indices
-          setShowMultiAudioWarning(true)
+          await doConversion(indices, true, directOutput)
           return
         }
       }
 
-      await doConversion(indices, false)
+      await doConversion(indices, false, directOutput)
     },
     [beatmap, direction, doConversion],
   )
 
-  const handleSeparateSongs = useCallback(() => {
-    setShowMultiAudioWarning(false)
-    doConversion(pendingIndicesRef.current, true)
-  }, [doConversion])
+  const selectedDifficultyIndices = difficultySelection ?? allDifficultyIndices
 
-  const handleCombineAnyway = useCallback(() => {
-    setShowMultiAudioWarning(false)
-    doConversion(pendingIndicesRef.current, false)
-  }, [doConversion])
+  const handleToggleDifficulty = useCallback((index: number) => {
+    setDifficultySelection(current => {
+      const selected = new Set(current ?? allDifficultyIndices)
+      if (selected.has(index)) selected.delete(index)
+      else selected.add(index)
+      return [...selected].sort((left, right) => left - right)
+    })
+  }, [allDifficultyIndices])
 
-  const handleMultiAudioCancel = useCallback(() => {
-    setShowMultiAudioWarning(false)
-    pendingIndicesRef.current = []
+  const handleSelectAllDifficulties = useCallback(() => {
+    setDifficultySelection([...allDifficultyIndices])
+  }, [allDifficultyIndices])
+
+  const handleDeselectAllDifficulties = useCallback(() => {
+    setDifficultySelection([])
   }, [])
+
+  const handleConvert = useCallback(() => {
+    void handleConvertSelection(selectedDifficultyIndices)
+  }, [handleConvertSelection, selectedDifficultyIndices])
+
+  const handleDirectSave = useCallback(async () => {
+      if (!directOutputDir) return
+      await handleConvertSelection(selectedDifficultyIndices, directOutputDir)
+  }, [directOutputDir, handleConvertSelection, selectedDifficultyIndices])
 
   // ── Pack browsing ──────────────────────────────────────────
 
   const handleOpenPack = useCallback(
     async (folder?: string) => {
+      setReconvertPackSettings(null)
       if (!folder) {
         clearFileCache()
         const picked = await dialogOpenDirectory({ title: t('dialogs.titleSelectPackFolder') })
@@ -1377,11 +1643,14 @@ export default function ConverterPage() {
       setPackFolder(folder)
       setPackEditing(null)
       setPackSelected(new Set())
+      setPackReviewItems(null)
+      setShowPackSettings(false)
       setPackLoading(true)
       setError(null)
       setPackBannerUrl(null)
       setPackBannerPath(null)
       packBannerFileRef.current = null
+      packConfigsRef.current.clear()
 
       setPackType(detectedType)
       setPackEntries(entries)
@@ -1405,6 +1674,41 @@ export default function ConverterPage() {
     },
     [handleFilesSelected, setDirection, setError, t],
   )
+
+  useEffect(() => {
+    const pending = consumePendingConversionReplay()
+    if (!pending || pending.kind === 'skin') return
+    let cancelled = false
+
+    const restore = async () => {
+      if (pending.kind === 'pack') {
+        await handleOpenPack(pending.sourcePath)
+        if (cancelled) return
+        const packSettings = pending.replay.packSettings
+        setPackSelected(new Set(packSettings?.indices || []))
+        packConfigsRef.current.clear()
+        for (const saved of packSettings?.songConfigs || []) {
+          packConfigsRef.current.set(saved.index, { ...saved.config })
+        }
+        setReconvertPackSettings(packSettings)
+        return
+      }
+
+      await handleMainFilesSelected([pending.sourcePath], true)
+      if (cancelled) return
+      if (pending.replay.config) {
+        useConverterStore.getState().updateConfig(pending.replay.config)
+      }
+      setDifficultySelection(pending.replay.difficultyIndices)
+    }
+
+    void restore().catch(reason => {
+      if (!cancelled) setError(reason instanceof Error ? reason.message : t('converter.failedToParseFile'))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [handleMainFilesSelected, handleOpenPack, setError, t])
 
   const handlePackEditSong = useCallback(
     async (index: number) => {
@@ -1450,6 +1754,13 @@ export default function ConverterPage() {
         const saved = packConfigsRef.current.get(index)
         if (saved) {
           useConverterStore.getState().updateConfig(saved)
+        } else if (usePackDifficultyTitles) {
+          const defaults = configFromEntry(entry, true)
+          useConverterStore.getState().updateConfig({
+            title: defaults.title,
+            subtitle: defaults.subtitle,
+            difficulty_name: defaults.difficulty_name,
+          })
         }
 
         // If background was auto-discovered, update config so the FilePicker
@@ -1463,15 +1774,16 @@ export default function ConverterPage() {
         setPackEditing(null)
       }
     },
-    [packEntries, packEditing, setAudioPlaying, setError, requestMirrorFetch, reportMirrorProgress, t],
+    [packEntries, packEditing, setAudioPlaying, setError, requestMirrorFetch, reportMirrorProgress, t, usePackDifficultyTitles],
   )
 
-  const handlePackBack = useCallback(() => {
+  const handlePackBack = useCallback(async () => {
     // Save current config
     if (packEditing !== null) {
       const cur = useConverterStore.getState().config
       packConfigsRef.current.set(packEditing, { ...cur })
     }
+    await rememberLastOpenedBackground(useConverterStore.getState().mediaUrls.background)
     setPackEditing(null)
     useConverterStore.getState().setBeatmap(null)
     useConverterStore.getState().setMediaUrls({ audio: null, background: null, banner: null, cdtitle: null })
@@ -1481,13 +1793,14 @@ export default function ConverterPage() {
       audio.stop()
     }
     setAudioPlaying(false)
-  }, [packEditing, setAudioPlaying])
+  }, [packEditing, rememberLastOpenedBackground, setAudioPlaying])
 
-  const handlePackClose = useCallback(() => {
+  const handlePackClose = useCallback(async () => {
     if (packEditing !== null) {
       const cur = useConverterStore.getState().config
       packConfigsRef.current.set(packEditing, { ...cur })
     }
+    await rememberLastOpenedBackground(useConverterStore.getState().mediaUrls.background)
     clearFileCache()
     setPackFolder(null)
     setPackEntries([])
@@ -1495,10 +1808,11 @@ export default function ConverterPage() {
     setPackSelected(new Set())
     setPackBannerUrl(null)
     setPackType('sm')
+    setReconvertPackSettings(null)
     packConfigsRef.current.clear()
     queueClearAll()
     reset()
-  }, [packEditing, queueClearAll, reset])
+  }, [packEditing, queueClearAll, rememberLastOpenedBackground, reset])
 
   const handleSelectAll = useCallback(
     (select: boolean) => {
@@ -1516,14 +1830,68 @@ export default function ConverterPage() {
   const handlePackConvert = useCallback(async () => {
     if (packSelected.size === 0 || isConverting) return
     setPackConvertAllMode(false)
-    setShowPackSettings(true)
-  }, [packSelected, isConverting])
+    const items = [...packSelected].sort((a, b) => a - b).flatMap(index => {
+      const entry = packEntries[index]
+      if (!entry) return []
+      const config = normalizePackConfig(
+        entry,
+        packEntries,
+        packConfigsRef.current.get(index) || configFromEntry(entry, usePackDifficultyTitles),
+        usePackDifficultyTitles,
+      )
+      return [{
+        index,
+        title: config.title,
+        artist: config.artist,
+        subtitle: config.subtitle || '',
+        difficulty: entry.available_difficulties[0]?.name || '',
+        difficultyCount: entry.available_difficulties.length,
+      }]
+    })
+    setPackReviewItems(items)
+  }, [packEntries, packSelected, isConverting, usePackDifficultyTitles])
 
   const handlePackConvertAll = useCallback(async () => {
     if (packEntries.length === 0 || isConverting) return
     setPackConvertAllMode(true)
+    setPackReviewItems(packEntries.map((entry, index) => {
+      const config = normalizePackConfig(
+        entry,
+        packEntries,
+        packConfigsRef.current.get(index) || configFromEntry(entry, usePackDifficultyTitles),
+        usePackDifficultyTitles,
+      )
+      return {
+        index,
+        title: config.title,
+        artist: config.artist,
+        subtitle: config.subtitle || '',
+        difficulty: entry.available_difficulties[0]?.name || '',
+        difficultyCount: entry.available_difficulties.length,
+      }
+    }))
+  }, [packEntries, isConverting, usePackDifficultyTitles])
+
+  const handlePackReviewConfirm = useCallback((items: PackReviewItem[]) => {
+    for (const item of items) {
+      const entry = packEntries[item.index]
+      if (!entry) continue
+      const config = normalizePackConfig(
+        entry,
+        packEntries,
+        packConfigsRef.current.get(item.index) || configFromEntry(entry, usePackDifficultyTitles),
+        usePackDifficultyTitles,
+      )
+      packConfigsRef.current.set(item.index, {
+        ...config,
+        title: item.title.trim() || config.title,
+        artist: item.artist.trim(),
+        subtitle: item.subtitle.trim() || null,
+      })
+    }
+    setPackReviewItems(null)
     setShowPackSettings(true)
-  }, [packEntries, isConverting])
+  }, [packEntries, usePackDifficultyTitles])
 
   const runPackConversion = useCallback(
     async (settings: {
@@ -1546,6 +1914,10 @@ export default function ConverterPage() {
               .pop() || 'pack'
           : 'pack'
         const useOsz = settings.mode === 'osz'
+        const replaySongConfigs = Array.from(packConfigsRef.current.entries()).map(([index, config]) => ({
+          index,
+          config: { ...config },
+        }))
 
         if (!isTauri()) {
           // Web path: single .osz matching desktop pack output
@@ -1559,9 +1931,12 @@ export default function ConverterPage() {
             if (!entry) continue
 
             const savedCfg = packConfigsRef.current.get(idx)
-            const baseCfg = savedCfg || configFromEntry(entry)
-            const safeTitle = (baseCfg.title || entry.title).replace(/[/\\?%*:|"<>]/g, '_') || `song_${idx}`
-
+            const baseCfg = normalizePackConfig(
+              entry,
+              packEntries,
+              savedCfg || configFromEntry(entry, usePackDifficultyTitles),
+              usePackDifficultyTitles,
+            )
             const cfg = {
               ...baseCfg,
               output_format: 'folder' as const,
@@ -1574,17 +1949,22 @@ export default function ConverterPage() {
             if (packType === 'osu') {
               // Osu pack: each entry is a single .osu file, convert directly to .sm
               const bm = await parseFile(entry.source_file, 'osu-to-etterna')
+              const parsedCfg = {
+                ...cfg,
+                ...normalizeParsedOsuPackMetadata(bm, packEntries, cfg),
+              }
               const osuCfg = settings.diff_name_template
                 ? {
-                    ...cfg,
+                    ...parsedCfg,
                     difficulty_name: await expandDiffName(
                       settings.diff_name_template,
                       bm,
-                      { ...cfg, creator: bm.creator || cfg.creator },
-                      cfg.conversion_rate,
+                      { ...parsedCfg, creator: bm.creator || parsedCfg.creator },
+                      parsedCfg.conversion_rate,
                     ),
                   }
-                : cfg
+                : parsedCfg
+              const safeTitle = (osuCfg.title || bm.difficulty_name || entry.title).replace(/[/\\?%*:|"<>]/g, '_') || `song_${idx}`
               const smContent = await convertBeatmap(bm, osuCfg)
 
               // Audio
@@ -1623,6 +2003,7 @@ export default function ConverterPage() {
               }
             } else {
               // SM pack (existing behavior)
+              const safeTitle = (cfg.title || entry.title).replace(/[/\\?%*:|"<>]/g, '_') || `song_${idx}`
               const beatmaps = await parseSmAll(entry.source_file)
 
               // Build rename map: original filename → song-prefixed name (matching desktop pack mode)
@@ -1704,8 +2085,41 @@ export default function ConverterPage() {
           }
 
           const blob = await zip.generateAsync({ type: 'blob' })
-          await saveBlobToFile(blob, `${packFolderName}.osz`)
-          setLastExportPath(`${packFolderName}.osz`)
+          const outputName = `${packFolderName}.osz`
+          await saveBlobToFile(blob, outputName)
+          useConversionLibraryStore.getState().remember({
+            kind: 'pack',
+            title: packFolderName,
+            artist: '',
+            creator: settings.creator,
+            sourceName: packFolderName,
+            sourceFormat: packType === 'osu' ? 'OsuMania' : 'Etterna',
+            direction: packType === 'osu' ? 'osu-to-etterna' : 'etterna-to-osu',
+            outputFormat: 'osz',
+            outputNames: [outputName],
+            outputPath: null,
+            itemCount: indices.length,
+            difficulty: null,
+            sourcePath: packFolder,
+            replay: {
+              sourcePath: packFolder,
+              config: null,
+              difficultyIndices: null,
+              separateSongs: null,
+              packSettings: {
+                mode: settings.mode as 'osz' | 'folder',
+                creator: settings.creator,
+                hp_drain: settings.hp_drain,
+                overall_difficulty: settings.overall_difficulty,
+                diff_name_template: settings.diff_name_template,
+                indices: [...indices],
+                songConfigs: replaySongConfigs,
+              },
+              skinOptions: null,
+            },
+          })
+          setLastExportPath(outputName)
+          setLastExportWasDirect(false)
           if (packType === 'osu') {
             trackEvent('songs_folder_conversion_completed', { count: String(indices.length), mode: 'osz' })
           } else {
@@ -1731,10 +2145,16 @@ export default function ConverterPage() {
             const entry = packEntries[idx]
             if (!entry) continue
             const savedCfg = packConfigsRef.current.get(idx)
+            const baseCfg = normalizePackConfig(
+              entry,
+              packEntries,
+              savedCfg || configFromEntry(entry, usePackDifficultyTitles),
+              usePackDifficultyTitles,
+            )
             const cfg = {
-              ...(savedCfg || configFromEntry(entry)),
+              ...baseCfg,
               output_format: 'folder' as const,
-              creator: settings.creator || (savedCfg || configFromEntry(entry)).creator,
+              creator: settings.creator || baseCfg.creator,
               hp_drain: settings.hp_drain,
               overall_difficulty: settings.overall_difficulty,
               diff_name_template: settings.diff_name_template || null,
@@ -1742,17 +2162,21 @@ export default function ConverterPage() {
             if (packType === 'osu') {
               // Osu pack: each entry is a single .osu file, convert directly to .sm
               const bm = await parseFile(entry.source_file, 'osu-to-etterna')
+              const parsedCfg = {
+                ...cfg,
+                ...normalizeParsedOsuPackMetadata(bm, packEntries, cfg),
+              }
               const osuCfg = settings.diff_name_template
                 ? {
-                    ...cfg,
+                    ...parsedCfg,
                     difficulty_name: await expandDiffName(
                       settings.diff_name_template,
                       bm,
-                      { ...cfg, creator: bm.creator || cfg.creator },
-                      cfg.conversion_rate,
+                      { ...parsedCfg, creator: bm.creator || parsedCfg.creator },
+                      parsedCfg.conversion_rate,
                     ),
                   }
-                : cfg
+                : parsedCfg
               const smContent = await convertBeatmap(bm, osuCfg)
               const result = await exportBeatmap(bm, osuCfg, smContent, workDir, bm.difficulty_name, false)
               allPaths.push(result)
@@ -1764,21 +2188,86 @@ export default function ConverterPage() {
 
           if (packType !== 'osu') {
             const firstEntry = packEntries[indices[0]]
-            const firstCfg = packConfigsRef.current.get(indices[0]) || configFromEntry(firstEntry)
+            const firstCfg = packConfigsRef.current.get(indices[0]) || configFromEntry(firstEntry, usePackDifficultyTitles)
             await createDummyDiff(packFolderName, settings.creator || firstCfg.creator, packBannerPath, workDir)
           }
 
           if (useOsz) {
             const oszPath = `${exportDir}/${packFolderName}.osz`
             await zipFolder(workDir, oszPath)
+            useConversionLibraryStore.getState().remember({
+              kind: 'pack',
+              title: packFolderName,
+              artist: '',
+              creator: settings.creator,
+              sourceName: packFolderName,
+              sourceFormat: packType === 'osu' ? 'OsuMania' : 'Etterna',
+              direction: packType === 'osu' ? 'osu-to-etterna' : 'etterna-to-osu',
+              outputFormat: 'osz',
+              outputNames: [oszPath],
+              outputPath: oszPath,
+              itemCount: indices.length,
+              difficulty: null,
+              sourcePath: packFolder,
+              replay: {
+                sourcePath: packFolder,
+                config: null,
+                difficultyIndices: null,
+                separateSongs: null,
+                packSettings: {
+                  mode: settings.mode as 'osz' | 'folder',
+                  creator: settings.creator,
+                  hp_drain: settings.hp_drain,
+                  overall_difficulty: settings.overall_difficulty,
+                  diff_name_template: settings.diff_name_template,
+                  indices: [...indices],
+                  songConfigs: replaySongConfigs,
+                },
+                skinOptions: null,
+              },
+            })
             setLastExportPath(oszPath)
+            setLastExportWasDirect(false)
             setExportPath(oszPath)
           } else {
+            useConversionLibraryStore.getState().remember({
+              kind: 'pack',
+              title: packFolderName,
+              artist: '',
+              creator: settings.creator,
+              sourceName: packFolderName,
+              sourceFormat: packType === 'osu' ? 'OsuMania' : 'Etterna',
+              direction: packType === 'osu' ? 'osu-to-etterna' : 'etterna-to-osu',
+              outputFormat: 'folder',
+              outputNames: allPaths,
+              outputPath: exportDir,
+              itemCount: indices.length,
+              difficulty: null,
+              sourcePath: packFolder,
+              replay: {
+                sourcePath: packFolder,
+                config: null,
+                difficultyIndices: null,
+                separateSongs: null,
+                packSettings: {
+                  mode: settings.mode as 'osz' | 'folder',
+                  creator: settings.creator,
+                  hp_drain: settings.hp_drain,
+                  overall_difficulty: settings.overall_difficulty,
+                  diff_name_template: settings.diff_name_template,
+                  indices: [...indices],
+                  songConfigs: replaySongConfigs,
+                },
+                skinOptions: null,
+              },
+            })
             setLastExportPath(allPaths.join('\n'))
+            setLastExportWasDirect(false)
             setExportPath(exportDir)
           }
           trackEvent('pack_conversion_completed', { count: String(indices.length), mode: settings.mode })
         }
+
       } catch (e: unknown) {
         const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('converter.packConversionFailed')
         setError(msg)
@@ -1794,6 +2283,7 @@ export default function ConverterPage() {
       packFolder,
       packBannerPath,
       packType,
+      usePackDifficultyTitles,
       setConverting,
       setError,
       setExportPath,
@@ -1885,11 +2375,20 @@ export default function ConverterPage() {
     }
   }, [lastExportPath, exportPath])
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
+    await rememberLastOpenedBackground(useConverterStore.getState().mediaUrls.background)
     clearFileCache()
     queueClearAll()
+    setDifficultySelection(null)
     reset()
-  }, [queueClearAll, reset])
+    scrollAppToTop()
+  }, [queueClearAll, rememberLastOpenedBackground, reset])
+
+  const handleHome = useCallback(async () => {
+    if (packFolder) await handlePackClose()
+    else await handleReset()
+    scrollAppToTop()
+  }, [handlePackClose, handleReset, packFolder])
 
   const handleDismissExport = useCallback(() => {
     setLastExportPath(null)
@@ -1972,6 +2471,12 @@ export default function ConverterPage() {
   const notes = beatmap?.notes
   const tapCount = useMemo(() => notes?.filter((n) => !n.hold).length ?? 0, [notes])
   const holdCount = useMemo(() => notes?.filter((n) => n.hold).length ?? 0, [notes])
+
+  useEffect(() => {
+    if (!beatmap && !packFolder && queueItems.length === 0 && !packLoading) {
+      scrollAppToTop()
+    }
+  }, [beatmap, packFolder, packLoading, queueItems.length])
 
   return (
     <ErrorBoundary>
@@ -2059,34 +2564,40 @@ export default function ConverterPage() {
           if (filePaths.length > 0) handleMainFilesSelected(filePaths)
         }}
       >
-        <section className="converter-first-screen relative flex min-h-0 w-full shrink-0 flex-col overflow-hidden">
-        {(mediaUrls.background || liveBackgroundUrl) && (
-          <div className="absolute inset-0 z-0 overflow-hidden">
-            {mediaUrls.background ? (
-              <div
-                className="w-full h-full bg-cover bg-center animate-bg-fade-in"
-                style={{
-                  backgroundImage: `url(${mediaUrls.background})`,
-                  filter: 'blur(22px) brightness(0.4) saturate(0.45)',
-                }}
-              />
-            ) : (
-              <OsuBackground url={liveBackgroundUrl} />
-            )}
-            <div className="absolute inset-0 bg-surface-950/50" />
-          </div>
-        )}
-        {!mediaUrls.background && !liveBackgroundUrl && <div className="absolute inset-0 z-0 bg-surface-950" />}
+        <Header
+          appVersion={appVersion}
+          onHomeClick={handleHome}
+          onShowVersionDialog={() => {
+            setShowVersionDialog(true)
+            setCheckResult(null)
+          }}
+        />
 
-        <div className="relative z-10 flex min-h-[100dvh] flex-1 flex-col">
-          <Header
-            appVersion={appVersion}
-            onShowVersionDialog={() => {
-              setShowVersionDialog(true)
-              setCheckResult(null)
-            }}
-          />
+        <section
+          ref={backgroundSectionRef}
+          className="converter-first-screen relative flex min-h-0 w-full shrink-0 flex-col overflow-hidden"
+        >
+        <div
+          ref={backgroundLayerRef}
+          className="converter-background-parallax pointer-events-none absolute -inset-5 z-0 overflow-hidden"
+        >
+          {!menuBackgroundUrl && !liveBackgroundUrl && <div className="absolute inset-0 bg-surface-950" />}
+          {menuBackgroundUrl ? (
+            <div
+              className="w-full h-full bg-cover bg-center animate-bg-fade-in"
+              style={{
+                backgroundImage: `url(${menuBackgroundUrl})`,
+                filter: 'blur(22px) brightness(0.4) saturate(0.45)',
+              }}
+            />
+          ) : (
+            <OsuBackground url={liveBackgroundUrl} />
+          )}
+          {(menuBackgroundUrl || liveBackgroundUrl) && <div className="absolute inset-0 bg-surface-950/50" />}
+        </div>
+        {showFallingArrows && <FallingArrows />}
 
+        <div className="relative z-10 flex min-h-[calc(100dvh-3.5625rem)] flex-1 flex-col">
           <ConversionQueue
             items={queueItems}
             activeId={queueActiveId}
@@ -2104,6 +2615,7 @@ export default function ConverterPage() {
             {packFolder && packEditing === null && (
               <PackBrowser
                 entries={packEntries}
+                useDifficultyTitles={usePackDifficultyTitles}
                 selected={packSelected}
                 onToggleSelect={(i) => {
                   setPackSelected((prev) => {
@@ -2150,8 +2662,14 @@ export default function ConverterPage() {
                   onUpdateConfig={(p) => useConverterStore.getState().updateConfig(p)}
                   onChangeFile={handleChangeFile}
                   onConvert={handleConvert}
-                  onReset={reset}
+                  directSaveLabel={directSaveLabel}
+                  onDirectSave={directSaveLabel ? handleDirectSave : undefined}
+                  onReset={handleReset}
                   onSelectDifficulty={handleSelectDifficulty}
+                  selectedDifficultyIndices={selectedDifficultyIndices}
+                  onToggleDifficulty={handleToggleDifficulty}
+                  onSelectAllDifficulties={handleSelectAllDifficulties}
+                  onDeselectAllDifficulties={handleDeselectAllDifficulties}
                   onUpdateDiffNameTemplate={setDiffNameTemplate}
                   onOpenPresetManager={() => setShowPresetManager(true)}
                 />
@@ -2203,34 +2721,15 @@ export default function ConverterPage() {
               </div>
             )}
 
-            {!packFolder && packLoading && (
-              <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
-                <div className="w-10 h-10 rounded-xl border-2 border-accent/30 border-t-accent animate-spin" />
-                <p className="text-sm text-surface-400">{t('converter.scanningPack')}</p>
-              </div>
-            )}
-
             {!packFolder && queueItems.length > 0 && (
               <div className="flex flex-col items-center w-full max-w-lg my-auto">
                 {(() => {
                   const activeItem = queueItems.find((i) => i.id === queueActiveId)
                   if (queueLoading) {
-                    return (
-                      <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
-                        <div className="w-8 h-8 rounded-xl border-2 border-accent/30 border-t-accent animate-spin" />
-                        <p className="text-sm text-surface-400">{t('common.loading')}</p>
-                      </div>
-                    )
+                    return null
                   }
                   if (activeItem?.status === 'parsing') {
-                    return (
-                      <div className="flex flex-col items-center gap-4 animate-fade-in my-auto">
-                        <div className="w-8 h-8 rounded-xl border-2 border-accent/30 border-t-accent animate-spin" />
-                        <p className="text-sm text-surface-400">
-                          {t('converter.parsingFile', { fileName: activeItem.fileName })}
-                        </p>
-                      </div>
-                    )
+                    return null
                   }
                   if (activeItem?.status === 'error' && !activeItem.beatmap) {
                     return (
@@ -2260,8 +2759,14 @@ export default function ConverterPage() {
                         onUpdateConfig={(p) => useConverterStore.getState().updateConfig(p)}
                         onChangeFile={handleChangeFile}
                         onConvert={handleConvert}
+                        directSaveLabel={directSaveLabel}
+                        onDirectSave={directSaveLabel ? handleDirectSave : undefined}
                         onReset={handleReset}
                         onSelectDifficulty={handleSelectDifficulty}
+                        selectedDifficultyIndices={selectedDifficultyIndices}
+                        onToggleDifficulty={handleToggleDifficulty}
+                        onSelectAllDifficulties={handleSelectAllDifficulties}
+                        onDeselectAllDifficulties={handleDeselectAllDifficulties}
                         onUpdateDiffNameTemplate={setDiffNameTemplate}
                         onOpenPresetManager={() => setShowPresetManager(true)}
                       />
@@ -2292,8 +2797,14 @@ export default function ConverterPage() {
                   onUpdateConfig={(p) => useConverterStore.getState().updateConfig(p)}
                   onChangeFile={handleChangeFile}
                   onConvert={handleConvert}
+                  directSaveLabel={directSaveLabel}
+                  onDirectSave={directSaveLabel ? handleDirectSave : undefined}
                   onReset={handleReset}
                   onSelectDifficulty={handleSelectDifficulty}
+                  selectedDifficultyIndices={selectedDifficultyIndices}
+                  onToggleDifficulty={handleToggleDifficulty}
+                  onSelectAllDifficulties={handleSelectAllDifficulties}
+                  onDeselectAllDifficulties={handleDeselectAllDifficulties}
                   onUpdateDiffNameTemplate={setDiffNameTemplate}
                   onOpenPresetManager={() => setShowPresetManager(true)}
                 />
@@ -2308,23 +2819,13 @@ export default function ConverterPage() {
           </main>
 
           {beatmap && mediaUrls.audio && (!packFolder || packEditing !== null) && (
-            <>
-              {audioLoading && (
-                <div className="absolute top-0 left-0 right-0 h-0.5 z-50 overflow-hidden pointer-events-none">
-                  <div
-                    className="h-full bg-accent/60 animate-pulse"
-                    style={{ animation: 'loading-bar 1.2s ease-in-out infinite', width: '40%' }}
-                  />
-                </div>
-              )}
-              <AudioPlayer
-                audioPlayerRef={audioPlayerRef}
-                audioPlaying={audioPlaying}
-                audioDuration={audioDuration}
-                previewTime={beatmap.preview_time}
-                onOpenPreview={() => setShowPreview(true)}
-              />
-            </>
+            <AudioPlayer
+              audioPlayerRef={audioPlayerRef}
+              audioPlaying={audioPlaying}
+              audioDuration={audioDuration}
+              previewTime={beatmap.preview_time}
+              onOpenPreview={() => setShowPreview(true)}
+            />
           )}
 
           {!beatmap && !packFolder && (
@@ -2366,29 +2867,9 @@ export default function ConverterPage() {
           </div>
         )}
 
-        {/* Convert dialog */}
-        {beatmap && (
-          <ConvertDialog
-            open={showConvertDialog}
-            difficulties={beatmap.available_difficulties}
-            currentIndex={beatmap.available_difficulties.findIndex((d) => d.name === beatmap.difficulty_name)}
-            onConfirm={handleConvertDialogConfirm}
-            onCancel={() => setShowConvertDialog(false)}
-          />
-        )}
-
         {/* Bulk convert dialog */}
         {direction === 'etterna-to-osu' && (
           <BulkConvertDialog open={showBulkConvert} onCancel={() => setShowBulkConvert(false)} />
-        )}
-
-        {/* Multi-audio warning dialog */}
-        {showMultiAudioWarning && (
-          <MultiAudioWarning
-            onSeparateSongs={handleSeparateSongs}
-            onCombineAnyway={handleCombineAnyway}
-            onCancel={handleMultiAudioCancel}
-          />
         )}
 
         {/* Mirror download confirmation */}
@@ -2410,6 +2891,14 @@ export default function ConverterPage() {
         )}
 
         {/* Pack settings dialog */}
+        {packReviewItems && (
+          <PackReviewDialog
+            items={packReviewItems}
+            onConfirm={handlePackReviewConfirm}
+            onCancel={() => setPackReviewItems(null)}
+          />
+        )}
+
         <PackSettingsDialog
           open={showPackSettings}
           packName={
@@ -2422,13 +2911,16 @@ export default function ConverterPage() {
           }
           isConverting={isConverting}
           defaultSettings={{
-            mode: 'osz',
-            creator: useConverterStore.getState().config.creator,
-            hp_drain: useConverterStore.getState().config.hp_drain,
-            overall_difficulty: useConverterStore.getState().config.overall_difficulty,
-            diff_name_template: diffNameTemplate,
+            ...(reconvertPackSettings || {
+              mode: 'osz' as const,
+              creator: useConverterStore.getState().config.creator,
+              hp_drain: useConverterStore.getState().config.hp_drain,
+              overall_difficulty: useConverterStore.getState().config.overall_difficulty,
+              diff_name_template: diffNameTemplate,
+            }),
           }}
           onConfirm={(settings) => {
+            setReconvertPackSettings(null)
             setShowPackSettings(false)
             runPackConversion(settings)
           }}
@@ -2591,7 +3083,9 @@ export default function ConverterPage() {
                       className="px-6 py-2.5 rounded-xl bg-accent text-white font-medium text-sm
                                  hover:bg-accent-hover active:scale-[0.97] transition-all duration-75"
                     >
-                      {direction === 'etterna-to-osu' ? t('converter.openInOsu') : t('converter.showInExplorer')}
+                      {!lastExportWasDirect && direction === 'etterna-to-osu'
+                        ? t('converter.openInOsu')
+                        : t('converter.showInExplorer')}
                     </button>
                   )}
                   <button
@@ -2618,16 +3112,29 @@ export default function ConverterPage() {
         </div>
       )}
 
-      {showOsuLibraryPrompt && (
-        <OsuLibraryPrompt
-          status={osuLibraryStatus}
-          scanning={osuLibraryScanning}
-          progress={osuLibraryProgress}
-          error={osuLibraryError}
-          onConfirm={() => void handleOsuLibraryScanPrompt()}
-          onLater={dismissOsuLibraryPrompt}
+      {showGameIntegrationPrompt && installations && (
+        <GameIntegrationPrompt
+          installations={installations}
+          onConfirm={enableGameIntegrations}
+          onLater={skipGameIntegrations}
         />
       )}
+
+      <LoadingScreen
+        show={isConverting || switchingDifficulty || audioLoading || packLoading || queueLoading || queueItems.some(item => item.status === 'parsing')}
+        label={
+          isConverting
+            ? t('common.converting')
+            : packLoading
+              ? t('converter.scanningPack')
+              : t('common.loading')
+        }
+        detail={
+          switchingDifficulty
+            ? beatmap?.difficulty_name
+            : queueItems.find(item => item.status === 'parsing')?.fileName
+        }
+      />
     </ErrorBoundary>
   )
 }

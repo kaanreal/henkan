@@ -13,19 +13,6 @@ const DO_ITEMS: MessageKey[] = [
   'home.doViewer',
 ]
 
-const GUIDE_LINKS = [
-  {
-    to: '/how-to-make-an-osu-mania-map',
-    titleKey: 'mappingGuide.title',
-    introKey: 'mappingGuide.intro',
-  },
-  {
-    to: '/how-to-convert-osu-mania-to-stepmania',
-    titleKey: 'conversionGuide.title',
-    introKey: 'conversionGuide.intro',
-  },
-] as const
-
 export function HomeReveal() {
   const t = useT()
   const rootRef = useRef<HTMLElement>(null)
@@ -94,23 +81,19 @@ export function HomeReveal() {
         </div>
 
         <div data-reveal className="reveal">
-          <h3 className="text-xl font-semibold text-surface-100 mb-4">{t('siteFooter.guides')}</h3>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {GUIDE_LINKS.map(({ to, titleKey, introKey }) => (
-              <Link
-                key={to}
-                to={to}
-                className="group block bg-surface-900/50 border border-surface-800/50 rounded-xl p-5
-                           hover:border-surface-700 hover:bg-surface-900/70 transition-all"
-              >
-                <h4 className="text-sm font-medium text-surface-200 mb-1 group-hover:text-surface-100 transition-colors">
-                  {t(titleKey)}
-                </h4>
-                <p className="text-xs text-surface-500 leading-relaxed mb-4">{t(introKey)}</p>
-                <span className="text-xs font-medium text-accent">{t('home.readGuide')} &#8594;</span>
-              </Link>
-            ))}
-          </div>
+          <h3 className="text-xl font-semibold text-surface-100 mb-4">Documentation</h3>
+          <Link
+            to="/docs"
+            className="group flex items-center justify-between gap-6 rounded-xl border border-surface-800/50 bg-surface-900/50 p-5 transition-all hover:border-surface-700 hover:bg-surface-900/70"
+          >
+            <div>
+              <h4 className="text-sm font-medium text-surface-200 transition-colors group-hover:text-surface-100">
+                Henkan documentation
+              </h4>
+              <p className="mt-1 text-xs leading-relaxed text-surface-500">Formats, conversion settings, pack tools, previews, skins, and troubleshooting in one place.</p>
+            </div>
+            <span className="shrink-0 text-lg text-accent" aria-hidden="true">&#8594;</span>
+          </Link>
 
           <button
             onClick={scrollToTop}

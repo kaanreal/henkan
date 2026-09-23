@@ -7,6 +7,7 @@ const _bgCache = new Map<string, string>()
 
 interface Props {
   entries: PackEntry[]
+  useDifficultyTitles?: boolean
   selected: Set<number>
   onToggleSelect: (index: number) => void
   onEditSong: (index: number) => void
@@ -18,8 +19,9 @@ interface Props {
   isConverting: boolean
 }
 
-function PackCard({ entry, checked, onToggle, onEdit }: {
+function PackCard({ entry, displayTitle, checked, onToggle, onEdit }: {
   entry: PackEntry
+  displayTitle?: string
   checked: boolean
   onToggle: () => void
   onEdit: () => void
@@ -98,14 +100,14 @@ function PackCard({ entry, checked, onToggle, onEdit }: {
 
       {/* Info */}
       <div className="px-3 py-2.5">
-        <div className="text-sm font-medium text-surface-200 truncate leading-tight">{entry.title}</div>
+        <div className="text-sm font-medium text-surface-200 truncate leading-tight">{displayTitle || entry.title}</div>
         <div className="text-[11px] text-surface-500 truncate mt-0.5">{entry.artist}</div>
       </div>
     </div>
   )
 }
 
-export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onSelectAll, onConvert, onConvertAll, onBack, bannerUrl, isConverting }: Props) {
+export function PackBrowser({ entries, useDifficultyTitles = false, selected, onToggleSelect, onEditSong, onSelectAll, onConvert, onConvertAll, onBack, bannerUrl, isConverting }: Props) {
   const t = useT()
   const allSelected = selected.size === entries.length
 
@@ -159,6 +161,7 @@ export function PackBrowser({ entries, selected, onToggleSelect, onEditSong, onS
           <PackCard
             key={i}
             entry={entry}
+            displayTitle={useDifficultyTitles ? entry.available_difficulties[0]?.name : undefined}
             checked={selected.has(i)}
             onToggle={() => onToggleSelect(i)}
             onEdit={() => onEditSong(i)}
