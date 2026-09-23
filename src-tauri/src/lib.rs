@@ -1480,9 +1480,11 @@ fn is_directory(path: String) -> bool {
 
 #[tauri::command]
 fn open_file(path: String) -> Result<(), String> {
-    std::process::Command::new("cmd")
-        .args(["/c", "start", "", &path])
-        .creation_flags(0x08000000)
+    let mut command = std::process::Command::new("cmd");
+    command.args(["/c", "start", "", &path]);
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    command
         .spawn()
         .map_err(|e| format!("Failed to open file: {}", e))?;
     Ok(())
