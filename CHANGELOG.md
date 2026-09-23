@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.8.0](https://github.com/kaanreal/henkan/compare/v1.6.1...v1.8.0) (2026-09-23)
+
+## What's new
+
+- Save converted maps directly into detected osu!stable or Etterna song folders.
+- Cleaner difficulty selection with all maps selected by default.
+- Persistent map backgrounds across web and desktop sessions.
+- Cleaner platform-specific settings and desktop game hooks.
+
+## Fixed
+
+- Correct per-map metadata when converting packs with separate files.
+- Faster multi-map conversion.
+- Stopped PowerShell and Command Prompt windows from flashing while Henkan watches Etterna.
+
+
 ## [1.8.2](https://github.com/kaanreal/henkan/compare/v1.8.1...v1.8.2) (2026-09-23)
 
 ## What's new

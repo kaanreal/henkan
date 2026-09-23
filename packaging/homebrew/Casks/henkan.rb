@@ -1,6 +1,6 @@
 cask "henkan" do
-  version "1.8.2"
-  sha256 "caf3a04d9ba6627d843b1c71dd6793ff60865c90dd3f3605ac7f359f1944ec15"
+  version "1.8.0"
+  sha256 "bca601252eb6253e71707bde150a7e8c6424533dcf7e2387f162871e47e5f20c"
 
   url "https://github.com/kaanreal/henkan/releases/download/v#{version}/Henkan-v#{version}-macos.dmg"
   name "Henkan"

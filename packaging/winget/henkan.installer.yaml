@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
 PackageIdentifier: kaanreal.Henkan
-PackageVersion: 1.8.2
+PackageVersion: 1.8.0
 InstallerLocale: en-US
 InstallerType: nullsoft
 Scope: user
@@ -13,7 +13,7 @@ InstallerSwitches:
 UpgradeBehavior: install
 AppsAndFeaturesEntries:
   - DisplayName: Henkan
-    DisplayVersion: 1.8.2
+    DisplayVersion: 1.8.0
     Publisher: henkan
     InstallerType: nullsoft
 InstallationMetadata:
@@ -25,7 +25,7 @@ InstallationMetadata:
 ReleaseDate: 2026-09-23
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/kaanreal/henkan/releases/download/v1.8.2/Henkan-v1.8.2-windows-setup.exe
-    InstallerSha256: 4A1B3AE62ABF1A78CD35473727C7CD22F050E4105C629874A8FB616D4164AE38
+    InstallerUrl: https://github.com/kaanreal/henkan/releases/download/v1.8.0/Henkan-v1.8.0-windows-setup.exe
+    InstallerSha256: 732800E19294881557B5BAE5F6203855F3CC4BFF4F9FB7B5882D7BC92E18618A
 ManifestType: installer
 ManifestVersion: 1.10.0
