@@ -1,4 +1,6 @@
 use std::fs;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -11,6 +13,15 @@ const POLL_INTERVAL: Duration = Duration::from_millis(1000);
 const INDEX_REFRESH: Duration = Duration::from_secs(30);
 const MAX_CHART_BYTES: u64 = 32 * 1024 * 1024;
 const UNREADABLE: &str = "Etterna is running, but its current song could not be found.";
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+#[cfg(windows)]
+fn hidden_command(program: &str) -> Command {
+    let mut command = Command::new(program);
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -333,7 +344,7 @@ Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
   Where-Object { $_.Name -match '(?i)^etterna(?:[-_].*)?\.exe$' -and $_.ExecutablePath } |
   Select-Object -ExpandProperty ExecutablePath
 "#;
-    let Ok(output) = Command::new("powershell")
+    let Ok(output) = hidden_command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .output()
     else {
@@ -382,7 +393,7 @@ fn etterna_running() -> bool {
         // Path lookup can be denied for an elevated process. Fall back to
         // tasklist, but inspect every image name so versioned portable builds
         // are found too.
-        let Ok(output) = Command::new("tasklist")
+        let Ok(output) = hidden_command("tasklist")
             .args(["/FO", "CSV", "/NH"])
             .output()
         else {
@@ -605,7 +616,7 @@ fn open_paths(_pid: u32) -> Vec<String> {
 
 #[cfg(windows)]
 fn etterna_pid() -> Option<u32> {
-    let output = Command::new("tasklist")
+    let output = hidden_command("tasklist")
         .args(["/FO", "CSV", "/NH"])
         .output()
         .ok()?;

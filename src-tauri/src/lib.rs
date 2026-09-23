@@ -1482,6 +1482,7 @@ fn is_directory(path: String) -> bool {
 fn open_file(path: String) -> Result<(), String> {
     std::process::Command::new("cmd")
         .args(["/c", "start", "", &path])
+        .creation_flags(0x08000000)
         .spawn()
         .map_err(|e| format!("Failed to open file: {}", e))?;
     Ok(())
