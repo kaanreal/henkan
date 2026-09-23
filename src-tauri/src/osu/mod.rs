@@ -636,8 +636,7 @@ pub fn osu_map_background(
     }
     #[cfg(not(windows))]
     {
-        let _ = app;
-        lazer::map_background(&folder, &file)
+        lazer::map_background(&app, &folder, &file)
     }
 }
 
