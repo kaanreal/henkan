@@ -45,7 +45,7 @@ case "$TARGET" in
     git_identity
     git add PKGBUILD .SRCINFO LICENSE
     git diff --cached --quiet || git commit -m "chore: update to $TAG"
-    git push
+    git push origin HEAD:master
     ;;
 
   homebrew)
@@ -121,10 +121,13 @@ case "$TARGET" in
     git clone --filter=blob:none --no-checkout "https://x-access-token:${NIXPKGS_GITHUB_TOKEN}@github.com/kaanreal/nixpkgs.git" /tmp/henkan-nixpkgs
     cd /tmp/henkan-nixpkgs
     git remote add upstream https://github.com/NixOS/nixpkgs.git
+    GH_TOKEN="$NIXPKGS_GITHUB_TOKEN" gh api --method POST repos/kaanreal/nixpkgs/merge-upstream -f branch=master
     git fetch --depth=1 upstream master
     git sparse-checkout init --cone
     git sparse-checkout set pkgs/by-name/he/henkan maintainers
-    git checkout -B "henkan-$VERSION" upstream/master
+    branch="$(GH_TOKEN="$NIXPKGS_GITHUB_TOKEN" gh pr list --repo NixOS/nixpkgs --author kaanreal --search 'henkan: in:title' --json headRefName --jq '.[0].headRefName // empty')"
+    branch="${branch:-henkan-$VERSION}"
+    git checkout -B "$branch" upstream/master
     mkdir -p pkgs/by-name/he/henkan
     cp "$SCRIPT_DIR/nix/package.nix" pkgs/by-name/he/henkan/package.nix
     sri="sha256-$(printf '%s' "$APPIMAGE_SHA" | xxd -r -p | base64 -w0)"
@@ -133,14 +136,19 @@ case "$TARGET" in
     sed_i '/mainProgram = "henkan";/a\    maintainers = with lib.maintainers; [ kaanreal ];' pkgs/by-name/he/henkan/package.nix
     git_identity
     git add pkgs/by-name/he/henkan/package.nix
-    git commit -m "henkan: init at $VERSION" -m "Assisted-by: OpenAI Codex (GPT-5)"
-    git push --force origin "henkan-$VERSION"
-    GH_TOKEN="$NIXPKGS_GITHUB_TOKEN" gh pr create \
-      --repo NixOS/nixpkgs \
-      --head "kaanreal:henkan-$VERSION" \
-      --base master \
-      --title "henkan: init at $VERSION" \
-      --body "Adds the Henkan rhythm-game map and skin converter. The package wraps the upstream AppImage and declares binary native-code provenance.\n\nAssisted by OpenAI Codex (GPT-5)."
+    git diff --cached --quiet && exit 0
+    git commit -m "henkan: init at $VERSION"
+    git push --force origin "$branch"
+    existing="$(GH_TOKEN="$NIXPKGS_GITHUB_TOKEN" gh pr list --repo NixOS/nixpkgs --head "kaanreal:$branch" --json number --jq '.[0].number // empty')"
+    printf '%s\n' "Adds the Henkan rhythm-game map and skin converter at $TAG. The package wraps the upstream AppImage and declares binary native-code provenance." > /tmp/henkan-nixpkgs-pr.md
+    if [ -n "$existing" ]; then
+      GH_TOKEN="$NIXPKGS_GITHUB_TOKEN" gh pr edit "$existing" --repo NixOS/nixpkgs \
+        --title "henkan: init at $VERSION" --body-file /tmp/henkan-nixpkgs-pr.md
+    else
+      GH_TOKEN="$NIXPKGS_GITHUB_TOKEN" gh pr create --repo NixOS/nixpkgs \
+        --head "kaanreal:$branch" --base master --title "henkan: init at $VERSION" \
+        --body-file /tmp/henkan-nixpkgs-pr.md
+    fi
     ;;
 
   *)

@@ -7,8 +7,13 @@ on:
         description: Published release to scan with Microsoft Defender
         required: true
         type: string
+      source_run:
+        description: Optional build run to scan before publishing
+        required: false
+        type: string
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -17,6 +22,7 @@ jobs:
     timeout-minutes: 15
     env:
       RELEASE_TAG: ${{ inputs.tag }}
+      SOURCE_RUN: ${{ inputs.source_run }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Download the published installer
@@ -24,9 +30,14 @@ jobs:
         run: |
           if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid release tag' }
           New-Item -ItemType Directory -Path scan, report | Out-Null
-          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*windows-setup.exe' --dir scan
+          if ($env:SOURCE_RUN) {
+            if ($env:SOURCE_RUN -notmatch '^\d+$') { throw 'Invalid source run ID' }
+            gh run download $env:SOURCE_RUN --repo $env:GITHUB_REPOSITORY --name henkan-windows-x86_64 --dir scan
+          } else {
+            gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*windows-setup.exe' --dir scan
+          }
           if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
-          Get-FileHash scan/*.exe -Algorithm SHA256 | Format-List | Out-File report/checksums.txt
+          Get-ChildItem scan -Recurse -Filter '*windows-setup.exe' | Get-FileHash -Algorithm SHA256 | Format-List | Out-File report/checksums.txt
 
       - name: Update Defender and scan the installer
         shell: pwsh
@@ -41,7 +52,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Defender signature update failed' }
           Get-MpComputerStatus | Select-Object AMEngineVersion, AntivirusSignatureVersion, AntivirusSignatureLastUpdated |
             Format-List | Out-File report/defender-version.txt
-          $installer = (Get-ChildItem scan/*.exe | Select-Object -First 1).FullName
+          $installer = (Get-ChildItem scan -Recurse -Filter '*windows-setup.exe' | Select-Object -First 1).FullName
+          if (-not $installer) { throw 'No Windows installer found' }
           # This custom-scan option ignores the hosted runner's C:/D: exclusions,
           # scans archive contents, and reports detections without remediating them.
           & $scanner -Scan -ScanType 3 -File $installer -DisableRemediation 2>&1 |
