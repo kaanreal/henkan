@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.0](https://github.com/kaanreal/henkan/compare/v1.8.0...v1.9.0) (2026-09-24)
+
+## What's new
+
+- Added an Etterna pack title mode that uses the pack name as each osu! beatmap title and the chart title as its version.
+
+## Fixed
+
+- Kept web and desktop Etterna pack conversions on the same parser, media lookup, conversion code, and OSZ output path, so each chart keeps its own audio and background.
+- Removed the extra per-song title review step for Etterna pack conversion.
+- Added a folder-upload fallback when the browser's directory picker fails.
+
+
 ## [1.8.0](https://github.com/kaanreal/henkan/compare/v1.7.0...v1.8.0) (2026-09-23)
 
 ## What's new

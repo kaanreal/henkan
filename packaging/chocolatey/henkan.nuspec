@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>henkan</id>
-    <version>1.8.3</version>
+    <version>1.9.0</version>
     <title>Henkan</title>
     <authors>kaanreal</authors>
     <owners>kaanreal</owners>
@@ -15,7 +15,7 @@
     <tags>osu osu-mania etterna stepmania beatmap converter vsrg rhythm-game</tags>
     <summary>Convert osu!mania maps and skins to and from Etterna and StepMania.</summary>
     <description>Henkan is a cross-platform desktop and CLI tool for converting maps and skins between osu!mania and Etterna or StepMania while preserving timing, BPM changes, holds, metadata, and snapping.</description>
-    <releaseNotes>https://github.com/kaanreal/henkan/releases/tag/v1.8.3</releaseNotes>
+    <releaseNotes>https://github.com/kaanreal/henkan/releases/tag/v1.9.0</releaseNotes>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />

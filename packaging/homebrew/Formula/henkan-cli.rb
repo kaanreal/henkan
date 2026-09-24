@@ -1,8 +1,8 @@
 class HenkanCli < Formula
   desc "CLI for the osu!mania to Etterna and StepMania converter"
   homepage "https://henkan.kaan.moe/"
-  url "https://github.com/kaanreal/henkan/archive/refs/tags/v1.8.3.tar.gz"
-  sha256 "7c1fede58c5f235db75fc909bd90c56855b0abd3ddf6fe147243e2ec340ed42f"
+  url "https://github.com/kaanreal/henkan/archive/refs/tags/v1.9.0.tar.gz"
+  sha256 "531cfe69c46a1aaa00c0cc4d39b37303b9bee90ad71d88a6dc70d2186105f0b4"
   license "MIT"
 
   depends_on "rust" => :build
