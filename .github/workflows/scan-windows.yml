@@ -1,0 +1,62 @@
+name: Scan Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release to scan with Microsoft Defender
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  defender:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download the published installer
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid release tag' }
+          New-Item -ItemType Directory -Path scan, report | Out-Null
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern '*windows-setup.exe' --dir scan
+          if ($LASTEXITCODE -ne 0) { throw 'Installer download failed' }
+          Get-FileHash scan/*.exe -Algorithm SHA256 | Format-List | Out-File report/checksums.txt
+
+      - name: Update Defender and scan the installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Start-Service WinDefend
+          $scanner = Get-ChildItem "$env:ProgramData/Microsoft/Windows Defender/Platform/*/MpCmdRun.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $scanner) { $scanner = "$env:ProgramFiles/Windows Defender/MpCmdRun.exe" }
+          if (-not (Test-Path $scanner)) { throw 'Microsoft Defender is unavailable on this runner' }
+          & $scanner -SignatureUpdate
+          if ($LASTEXITCODE -ne 0) { throw 'Defender signature update failed' }
+          Get-MpComputerStatus | Select-Object AMEngineVersion, AntivirusSignatureVersion, AntivirusSignatureLastUpdated |
+            Format-List | Out-File report/defender-version.txt
+          $installer = (Get-ChildItem scan/*.exe | Select-Object -First 1).FullName
+          # This custom-scan option ignores the hosted runner's C:/D: exclusions,
+          # scans archive contents, and reports detections without remediating them.
+          & $scanner -Scan -ScanType 3 -File $installer -DisableRemediation 2>&1 |
+            Tee-Object -FilePath report/scan.txt
+          $scanExit = $LASTEXITCODE
+          Get-Content report/defender-version.txt, report/checksums.txt, report/scan.txt |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "Defender exit code: $scanExit" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          if ($scanExit -ne 0) { throw "Defender reported a detection or scan error (exit $scanExit). Read scan.txt." }
+          'No detection in this on-demand scan. This does not test SmartScreen reputation or runtime behavior.' |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Save scan evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: defender-report-${{ inputs.tag }}
+          path: report/
