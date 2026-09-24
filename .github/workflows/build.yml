@@ -9,6 +9,14 @@ on:
         description: "Existing release tag to rebuild (for example v1.7.0)"
         required: true
         type: string
+      source_ref:
+        description: Optional source commit to validate before replacing a release
+        required: false
+        type: string
+      publish_assets:
+        description: Upload built assets to the release
+        default: true
+        type: boolean
 
 concurrency:
   group: release-${{ inputs.tag || github.event.release.tag_name || github.ref }}
@@ -59,7 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag || github.event.release.tag_name }}
+          ref: ${{ inputs.source_ref || inputs.tag || github.event.release.tag_name }}
 
       - uses: actions/setup-node@v7
         with:
@@ -156,7 +164,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag || github.event.release.tag_name }}
+          ref: ${{ inputs.source_ref || inputs.tag || github.event.release.tag_name }}
 
       - name: Download all platform bundles
         uses: actions/download-artifact@v8
@@ -189,7 +197,7 @@ jobs:
 
   publish:
     needs: [build, generate-updater-json]
-    if: ${{ needs.build.result == 'success' && needs.generate-updater-json.result == 'success' }}
+    if: ${{ needs.build.result == 'success' && needs.generate-updater-json.result == 'success' && (github.event_name == 'release' || inputs.publish_assets) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -198,7 +206,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag || github.event.release.tag_name }}
+          ref: ${{ inputs.source_ref || inputs.tag || github.event.release.tag_name }}
 
       - name: Download all platform bundles
         uses: actions/download-artifact@v8

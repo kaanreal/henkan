@@ -98,6 +98,10 @@ jobs:
 
             - run: npm ci
 
+            - name: Test native Windows song detection
+              if: matrix.os == 'windows-latest'
+              run: cargo test --manifest-path src-tauri/Cargo.toml --lib etterna::tests
+
             - name: Build Tauri (--no-bundle for speed)
               run: npm run tauri build -- --no-bundle -- --no-default-features
               env:

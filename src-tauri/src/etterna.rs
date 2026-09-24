@@ -83,12 +83,9 @@ impl Watcher {
         }
 
         let selection = latest_selection(&root);
-        // Prefer nowplaying.txt; Unix can also identify the selected song
-        // from open audio files. Windows uses metadata only.
-        let open_folder = selection
-            .is_none()
-            .then(|| current_song_folder(&root))
-            .flatten();
+        // The open preview audio follows song selection; nowplaying.txt is
+        // only refreshed during gameplay and can still describe the previous song.
+        let open_folder = current_song_folder(&root);
         if selection.is_none() && open_folder.is_none() {
             return Live {
                 running: true,
@@ -228,6 +225,11 @@ pub fn discover_root() -> Option<PathBuf> {
         }
         if let Some(value) = std::env::var_os("LOCALAPPDATA") {
             roots.push(PathBuf::from(value).join("Etterna"));
+        }
+        for key in ["ProgramFiles", "ProgramFiles(x86)"] {
+            if let Some(value) = std::env::var_os(key) {
+                roots.push(PathBuf::from(value).join("Etterna"));
+            }
         }
         roots.extend([
             PathBuf::from(r"C:\Etterna"),
@@ -485,10 +487,153 @@ fn open_paths(pid: u32) -> Vec<String> {
 }
 
 #[cfg(windows)]
-fn open_paths(_pid: u32) -> Vec<String> {
-    // Use Etterna's nowplaying metadata on Windows. Do not enumerate system
-    // handles or duplicate another process's file handles to infer its song.
-    Vec::new()
+fn open_paths(pid: u32) -> Vec<String> {
+    use std::ffi::c_void;
+    use std::mem::size_of;
+
+    type RawHandle = *mut c_void;
+
+    #[repr(C)]
+    struct SystemHandle {
+        object: usize,
+        process_id: usize,
+        handle: usize,
+        granted_access: u32,
+        creator_back_trace_index: u16,
+        object_type_index: u16,
+        handle_attributes: u32,
+        reserved: u32,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CloseHandle(handle: RawHandle) -> i32;
+        fn DuplicateHandle(
+            source_process: RawHandle,
+            source_handle: RawHandle,
+            target_process: RawHandle,
+            target_handle: *mut RawHandle,
+            desired_access: u32,
+            inherit_handle: i32,
+            options: u32,
+        ) -> i32;
+        fn GetCurrentProcess() -> RawHandle;
+        fn GetFileType(handle: RawHandle) -> u32;
+        fn GetFinalPathNameByHandleW(
+            handle: RawHandle,
+            path: *mut u16,
+            path_length: u32,
+            flags: u32,
+        ) -> u32;
+        fn OpenProcess(access: u32, inherit_handle: i32, process_id: u32) -> RawHandle;
+    }
+
+    #[link(name = "ntdll")]
+    extern "system" {
+        fn NtQuerySystemInformation(
+            information_class: u32,
+            information: *mut c_void,
+            information_length: u32,
+            return_length: *mut u32,
+        ) -> i32;
+    }
+
+    const SYSTEM_EXTENDED_HANDLE_INFORMATION: u32 = 0x40;
+    const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC0000004u32 as i32;
+    const PROCESS_DUP_HANDLE: u32 = 0x0040;
+    const DUPLICATE_SAME_ACCESS: u32 = 0x00000002;
+    const FILE_READ_DATA: u32 = 0x0001;
+
+    unsafe fn final_path(handle: RawHandle) -> Option<String> {
+        let mut buffer = vec![0u16; 512];
+        loop {
+            let length =
+                GetFinalPathNameByHandleW(handle, buffer.as_mut_ptr(), buffer.len() as u32, 0);
+            if length == 0 {
+                return None;
+            }
+            if (length as usize) < buffer.len() {
+                let value = String::from_utf16(&buffer[..length as usize]).ok()?;
+                return Some(value.strip_prefix(r"\\?\").unwrap_or(&value).to_string());
+            }
+            buffer.resize(length as usize + 1, 0);
+        }
+    }
+
+    let source_process = unsafe { OpenProcess(PROCESS_DUP_HANDLE, 0, pid) };
+    if source_process.is_null() {
+        return Vec::new();
+    }
+
+    let mut size = 1024 * 1024usize;
+    let mut result = Vec::new();
+    for _ in 0..8 {
+        let mut buffer = vec![0u8; size];
+        let mut returned = 0u32;
+        let status = unsafe {
+            NtQuerySystemInformation(
+                SYSTEM_EXTENDED_HANDLE_INFORMATION,
+                buffer.as_mut_ptr().cast(),
+                buffer.len() as u32,
+                &mut returned,
+            )
+        };
+        if status == 0 {
+            let header_size = size_of::<usize>() * 2;
+            if buffer.len() < header_size {
+                break;
+            }
+            let count = unsafe { std::ptr::read_unaligned(buffer.as_ptr().cast::<usize>()) };
+            let entries = unsafe { buffer.as_ptr().add(header_size).cast::<SystemHandle>() };
+            let max_count = (buffer.len() - header_size) / size_of::<SystemHandle>();
+            let current_process = unsafe { GetCurrentProcess() };
+            for index in 0..count.min(max_count) {
+                let entry = unsafe { std::ptr::read_unaligned(entries.add(index)) };
+                if entry.process_id != pid as usize {
+                    continue;
+                }
+                if entry.granted_access & FILE_READ_DATA == 0 {
+                    continue;
+                }
+                let mut duplicate = std::ptr::null_mut();
+                let copied = unsafe {
+                    DuplicateHandle(
+                        source_process,
+                        entry.handle as RawHandle,
+                        current_process,
+                        &mut duplicate,
+                        0,
+                        0,
+                        DUPLICATE_SAME_ACCESS,
+                    )
+                };
+                if copied == 0 || duplicate.is_null() {
+                    continue;
+                }
+                // Ignore pipes and other non-disk handles before resolving paths.
+                if unsafe { GetFileType(duplicate) } == 1 {
+                    if let Some(path) = unsafe { final_path(duplicate) } {
+                        result.push(path);
+                    }
+                }
+                unsafe {
+                    CloseHandle(duplicate);
+                }
+            }
+            break;
+        }
+        if status != STATUS_INFO_LENGTH_MISMATCH {
+            break;
+        }
+        size = (returned as usize).max(size.saturating_mul(2));
+        if size > 64 * 1024 * 1024 {
+            break;
+        }
+    }
+    unsafe {
+        CloseHandle(source_process);
+    }
+    result
 }
 
 #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
@@ -533,6 +678,7 @@ fn is_etterna_command(command: &str) -> bool {
         || file_name == "etterna.exe"
         || file_name == "etterna"
         || file_name.starts_with("etterna-")
+        || file_name.starts_with("etterna_")
 }
 
 fn latest_selection(root: &Path) -> Option<(String, String, String)> {
@@ -820,6 +966,26 @@ fn resolve_asset(dir: &Path, name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_finds_open_audio_without_a_shell() {
+        let dir = std::env::temp_dir().join(format!("henkan-open-audio-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("preview.ogg");
+        fs::write(&path, b"test").unwrap();
+        let file = fs::File::open(&path).unwrap();
+        let expected = path.canonicalize().unwrap();
+        let found = open_paths(std::process::id())
+            .into_iter()
+            .any(|value| Path::new(&value).canonicalize().ok().as_ref() == Some(&expected));
+        drop(file);
+        fs::remove_dir_all(&dir).unwrap();
+        assert!(
+            found,
+            "native Windows scan must find the open preview audio"
+        );
+    }
 
     #[test]
     fn parses_etterna_now_playing_output() {

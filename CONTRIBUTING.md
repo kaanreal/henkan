@@ -97,6 +97,6 @@ registry or token failure does not block other managers or the app release.
 The winget publisher synchronizes its fork before pushing a manifest branch;
 its token must have permission to update the fork and open upstream PRs.
 
-Windows Etterna detection uses native process enumeration and `nowplaying.txt`.
-It does not launch PowerShell/tasklist or inspect other processes' file handles.
-Song-select previews may be unavailable until Etterna writes current-song metadata.
+Windows Etterna detection uses native Windows APIs for process and open-audio
+lookup, with `nowplaying.txt` as a metadata fallback. It does not launch
+PowerShell, Command Prompt, or tasklist.

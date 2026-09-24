@@ -1,0 +1,42 @@
+name: Restore Release Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      releases:
+        description: 'JSON list of sources, e.g. [{"tag":"v1.6.1","run":32657476264}]'
+        required: true
+        type: string
+      dry_run:
+        description: Validate artifacts without uploading
+        default: true
+        type: boolean
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  restore:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        source: ${{ fromJSON(inputs.releases) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Restore and verify original assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ matrix.source.tag }}
+          SOURCE_RUN: ${{ matrix.source.run }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: python3 scripts/restore-release-assets.py
+      - name: Save recovery checksums
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-${{ matrix.source.tag }}
+          path: recovery-report.json
