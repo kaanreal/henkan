@@ -6,10 +6,10 @@
 
 let
   pname = "henkan";
-  version = "1.8.0";
+  version = "1.8.3";
   src = fetchurl {
     url = "https://github.com/kaanreal/henkan/releases/download/v${version}/Henkan-v${version}-linux.AppImage";
-    hash = "sha256-I4tdgE0/SAgjGrcBXdivoFDrvXjhC70fhLWo41N+eXA=";
+    hash = "sha256-JNGhxErFU9YKKH/Yiv0Z+DIc/L56yPMAGpQimzjSTcQ=";
   };
   appimageContents = appimageTools.extract { inherit pname version src; };
 in

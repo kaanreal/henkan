@@ -20,12 +20,12 @@ spot.
 
 | Package manager | Version | Install | Package |
 | --- | ---: | --- | --- |
-| Homebrew (app) | `1.7.0` | `brew install --cask kaanreal/tap/henkan` | [tap](https://github.com/kaanreal/homebrew-tap/blob/main/Casks/henkan.rb) |
-| Homebrew (CLI) | `1.7.0` | `brew install kaanreal/tap/henkan-cli` | [tap](https://github.com/kaanreal/homebrew-tap/blob/main/Formula/henkan-cli.rb) |
-| AUR | `1.7.0` | `yay -S henkan-bin` | [AUR](https://aur.archlinux.org/packages/henkan-bin) |
-| Nix | `1.7.0` | `nix run github:kaanreal/henkan` | [flake](packaging/nix/package.nix) |
-| winget | `1.7.0` | `winget install kaanreal.Henkan` | [community manifest](https://github.com/microsoft/winget-pkgs/tree/master/manifests/k/kaanreal/Henkan) |
-| Chocolatey | `1.7.0` | `choco install henkan` | [community package](https://community.chocolatey.org/packages/henkan) |
+| Homebrew (app) | `1.8.3` | `brew install --cask kaanreal/tap/henkan` | [tap](https://github.com/kaanreal/homebrew-tap/blob/main/Casks/henkan.rb) |
+| Homebrew (CLI) | `1.8.3` | `brew install kaanreal/tap/henkan-cli` | [tap](https://github.com/kaanreal/homebrew-tap/blob/main/Formula/henkan-cli.rb) |
+| AUR | `1.8.3` | `yay -S henkan-bin` | [AUR](https://aur.archlinux.org/packages/henkan-bin) |
+| Nix | `1.8.3` | `nix run github:kaanreal/henkan` | [flake](packaging/nix/package.nix) |
+| winget | `1.8.3` | `winget install kaanreal.Henkan` | [community manifest](https://github.com/microsoft/winget-pkgs/tree/master/manifests/k/kaanreal/Henkan) |
+| Chocolatey | `1.8.3` | `choco install henkan` | [community package](https://community.chocolatey.org/packages/henkan) |
 
 Prefer a standalone installer? Download the AppImage, DMG, or Windows setup
 executable from [GitHub Releases](https://github.com/kaanreal/henkan/releases/latest).
