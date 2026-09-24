@@ -127,7 +127,11 @@ case "$TARGET" in
     git sparse-checkout set pkgs/by-name/he/henkan maintainers
     branch="$(GH_TOKEN="$NIXPKGS_GITHUB_TOKEN" gh pr list --repo NixOS/nixpkgs --author kaanreal --search 'henkan: in:title' --json headRefName --jq '.[0].headRefName // empty')"
     branch="${branch:-henkan-$VERSION}"
-    git checkout -B "$branch" upstream/master
+    if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+      git checkout -B "$branch" "origin/$branch"
+    else
+      git checkout -B "$branch" upstream/master
+    fi
     mkdir -p pkgs/by-name/he/henkan
     cp "$SCRIPT_DIR/nix/package.nix" pkgs/by-name/he/henkan/package.nix
     sri="sha256-$(printf '%s' "$APPIMAGE_SHA" | xxd -r -p | base64 -w0)"
