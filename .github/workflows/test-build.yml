@@ -60,11 +60,13 @@ jobs:
                   npm run audit:assets
                   npm run audit:packages
                   npm run build
+                  npm test
                   npm run test:release
                   cargo test --manifest-path src-tauri/Cargo.toml
 
     build:
         strategy:
+            fail-fast: false
             matrix:
                 include:
                     - os: windows-latest
@@ -97,6 +99,6 @@ jobs:
             - run: npm ci
 
             - name: Build Tauri (--no-bundle for speed)
-              run: npm run tauri build -- --no-bundle --no-default-features
+              run: npm run tauri build -- --no-bundle -- --no-default-features
               env:
                   APTABASE_KEY: ${{ secrets.APTABASE_KEY }}

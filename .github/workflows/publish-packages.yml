@@ -49,6 +49,10 @@ permissions:
 
 jobs:
   publish:
+    strategy:
+      fail-fast: false
+      matrix:
+        manager: [homebrew, winget, chocolatey, aur, nixpkgs]
     runs-on: ubuntu-latest
     env:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
@@ -61,6 +65,7 @@ jobs:
 
       - name: Resolve release and checksums
         id: release
+        if: inputs.target == 'all' || inputs.target == matrix.manager
         shell: bash
         env:
           TAG: ${{ inputs.version }}
@@ -77,21 +82,21 @@ jobs:
           echo "appimage=$(checksum "$release/Henkan-v$version-linux.AppImage")" >> "$GITHUB_OUTPUT"
 
       - name: Publish Homebrew tap
-        if: env.HOMEBREW_TAP_TOKEN != '' && (inputs.target == 'all' || inputs.target == 'homebrew')
+        if: matrix.manager == 'homebrew' && env.HOMEBREW_TAP_TOKEN != '' && (inputs.target == 'all' || inputs.target == 'homebrew')
         run: packaging/ci-publish.sh homebrew "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.source }}" "${{ steps.release.outputs.dmg }}" "${{ steps.release.outputs.installer }}" "${{ steps.release.outputs.appimage }}"
 
       - name: Submit winget manifest
-        if: env.WINGET_GITHUB_TOKEN != '' && (inputs.target == 'all' || inputs.target == 'winget')
+        if: matrix.manager == 'winget' && env.WINGET_GITHUB_TOKEN != '' && (inputs.target == 'all' || inputs.target == 'winget')
         run: packaging/ci-publish.sh winget "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.source }}" "${{ steps.release.outputs.dmg }}" "${{ steps.release.outputs.installer }}" "${{ steps.release.outputs.appimage }}"
 
       - name: Publish Chocolatey package
-        if: env.CHOCOLATEY_API_KEY != '' && (inputs.target == 'all' || inputs.target == 'chocolatey')
+        if: matrix.manager == 'chocolatey' && env.CHOCOLATEY_API_KEY != '' && (inputs.target == 'all' || inputs.target == 'chocolatey')
         run: packaging/ci-publish.sh chocolatey "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.source }}" "${{ steps.release.outputs.dmg }}" "${{ steps.release.outputs.installer }}" "${{ steps.release.outputs.appimage }}"
 
       - name: Publish AUR package
-        if: env.AUR_SSH_PRIVATE_KEY != '' && (inputs.target == 'all' || inputs.target == 'aur')
+        if: matrix.manager == 'aur' && env.AUR_SSH_PRIVATE_KEY != '' && (inputs.target == 'all' || inputs.target == 'aur')
         run: packaging/ci-publish.sh aur "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.source }}" "${{ steps.release.outputs.dmg }}" "${{ steps.release.outputs.installer }}" "${{ steps.release.outputs.appimage }}"
 
       - name: Submit nixpkgs update
-        if: env.NIXPKGS_GITHUB_TOKEN != '' && (inputs.target == 'all' || inputs.target == 'nixpkgs')
+        if: matrix.manager == 'nixpkgs' && env.NIXPKGS_GITHUB_TOKEN != '' && (inputs.target == 'all' || inputs.target == 'nixpkgs')
         run: packaging/ci-publish.sh nixpkgs "${{ steps.release.outputs.tag }}" "${{ steps.release.outputs.source }}" "${{ steps.release.outputs.dmg }}" "${{ steps.release.outputs.installer }}" "${{ steps.release.outputs.appimage }}"

@@ -84,3 +84,19 @@ convention.
 - `src/pages/DocsPage.tsx` - in-app converter documentation
 
 Please do not hand-edit generated files in `src/wasm/`; use `npm run build:wasm`.
+
+### Release rebuilds and package publication
+
+Rebuild an existing tag with **Release & Build**. Historical rebuilds only
+restore that release's downloads; they do not roll the package snapshots back.
+Only the newest stable release synchronizes package metadata on `main`.
+
+After verifying a release, run **Publish to Package Managers** separately and
+select the intended version and manager. Each manager has its own job, so a
+registry or token failure does not block other managers or the app release.
+The winget publisher synchronizes its fork before pushing a manifest branch;
+its token must have permission to update the fork and open upstream PRs.
+
+Windows Etterna detection uses native process enumeration and `nowplaying.txt`.
+It does not launch PowerShell/tasklist or inspect other processes' file handles.
+Song-select previews may be unavailable until Etterna writes current-song metadata.

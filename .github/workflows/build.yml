@@ -11,13 +11,30 @@ on:
         type: string
 
 concurrency:
-  group: release-${{ github.workflow }}-${{ github.ref }}
+  group: release-${{ inputs.tag || github.event.release.tag_name || github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  release-policy:
+    runs-on: ubuntu-latest
+    outputs:
+      current: ${{ steps.policy.outputs.current }}
+    steps:
+      - name: Check whether this is the newest stable release
+        id: policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tags="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name')"
+          newest="$(printf '%s\n' "$tags" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+          echo "current=$([ "$RELEASE_TAG" = "$newest" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
   build:
     if: ${{ github.event_name == 'release' || inputs.tag != '' }}
     strategy:
@@ -204,17 +221,9 @@ jobs:
           FILES=$(find bundles -type f \( -name '*.exe' -o -name '*.exe.sig' -o -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' -o -name '*.AppImage' -o -name '*.AppImage.sig' -o -name '*.AppImage.tar.gz' -o -name '*.AppImage.tar.gz.sig' \))
           gh release upload "$RELEASE_TAG" updater.json $FILES --clobber
 
-  publish-packages:
-    needs: [publish]
-    if: ${{ needs.publish.result == 'success' }}
-    uses: ./.github/workflows/publish-packages.yml
-    with:
-      version: ${{ inputs.tag || github.event.release.tag_name }}
-    secrets: inherit
-
   sync-release-metadata:
-    needs: [publish]
-    if: ${{ needs.publish.result == 'success' }}
+    needs: [publish, release-policy]
+    if: ${{ needs.publish.result == 'success' && needs.release-policy.outputs.current == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -248,11 +257,11 @@ jobs:
 
           PREVIOUS_TAG=""
           while IFS= read -r candidate; do
-            if [ "$candidate" != "$RELEASE_TAG" ]; then
+            if [ "$candidate" != "$RELEASE_TAG" ] && [ "$(printf '%s\n' "$candidate" "$RELEASE_TAG" | sort -V | tail -n1)" = "$RELEASE_TAG" ]; then
               PREVIOUS_TAG="$candidate"
               break
             fi
-          done < <(gh release list --repo "${{ github.repository }}" --exclude-drafts --exclude-pre-releases --limit 100 --json tagName,publishedAt --jq 'sort_by(.publishedAt) | reverse | .[].tagName')
+          done < <(gh release list --repo "${{ github.repository }}" --exclude-drafts --exclude-pre-releases --limit 100 --json tagName,publishedAt --jq '.[].tagName' | sort -Vr)
 
           node scripts/sync-release-notes.mjs \
             --repository="${{ github.repository }}" \

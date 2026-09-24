@@ -63,7 +63,7 @@ jobs:
           while IFS= read -r candidate; do
             latest_tag="$candidate"
             break
-          done < <(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 100 --json tagName,publishedAt --jq 'sort_by(.publishedAt) | reverse | .[].tagName')
+          done < <(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 100 --json tagName,publishedAt --jq '.[].tagName' | sort -Vr)
 
           if [ -n "$latest_tag" ]; then
             latest_version="${latest_tag#v}"

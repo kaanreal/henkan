@@ -27,8 +27,6 @@ use std::io::Read;
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 use ureq::ResponseExt;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use tauri::{Emitter, Manager};
 use tauri_plugin_aptabase::EventTracker;
@@ -1429,15 +1427,30 @@ fn find_pack_banner(folder: String) -> Result<Option<String>, String> {
     Ok(None)
 }
 
+#[cfg(windows)]
+fn windows_open(target: &str) -> Result<(), String> {
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    if target.contains('\0') {
+        return Err("Invalid path or URL".into());
+    }
+    let target: Vec<u16> = target.encode_utf16().chain(Some(0)).collect();
+    let result = unsafe {
+        ShellExecuteW(HWND(0), w!("open"), PCWSTR(target.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_SHOWNORMAL)
+    };
+    if result.0 <= 32 {
+        return Err(format!("Failed to open path or URL (Windows error {})", result.0));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", &url])
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .spawn()
-            .map_err(|e| format!("Failed to open URL: {}", e))?;
+        windows_open(&url)?;
     }
     #[cfg(target_os = "macos")]
     {
@@ -1480,13 +1493,10 @@ fn is_directory(path: String) -> bool {
 
 #[tauri::command]
 fn open_file(path: String) -> Result<(), String> {
-    let mut command = std::process::Command::new("cmd");
-    command.args(["/c", "start", "", &path]);
     #[cfg(windows)]
-    command.creation_flags(0x08000000);
-    command
-        .spawn()
-        .map_err(|e| format!("Failed to open file: {}", e))?;
+    windows_open(&path)?;
+    #[cfg(not(windows))]
+    open_url(path)?;
     Ok(())
 }
 

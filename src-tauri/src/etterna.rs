@@ -1,7 +1,6 @@
 use std::fs;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
+#[cfg(not(windows))]
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
@@ -13,16 +12,6 @@ const POLL_INTERVAL: Duration = Duration::from_millis(1000);
 const INDEX_REFRESH: Duration = Duration::from_secs(30);
 const MAX_CHART_BYTES: u64 = 32 * 1024 * 1024;
 const UNREADABLE: &str = "Etterna is running, but its current song could not be found.";
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-#[cfg(windows)]
-fn hidden_command(program: &str) -> Command {
-    let mut command = Command::new(program);
-    command.creation_flags(CREATE_NO_WINDOW);
-    command
-}
-
 #[derive(Serialize, Clone, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SelectedMap {
@@ -94,8 +83,8 @@ impl Watcher {
         }
 
         let selection = latest_selection(&root);
-        // Gameplay updates nowplaying.txt, so avoid the more expensive
-        // Windows handle walk until metadata is unavailable (song select).
+        // Prefer nowplaying.txt; Unix can also identify the selected song
+        // from open audio files. Windows uses metadata only.
         let open_folder = selection
             .is_none()
             .then(|| current_song_folder(&root))
@@ -334,28 +323,74 @@ fn running_root() -> Option<PathBuf> {
 }
 
 #[cfg(windows)]
-fn windows_etterna_process_paths() -> Vec<PathBuf> {
-    // Get-Process -Name Etterna only matches the literal process name. The
-    // portable Windows builds retain their version in the executable name
-    // (for example, Etterna-0.75.1-win64.exe), so query the executable path
-    // and apply the same matcher used by the Unix process scan instead.
-    let script = r#"
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-  Where-Object { $_.Name -match '(?i)^etterna(?:[-_].*)?\.exe$' -and $_.ExecutablePath } |
-  Select-Object -ExpandProperty ExecutablePath
-"#;
-    let Ok(output) = hidden_command("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .output()
-    else {
-        return Vec::new();
+fn windows_etterna_processes() -> Vec<(u32, Option<PathBuf>)> {
+    use std::mem::size_of;
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
     };
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(str::trim)
-        .filter(|path| !path.is_empty())
-        .filter(|path| is_etterna_command(path))
-        .map(PathBuf::from)
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+        PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    let mut matches = Vec::new();
+    // Read process names through Windows directly. No shell, WMI, process
+    // memory access, or subprocess is needed, including for portable builds.
+    unsafe {
+        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return matches;
+        };
+        let mut entry = PROCESSENTRY32W::default();
+        entry.dwSize = size_of::<PROCESSENTRY32W>() as u32;
+        let mut available = Process32FirstW(snapshot, &mut entry).as_bool();
+        while available {
+            let length = entry
+                .szExeFile
+                .iter()
+                .position(|c| *c == 0)
+                .unwrap_or(entry.szExeFile.len());
+            let name = String::from_utf16_lossy(&entry.szExeFile[..length]);
+            if is_etterna_command(&name) {
+                let mut path = None;
+                if let Ok(process) = OpenProcess(
+                    PROCESS_QUERY_LIMITED_INFORMATION,
+                    false,
+                    entry.th32ProcessID,
+                ) {
+                    let mut buffer = vec![0u16; 32768];
+                    let mut length = buffer.len() as u32;
+                    if QueryFullProcessImageNameW(
+                        process,
+                        PROCESS_NAME_WIN32,
+                        PWSTR(buffer.as_mut_ptr()),
+                        &mut length,
+                    )
+                    .as_bool()
+                    {
+                        path = Some(PathBuf::from(String::from_utf16_lossy(
+                            &buffer[..length as usize],
+                        )));
+                    }
+                    let _ = CloseHandle(process);
+                }
+                // Retain the PID even when path access is denied.
+                matches.push((entry.th32ProcessID, path));
+            }
+            available = Process32NextW(snapshot, &mut entry).as_bool();
+        }
+        let _ = CloseHandle(snapshot);
+    }
+    matches
+}
+
+#[cfg(windows)]
+fn windows_etterna_process_paths() -> Vec<PathBuf> {
+    windows_etterna_processes()
+        .into_iter()
+        .filter_map(|(_, path)| path)
         .collect()
 }
 
@@ -386,24 +421,7 @@ fn root_from_executable(path: &Path) -> Option<PathBuf> {
 fn etterna_running() -> bool {
     #[cfg(windows)]
     {
-        if !windows_etterna_process_paths().is_empty() {
-            return true;
-        }
-
-        // Path lookup can be denied for an elevated process. Fall back to
-        // tasklist, but inspect every image name so versioned portable builds
-        // are found too.
-        let Ok(output) = hidden_command("tasklist")
-            .args(["/FO", "CSV", "/NH"])
-            .output()
-        else {
-            return false;
-        };
-        String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .filter_map(|line| line.split(',').next())
-            .map(|name| name.trim().trim_matches('"'))
-            .any(is_etterna_command)
+        !windows_etterna_processes().is_empty()
     }
     #[cfg(not(windows))]
     {
@@ -467,146 +485,10 @@ fn open_paths(pid: u32) -> Vec<String> {
 }
 
 #[cfg(windows)]
-fn open_paths(pid: u32) -> Vec<String> {
-    use std::ffi::c_void;
-    use std::mem::size_of;
-
-    type RawHandle = *mut c_void;
-
-    #[repr(C)]
-    struct SystemHandle {
-        object: usize,
-        process_id: usize,
-        handle: usize,
-        granted_access: u32,
-        creator_back_trace_index: u16,
-        object_type_index: u16,
-        handle_attributes: u32,
-        reserved: u32,
-    }
-
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn CloseHandle(handle: RawHandle) -> i32;
-        fn DuplicateHandle(
-            source_process: RawHandle,
-            source_handle: RawHandle,
-            target_process: RawHandle,
-            target_handle: *mut RawHandle,
-            desired_access: u32,
-            inherit_handle: i32,
-            options: u32,
-        ) -> i32;
-        fn GetCurrentProcess() -> RawHandle;
-        fn GetFinalPathNameByHandleW(
-            handle: RawHandle,
-            path: *mut u16,
-            path_length: u32,
-            flags: u32,
-        ) -> u32;
-        fn OpenProcess(access: u32, inherit_handle: i32, process_id: u32) -> RawHandle;
-    }
-
-    #[link(name = "ntdll")]
-    extern "system" {
-        fn NtQuerySystemInformation(
-            information_class: u32,
-            information: *mut c_void,
-            information_length: u32,
-            return_length: *mut u32,
-        ) -> i32;
-    }
-
-    const SYSTEM_EXTENDED_HANDLE_INFORMATION: u32 = 0x40;
-    const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC0000004u32 as i32;
-    const PROCESS_DUP_HANDLE: u32 = 0x0040;
-    const DUPLICATE_SAME_ACCESS: u32 = 0x00000002;
-    const FILE_READ_DATA: u32 = 0x0001;
-
-    unsafe fn final_path(handle: RawHandle) -> Option<String> {
-        let mut buffer = vec![0u16; 512];
-        loop {
-            let length =
-                GetFinalPathNameByHandleW(handle, buffer.as_mut_ptr(), buffer.len() as u32, 0);
-            if length == 0 {
-                return None;
-            }
-            if (length as usize) < buffer.len() {
-                let value = String::from_utf16(&buffer[..length as usize]).ok()?;
-                return Some(value.strip_prefix(r"\\?\").unwrap_or(&value).to_string());
-            }
-            buffer.resize(length as usize + 1, 0);
-        }
-    }
-
-    let source_process = unsafe { OpenProcess(PROCESS_DUP_HANDLE, 0, pid) };
-    if source_process.is_null() {
-        return Vec::new();
-    }
-
-    let mut size = 1024 * 1024usize;
-    let mut result = Vec::new();
-    for _ in 0..8 {
-        let mut buffer = vec![0u8; size];
-        let mut returned = 0u32;
-        let status = unsafe {
-            NtQuerySystemInformation(
-                SYSTEM_EXTENDED_HANDLE_INFORMATION,
-                buffer.as_mut_ptr().cast(),
-                buffer.len() as u32,
-                &mut returned,
-            )
-        };
-        if status == 0 {
-            let header_size = size_of::<usize>() * 2;
-            if buffer.len() < header_size {
-                break;
-            }
-            let count = unsafe { *(buffer.as_ptr().cast::<usize>()) };
-            let entries = unsafe { buffer.as_ptr().add(header_size).cast::<SystemHandle>() };
-            let max_count = (buffer.len() - header_size) / size_of::<SystemHandle>();
-            let current_process = unsafe { GetCurrentProcess() };
-            for index in 0..count.min(max_count) {
-                let entry = unsafe { &*entries.add(index) };
-                if entry.process_id != pid as usize {
-                    continue;
-                }
-                if entry.granted_access & FILE_READ_DATA == 0 {
-                    continue;
-                }
-                let mut duplicate = std::ptr::null_mut();
-                let copied = unsafe {
-                    DuplicateHandle(
-                        source_process,
-                        entry.handle as RawHandle,
-                        current_process,
-                        &mut duplicate,
-                        0,
-                        0,
-                        DUPLICATE_SAME_ACCESS,
-                    )
-                };
-                if copied == 0 || duplicate.is_null() {
-                    continue;
-                }
-                if let Some(path) = unsafe { final_path(duplicate) } {
-                    result.push(path);
-                }
-                unsafe {
-                    CloseHandle(duplicate);
-                }
-            }
-            break;
-        }
-        if status != STATUS_INFO_LENGTH_MISMATCH {
-            break;
-        }
-        size = (returned as usize).max(size.saturating_mul(2));
-    }
-    unsafe {
-        CloseHandle(source_process);
-    }
-    result
+fn open_paths(_pid: u32) -> Vec<String> {
+    // Use Etterna's nowplaying metadata on Windows. Do not enumerate system
+    // handles or duplicate another process's file handles to infer its song.
+    Vec::new()
 }
 
 #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
@@ -616,19 +498,7 @@ fn open_paths(_pid: u32) -> Vec<String> {
 
 #[cfg(windows)]
 fn etterna_pid() -> Option<u32> {
-    let output = hidden_command("tasklist")
-        .args(["/FO", "CSV", "/NH"])
-        .output()
-        .ok()?;
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.split(',').map(|field| field.trim().trim_matches('"'));
-            let name = fields.next()?;
-            let pid = fields.next()?.parse().ok()?;
-            is_etterna_command(name).then_some(pid)
-        })
-        .next()
+    windows_etterna_processes().first().map(|(pid, _)| *pid)
 }
 
 #[cfg(not(windows))]

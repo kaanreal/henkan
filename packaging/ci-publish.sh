@@ -70,6 +70,10 @@ case "$TARGET" in
     git clone --filter=blob:none --no-checkout "https://x-access-token:${WINGET_GITHUB_TOKEN}@github.com/kaanreal/winget-pkgs.git" /tmp/henkan-winget
     cd /tmp/henkan-winget
     git remote add upstream https://github.com/microsoft/winget-pkgs.git
+    # Sync through GitHub before pushing a branch. This keeps upstream workflow
+    # commits in the fork instead of trying to introduce them with a PAT push.
+    GH_TOKEN="$WINGET_GITHUB_TOKEN" gh api --method POST \
+      "repos/kaanreal/winget-pkgs/merge-upstream" -f branch=master
     git fetch --depth=1 upstream master
     git sparse-checkout init --cone
     git sparse-checkout set "manifests/k/kaanreal/Henkan"
@@ -85,8 +89,11 @@ case "$TARGET" in
     sed_i "s|/tag/v[0-9][^[:space:]]*|/tag/$TAG|" "$dir/kaanreal.Henkan.locale.en-US.yaml"
     git_identity
     git add "$dir"
+    git diff --cached --quiet && exit 0
     git commit -m "New version: kaanreal.Henkan $VERSION"
     git push --force origin "henkan-$VERSION"
+    existing="$(GH_TOKEN="$WINGET_GITHUB_TOKEN" gh pr list --repo microsoft/winget-pkgs --head "kaanreal:henkan-$VERSION" --json number --jq 'length')"
+    [ "$existing" != "0" ] && exit 0
     GH_TOKEN="$WINGET_GITHUB_TOKEN" gh pr create \
       --repo microsoft/winget-pkgs \
       --head "kaanreal:henkan-$VERSION" \
