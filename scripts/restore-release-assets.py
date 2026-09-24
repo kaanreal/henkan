@@ -17,7 +17,9 @@ def main():
     repo = os.environ['GITHUB_REPOSITORY']
     if not re.fullmatch(r'v\d+\.\d+\.\d+', tag) or not run.isdigit():
         raise ValueError('Invalid release tag or source run ID')
-    release = json.loads(gh('api', f'repos/{repo}/releases/tags/{tag}'))
+    # The tag endpoint excludes drafts; authenticated release listings include them.
+    pages = json.loads(gh('api', '--paginate', '--slurp', f'repos/{repo}/releases?per_page=100'))
+    release = next(item for page in pages for item in page if item['tag_name'] == tag)
     work = Path(os.environ['RUNNER_TEMP']) / 'release-recovery'
     work.mkdir()
     gh('run', 'download', run, '--repo', repo, '--pattern', 'henkan-*', '--dir', str(work / 'bundles'))
