@@ -29,6 +29,7 @@ export interface ConversionRecord {
 
 export interface PackReplay {
   mode: 'osz' | 'folder'
+  title_mode?: 'song' | 'pack'
   creator: string
   hp_drain: number
   overall_difficulty: number

@@ -1,4 +1,4 @@
-﻿import type { Beatmap, ConvertDirection, DiffInfo, ExportConfig } from '../types/beatmap'
+import type { Beatmap, ConvertDirection, DiffInfo, ExportConfig } from '../types/beatmap'
 import { t } from '../i18n'
 import { isTauri } from './environment'
 import { readFileText, resolveMediaFile } from './files'
@@ -324,11 +324,7 @@ export async function expandDiffName(
   config: ExportConfig,
   rate: number,
 ): Promise<string> {
-  if (isTauri()) {
-    const { invoke } = await import('@tauri-apps/api/core')
-    return await invoke<string>('expand_diff_name', { template, beatmap, config, rate })
-  }
-  // Keep template expansion in TypeScript so the web path matches native output.
+  // Keep template expansion shared so native and web pack exports use the same names.
   const { expandDiffTemplate } = await import('../lib/diffTemplate')
   return expandDiffTemplate(template, beatmap, config, rate)
 }

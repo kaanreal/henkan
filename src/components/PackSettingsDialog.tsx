@@ -5,6 +5,7 @@ import { presetDisplayName } from '../lib/diffTemplate'
 
 interface PackSettings {
   mode: 'osz' | 'folder'
+  title_mode: 'song' | 'pack'
   creator: string
   hp_drain: number
   overall_difficulty: number
@@ -15,15 +16,19 @@ interface Props {
   open: boolean
   packName: string
   defaultSettings: PackSettings
+  showEtternaTitleMode?: boolean
   isConverting: boolean
   onConfirm: (settings: PackSettings) => void
   onCancel: () => void
   onOpenPresetManager: () => void
 }
 
-export function PackSettingsDialog({ open, packName, defaultSettings, isConverting, onConfirm, onCancel, onOpenPresetManager }: Props) {
+export function PackSettingsDialog({ open, packName, defaultSettings, showEtternaTitleMode = false, isConverting, onConfirm, onCancel, onOpenPresetManager }: Props) {
   const t = useT()
-  const [settings, setSettings] = useState<PackSettings>(defaultSettings)
+  const [settings, setSettings] = useState<PackSettings>(() => ({
+    ...defaultSettings,
+    title_mode: defaultSettings.title_mode ?? 'song',
+  }))
   const [leaving, setLeaving] = useState(false)
   const { presets } = useDiffPresetsStore()
 
@@ -34,7 +39,10 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
   }, [defaultSettings])
   useEffect(() => {
     if (open) {
-      setSettings(defaultsRef.current)
+      setSettings({
+        ...defaultsRef.current,
+        title_mode: defaultsRef.current.title_mode ?? 'song',
+      })
       setLeaving(false)
     }
   }, [open])
@@ -89,23 +97,53 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
               <p className="text-[11px] text-surface-500 mt-px">{packName}</p>
             </div>
 
-            {/* Mode toggle */}
-            <div className="flex gap-1.5 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06]">
-              <button
-                data-henkan-control
-                onClick={() => update('mode', 'folder')}
-                className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'folder' ? 'bg-accent text-white' : 'text-surface-400 hover:text-surface-200'}`}
-              >
-                {t('packSettings.folder')}
-              </button>
-              <button
-                data-henkan-control
-                onClick={() => update('mode', 'osz')}
-                className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'osz' ? 'bg-accent text-white' : 'text-surface-400 hover:text-surface-200'}`}
-              >
+            {showEtternaTitleMode ? (
+              <div className="px-3 py-2 rounded-lg bg-white/[0.04] text-xs text-surface-400">
                 {t('packSettings.oszArchive')}
-              </button>
-            </div>
+              </div>
+            ) : (
+              <div className="flex gap-1.5 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                <button
+                  data-henkan-control
+                  onClick={() => update('mode', 'folder')}
+                  className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'folder' ? 'bg-accent text-white' : 'text-surface-400 hover:text-surface-200'}`}
+                >
+                  {t('packSettings.folder')}
+                </button>
+                <button
+                  data-henkan-control
+                  onClick={() => update('mode', 'osz')}
+                  className={`flex-1 h-8 rounded-lg text-xs font-medium transition-all duration-75 ${settings.mode === 'osz' ? 'bg-accent text-white' : 'text-surface-400 hover:text-surface-200'}`}
+                >
+                  {t('packSettings.oszArchive')}
+                </button>
+              </div>
+            )}
+
+            {showEtternaTitleMode && (
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-surface-500 ml-1 font-medium">{t('packSettings.titleLayout')}</span>
+                <div className="flex gap-1.5 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                  <button
+                    data-henkan-control
+                    onClick={() => update('title_mode', 'song')}
+                    className={`flex-1 min-h-8 px-2 rounded-lg text-xs font-medium transition-all duration-75 ${settings.title_mode === 'song' ? 'bg-accent text-white' : 'text-surface-400 hover:text-surface-200'}`}
+                  >
+                    {t('packSettings.songTitleLayout')}
+                  </button>
+                  <button
+                    data-henkan-control
+                    onClick={() => update('title_mode', 'pack')}
+                    className={`flex-1 min-h-8 px-2 rounded-lg text-xs font-medium transition-all duration-75 ${settings.title_mode === 'pack' ? 'bg-accent text-white' : 'text-surface-400 hover:text-surface-200'}`}
+                  >
+                    {t('packSettings.packTitleLayout')}
+                  </button>
+                </div>
+                <p className="text-[10px] leading-relaxed text-surface-600 ml-1">
+                  {t(settings.title_mode === 'pack' ? 'packSettings.packTitleLayoutDesc' : 'packSettings.songTitleLayoutDesc')}
+                </p>
+              </div>
+            )}
 
             {/* Mapper */}
             <div className="flex flex-col gap-1">
@@ -125,6 +163,7 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
                 <span className="text-[11px] text-surface-500 ml-1 font-medium">{t('packSettings.difficultyName')}</span>
                 <button
                   onClick={onOpenPresetManager}
+                  disabled={settings.title_mode === 'pack' && showEtternaTitleMode}
                   className="text-[10px] text-surface-500 hover:text-accent-muted transition-colors"
                   title={t('packSettings.managePresets')}
                 >
@@ -136,13 +175,15 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
                   type="text"
                   value={settings.diff_name_template}
                   onChange={e => update('diff_name_template', e.target.value)}
+                  disabled={settings.title_mode === 'pack' && showEtternaTitleMode}
                   placeholder="<diff> - <creator>"
                   className="flex-1 h-9 bg-white/[0.04] border border-white/[0.06] rounded-lg px-3 text-sm text-surface-200 font-mono
                     placeholder-surface-600 outline-none transition-all duration-75
-                    focus:border-accent/40 focus:bg-white/[0.06]"
+                    focus:border-accent/40 focus:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed"
                 />
                 <select
                   value={hasTemplate ? (presets.find(p => p.template === settings.diff_name_template)?.id ?? '__custom') : '__none'}
+                  disabled={settings.title_mode === 'pack' && showEtternaTitleMode}
                   onChange={e => {
                     const val = e.target.value
                     if (val === '__none') {
@@ -156,7 +197,7 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
                   }}
                   className="h-9 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2 text-xs text-surface-200
                     outline-none transition-all duration-75 appearance-none cursor-pointer w-8 shrink-0
-                    focus:border-accent/40 focus:bg-accent/[0.03]"
+                    focus:border-accent/40 focus:bg-accent/[0.03] disabled:opacity-40 disabled:cursor-not-allowed"
                   title={t('packSettings.templatePresets')}
                 >
                   <option value="__none" className="bg-surface-900">···</option>
@@ -168,6 +209,9 @@ export function PackSettingsDialog({ open, packName, defaultSettings, isConverti
                   )}
                 </select>
               </div>
+              {settings.title_mode === 'pack' && showEtternaTitleMode && (
+                <p className="text-[10px] leading-relaxed text-surface-600 ml-1">{t('packSettings.packTitleUsesSongVersion')}</p>
+              )}
             </div>
 
             <div className="h-px bg-white/[0.04]" />

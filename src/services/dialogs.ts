@@ -24,6 +24,23 @@ interface SaveFileOptions {
   filters?: { name: string; extensions: string[] }[]
 }
 
+function openWebDirectoryInput(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.webkitdirectory = true
+    input.onchange = () => {
+      const files = Array.from(input.files || [])
+      if (!files.length) { resolve(null); return }
+      const path = (files[0] as FileWithPath).path || files[0].webkitRelativePath.split('/')[0] || 'folder'
+      fileInputCache.push(...files)
+      resolve(path)
+    }
+    input.addEventListener('cancel', () => resolve(null), { once: true })
+    input.click()
+  })
+}
+
 export async function openFiles(options: OpenFileOptions = {}): Promise<string[] | null> {
   if (isTauri()) {
     const { open } = await import('@tauri-apps/plugin-dialog')
@@ -87,24 +104,13 @@ export async function openDirectory(options: { title?: string } = {}): Promise<s
         if (!existing) fileInputCache.push(f)
       }
       return handle.name
-    } catch {
-      return null
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return null
+      return openWebDirectoryInput()
     }
   }
 
-  return new Promise((resolve) => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.webkitdirectory = true
-    input.onchange = () => {
-      const files = Array.from(input.files || [])
-      if (!files.length) { resolve(null); return }
-      const path = (files[0] as FileWithPath).path || files[0].webkitRelativePath.split('/')[0] || 'folder'
-      fileInputCache.push(...files)
-      resolve(path)
-    }
-    input.click()
-  })
+  return openWebDirectoryInput()
 }
 
 export async function saveFile(options: SaveFileOptions = {}): Promise<string | null> {

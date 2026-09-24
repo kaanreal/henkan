@@ -1,6 +1,6 @@
 ﻿import type { PackEntry } from '../types/beatmap'
 import { isTauri } from './environment'
-import { readFileAsDataUrl } from './files'
+import { readFileAsDataUrl, readFileText } from './files'
 import { wasmParseSmAll } from './wasm'
 import { getCachedFiles, getCachedFile, cacheFileContent, type FileWithPath } from './fileCache'
 
@@ -15,45 +15,44 @@ function decodeFileContent(file: File): Promise<string> {
 }
 
 export async function scanPack(folder: string): Promise<PackEntry[]> {
+  let candidates: PackEntry[]
   if (isTauri()) {
     const { invoke } = await import('@tauri-apps/api/core')
-    return await invoke<PackEntry[]>('scan_pack', { folder })
+    candidates = await invoke<PackEntry[]>('scan_pack', { folder })
+  } else {
+    const files = getCachedFiles()
+    candidates = files.flatMap(file => {
+      const relativePath = file.webkitRelativePath || ''
+      if (relativePath && !relativePath.toLowerCase().endsWith('.sm')) return []
+      if (!relativePath && !file.name.toLowerCase().endsWith('.sm')) return []
+
+      const hasFolderPrefix = relativePath.startsWith(folder + '/')
+      const relPath = hasFolderPrefix ? relativePath.slice(folder.length + 1) : relativePath
+      const sourceDir = relPath.includes('/')
+        ? relPath.slice(0, relPath.lastIndexOf('/'))
+        : hasFolderPrefix ? folder : ''
+      return [{
+        source_file: (file as FileWithPath).path || relativePath || file.name,
+        source_dir: sourceDir,
+        title: '',
+        artist: '',
+        background_filename: null,
+        banner_filename: null,
+        available_difficulties: [],
+      }]
+    })
   }
 
-  const files = getCachedFiles()
-
-  // Filter .sm files belonging to this pack folder
-  const smFiles = files.filter(f => {
-    if (f.webkitRelativePath) {
-      return f.webkitRelativePath.toLowerCase().endsWith('.sm')
-    }
-    // Drag-dropped files - all .sm files are from this pack
-    return f.name.toLowerCase().endsWith('.sm')
-  })
-
   const entries: PackEntry[] = []
-
-  for (const file of smFiles) {
+  for (const candidate of candidates) {
     try {
-      const content = await decodeFileContent(file)
-      const sourceFile = (file as FileWithPath).path || file.webkitRelativePath || file.name
-      cacheFileContent(sourceFile, content) // cache for later re-read by parseFile
-
+      const content = await readFileText(candidate.source_file)
       const beatmaps = await wasmParseSmAll(content)
       const first = beatmaps[0]
       if (!first) continue
-
-      // Extract raw #BACKGROUND: value from .sm content (parsed beatmap may have
-      // fallbacked to #BANNER when #BACKGROUND is empty - we want the real value)
-      const bgMatch = content.match(/#BACKGROUND\s*:\s*([^;\n\r]+)/i)
-      const rawBackground = bgMatch?.[1]?.trim() || null
-
-      const relPath = file.webkitRelativePath.startsWith(folder + '/')
-        ? file.webkitRelativePath.slice(folder.length + 1)
-        : file.webkitRelativePath
+      const rawBackground = content.match(/#BACKGROUND\s*:\s*([^;\n\r]+)/i)?.[1]?.trim() || null
       entries.push({
-        source_file: sourceFile,
-        source_dir: relPath.split('/')[0] || folder,
+        ...candidate,
         title: first.title,
         artist: first.artist,
         background_filename: rawBackground,
@@ -65,7 +64,36 @@ export async function scanPack(folder: string): Promise<PackEntry[]> {
     }
   }
 
-  return entries
+  return entries.sort((left, right) => {
+    const a = left.source_file.toLowerCase()
+    const b = right.source_file.toLowerCase()
+    if (a !== b) return a < b ? -1 : 1
+    return left.source_file < right.source_file ? -1 : left.source_file > right.source_file ? 1 : 0
+  })
+}
+
+export function sanitizePackFilename(value: string, maxLength = 80): string {
+  const allowed = " _.-'!()[]"
+  const sanitized = Array.from(value, character =>
+    /[A-Za-z0-9]/.test(character) || allowed.includes(character) ? character : '_',
+  )
+  return sanitized.slice(0, maxLength).join('')
+}
+
+export function uniquePackOutputNames(names: string[]): string[] {
+  const used = new Set<string>()
+
+  return names.map((name, index) => {
+    const base = sanitizePackFilename(name, 80) || `song_${index + 1}`
+    let candidate = base
+    let suffix = 2
+    while (used.has(candidate.toLowerCase())) {
+      const marker = ` (${suffix++})`
+      candidate = `${base.slice(0, 80 - marker.length)}${marker}`
+    }
+    used.add(candidate.toLowerCase())
+    return candidate
+  })
 }
 
 export async function findPackBanner(folder: string): Promise<File | string | null> {
@@ -87,7 +115,12 @@ export async function findPackBanner(folder: string): Promise<File | string | nu
     }
 
     const imageFiles = files.filter(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name))
-    const rootImages = imageFiles.filter(isRootLevel)
+    const rootImages = imageFiles.filter(isRootLevel).sort((left, right) => {
+      const a = left.name.toLowerCase()
+      const b = right.name.toLowerCase()
+      if (a !== b) return a < b ? -1 : 1
+      return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+    })
 
     if (rootImages.length > 0) {
       const bannerNames = ['banner', 'bn']
@@ -99,12 +132,19 @@ export async function findPackBanner(folder: string): Promise<File | string | nu
     }
   } else {
     // Drag-dropped files without webkitRelativePath - can't determine hierarchy
-    const imageFiles = files.filter(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name))
+    const imageFiles = files
+      .filter(f => /\.(png|jpg|jpeg|gif|bmp)$/i.test(f.name))
+      .sort((left, right) => {
+        const a = left.name.toLowerCase()
+        const b = right.name.toLowerCase()
+        if (a !== b) return a < b ? -1 : 1
+        return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+      })
     const named = imageFiles.find(f => {
       const base = f.name.replace(/\.[^.]+$/, '').toLowerCase()
       return base === 'banner' || base === 'bn'
     })
-    if (named) return named
+    return named || imageFiles[0] || null
   }
 
   return null

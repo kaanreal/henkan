@@ -41,17 +41,20 @@ import {
   saveFile as dialogSaveFile,
 } from '../services/dialogs'
 import { fileInputCache, getCachedFile, clearFileCache } from '../services/fileCache'
-import { readFileAsDataUrl, resolveMediaFile, resolveAudioFallback, saveBlobToFile } from '../services/files'
+import { readFileAsDataUrl, readFileArrayBuffer, readFileText, resolveMediaFile, resolveAudioFallback, saveBlobToFile } from '../services/files'
 import { parseFile, selectDifficulty, selectDifficulties, convertBeatmap, expandDiffName, ensureOszMediaCached } from '../services/convert'
+import { wasmConvertEtternaToOsu, wasmParseSmAll } from '../services/wasm'
+import { enrichBeatmapMsd } from '../services/webMsd'
 import { fetchMissingMedia, type MirrorProgress, type FetchLookupInfo } from '../services/mirrorMedia'
 import { exportBeatmap, exportAllBeatmaps, zipFolder, addCdtitleToZip } from '../services/export'
 import {
   scanPack,
   scanSongsFolder,
   loadPackBannerUrl,
-  createDummyDiff,
   cleanDir,
   generateDummyDiffContent,
+  sanitizePackFilename,
+  uniquePackOutputNames,
 } from '../services/pack'
 import { openFile } from '../services/platform'
 import {
@@ -1737,6 +1740,7 @@ export default function ConverterPage() {
       try {
         const direction = packType === 'osu' ? 'osu-to-etterna' : 'etterna-to-osu'
         const bm = await parseFile(entry.source_file, direction)
+        bm.source_dir = entry.source_dir
 
         // Load media
         const result = await resolveBeatmapMedia(bm, {
@@ -1830,6 +1834,11 @@ export default function ConverterPage() {
   const handlePackConvert = useCallback(async () => {
     if (packSelected.size === 0 || isConverting) return
     setPackConvertAllMode(false)
+    if (packType === 'sm') {
+      setPackReviewItems(null)
+      setShowPackSettings(true)
+      return
+    }
     const items = [...packSelected].sort((a, b) => a - b).flatMap(index => {
       const entry = packEntries[index]
       if (!entry) return []
@@ -1849,11 +1858,16 @@ export default function ConverterPage() {
       }]
     })
     setPackReviewItems(items)
-  }, [packEntries, packSelected, isConverting, usePackDifficultyTitles])
+  }, [packEntries, packSelected, packType, isConverting, usePackDifficultyTitles])
 
   const handlePackConvertAll = useCallback(async () => {
     if (packEntries.length === 0 || isConverting) return
     setPackConvertAllMode(true)
+    if (packType === 'sm') {
+      setPackReviewItems(null)
+      setShowPackSettings(true)
+      return
+    }
     setPackReviewItems(packEntries.map((entry, index) => {
       const config = normalizePackConfig(
         entry,
@@ -1870,7 +1884,7 @@ export default function ConverterPage() {
         difficultyCount: entry.available_difficulties.length,
       }
     }))
-  }, [packEntries, isConverting, usePackDifficultyTitles])
+  }, [packEntries, packType, isConverting, usePackDifficultyTitles])
 
   const handlePackReviewConfirm = useCallback((items: PackReviewItem[]) => {
     for (const item of items) {
@@ -1896,6 +1910,7 @@ export default function ConverterPage() {
   const runPackConversion = useCallback(
     async (settings: {
       mode: string
+      title_mode: 'song' | 'pack'
       creator: string
       hp_drain: number
       overall_difficulty: number
@@ -1913,17 +1928,31 @@ export default function ConverterPage() {
               .filter(Boolean)
               .pop() || 'pack'
           : 'pack'
-        const useOsz = settings.mode === 'osz'
+        const outputMode = packType === 'sm' ? 'osz' : settings.mode
+        const useOsz = outputMode === 'osz'
+        const packTitleMode = packType === 'sm' && settings.title_mode === 'pack'
+        const packOutputNames = packType === 'sm'
+          ? uniquePackOutputNames(packEntries.map((entry, index) => {
+              const saved = packConfigsRef.current.get(index)
+              const config = normalizePackConfig(
+                entry,
+                packEntries,
+                saved || configFromEntry(entry, usePackDifficultyTitles),
+                usePackDifficultyTitles,
+              )
+              return packTitleMode ? entry.title : config.title
+            }))
+          : []
         const replaySongConfigs = Array.from(packConfigsRef.current.entries()).map(([index, config]) => ({
           index,
           config: { ...config },
         }))
 
-        if (!isTauri()) {
-          // Web path: single .osz matching desktop pack output
+        if (!isTauri() || packType === 'sm') {
+          // Etterna packs use the same WASM conversion and OSZ builder in web and desktop.
           const JSZip = (await import('jszip')).default
           const zip = new JSZip()
-          const { parseSmAll, parseFile } = await import('../services/convert')
+          const { parseFile } = await import('../services/convert')
           const addedMedia = new Set<string>()
 
           for (const idx of indices) {
@@ -1939,6 +1968,7 @@ export default function ConverterPage() {
             )
             const cfg = {
               ...baseCfg,
+              title: packTitleMode ? packFolderName : baseCfg.title,
               output_format: 'folder' as const,
               creator: settings.creator || baseCfg.creator,
               hp_drain: settings.hp_drain,
@@ -2002,66 +2032,75 @@ export default function ConverterPage() {
                 }
               }
             } else {
-              // SM pack (existing behavior)
-              const safeTitle = (cfg.title || entry.title).replace(/[/\\?%*:|"<>]/g, '_') || `song_${idx}`
-              const beatmaps = await parseSmAll(entry.source_file)
+              const safeTitle = packOutputNames[idx] || `song_${idx + 1}`
+              const contentText = await readFileText(entry.source_file)
+              const beatmaps = await Promise.all(
+                (await wasmParseSmAll(contentText)).map(enrichBeatmapMsd),
+              )
+              for (const bm of beatmaps) bm.source_dir = entry.source_dir
 
-              // Build rename map: original filename → song-prefixed name (matching desktop pack mode)
-              const renameMap = new Map<string, string>()
-              const audioOrig = entry.available_difficulties[0]?.audio_filename
-              if (audioOrig) {
-                const ext = audioOrig.split('.').pop() || 'mp3'
-                renameMap.set(audioOrig, `${safeTitle}.${ext}`)
+              const audioSource = cfg.audio_filename || beatmaps[0]?.audio_filename || ''
+              const audioResolved = audioSource
+                ? await resolveMediaFile(entry.source_dir, audioSource)
+                : null
+              const audioExt = (audioResolved || audioSource).split('.').pop() || 'mp3'
+              const audioOutput = audioSource && audioResolved ? `${safeTitle}.${audioExt.toLowerCase()}` : ''
+
+              const backgroundSource = cfg.background_filename || entry.background_filename ||
+                beatmaps[0]?.background_filename || beatmaps[0]?.banner_filename || ''
+              const backgroundResolved = await resolveMediaFile(entry.source_dir, backgroundSource) ||
+                await resolveMediaFile(entry.source_dir, '')
+              if (backgroundSource && !backgroundResolved) {
+                throw new Error(`File not found: ${backgroundSource} (looked in ${entry.source_dir})`)
               }
-              let bgOrig: string | null = null
-              if (entry.background_filename) {
-                const resolved = await resolveMediaFile(entry.source_dir, entry.background_filename)
-                if (resolved) bgOrig = resolved.split('/').pop() || entry.background_filename
+              const backgroundSourceName = backgroundResolved?.split(/[/\\]+/).pop() || backgroundSource
+              const backgroundExt = (backgroundResolved || backgroundSource || backgroundSourceName).split('.').pop() || 'jpg'
+              const backgroundOutput = backgroundResolved ? `${safeTitle}.${backgroundExt.toLowerCase()}` : null
+
+              if (audioOutput) {
+                if (!audioResolved) throw new Error(`File not found: ${audioSource} (looked in ${entry.source_dir})`)
+                zip.file(audioOutput, await readFileArrayBuffer(audioResolved))
               }
-              if (!bgOrig) {
-                bgOrig = await resolveMediaFile(entry.source_dir, '').then((r) => r?.split('/').pop() || null)
-              }
-              if (bgOrig) {
-                const ext = bgOrig.split('.').pop() || 'jpg'
-                renameMap.set(bgOrig, `${safeTitle}.${ext}`)
+              if (backgroundOutput) {
+                zip.file(backgroundOutput, await readFileArrayBuffer(backgroundResolved!))
               }
 
               for (let bi = 0; bi < beatmaps.length; bi++) {
                 const bm = beatmaps[bi]
                 if (!bm) continue
-                const bmCfg = settings.diff_name_template
-                  ? {
-                      ...cfg,
-                      difficulty_name: await expandDiffName(
+                const sourceTitle = bm.title
+                const sourceDifficulty = bm.difficulty_name
+                const bmTitle = packTitleMode ? packFolderName : cfg.title
+                const useDiffTemplate = !packTitleMode && settings.diff_name_template
+                const difficultyName = packTitleMode
+                  ? sourceTitle || sourceDifficulty
+                  : useDiffTemplate
+                    ? await expandDiffName(
                         settings.diff_name_template,
                         bm,
-                        { ...cfg, creator: bm.creator || cfg.creator },
+                        { ...cfg, creator: bm.creator },
                         cfg.conversion_rate,
-                      ),
-                    }
-                  : cfg
-                let content = await convertBeatmap(bm, bmCfg)
-                // Fix hardcoded "bg.jpg" reference to the actual background filename
-                for (const [orig, renamed] of renameMap) {
-                  content = content.replaceAll(orig, renamed)
+                      )
+                    : sourceDifficulty
+                const bmCfg = {
+                  ...cfg,
+                  title: bmTitle,
+                  difficulty_name: difficultyName,
+                  audio_filename: audioOutput,
+                  background_filename: backgroundOutput,
                 }
-                if (bgOrig && renameMap.get(bgOrig)) {
-                  content = content.replaceAll('"bg.jpg"', `"${renameMap.get(bgOrig)}"`)
-                }
-                const safeDiff = (bmCfg.difficulty_name || bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
+                let content = await wasmConvertEtternaToOsu(bm, bmCfg)
+                if (backgroundOutput) content = content.replaceAll('"bg.jpg"', `"${backgroundOutput}"`)
+                const fileDifficulty = packTitleMode
+                  ? sourceDifficulty || `Diff ${bi + 1}`
+                  : difficultyName
+                const rateSuffix = Math.abs(cfg.conversion_rate - 1) < Number.EPSILON
+                  ? ''
+                  : ` [${cfg.conversion_rate.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}x]`
+                const safeDiff = sanitizePackFilename(`${fileDifficulty}${rateSuffix}`, 60)
                 const ext = '.osu'
                 const filename = safeDiff ? `${safeTitle} [${safeDiff}]${ext}` : `${safeTitle}${ext}`
                 zip.file(filename, content)
-              }
-
-              for (const [orig, renamed] of renameMap) {
-                if (addedMedia.has(renamed)) continue
-                const key = await resolveMediaFile(entry.source_dir, orig)
-                if (!key) continue
-                const file = getCachedFile(key)
-                if (!file) continue
-                addedMedia.add(renamed)
-                zip.file(renamed, await file.arrayBuffer())
               }
             }
           }
@@ -2073,14 +2112,18 @@ export default function ConverterPage() {
 
           // Only add dummy diff for SM packs (osu→etterna direction doesn't need it)
           if (packType !== 'osu') {
-            const bannerFile = packBannerFileRef.current || (packBannerPath ? getCachedFile(packBannerPath) : null)
+            const bannerFile = packBannerFileRef.current
             const bannerName = bannerFile?.name || packBannerPath?.split(/[/\\]+/).pop()
             const dummyContent = generateDummyDiffContent(packFolderName, settings.creator, bannerName)
-            zip.file(`${packFolderName}.osu`, dummyContent)
+            const dummyName = sanitizePackFilename(packFolderName, 120) || 'pack'
+            zip.file(`${dummyName}.osu`, dummyContent)
 
             // Add pack banner at root
-            if (bannerFile && bannerName) {
-              zip.file(bannerName, await bannerFile.arrayBuffer())
+            if (bannerName && (bannerFile || packBannerPath)) {
+              const bannerBytes = bannerFile
+                ? await bannerFile.arrayBuffer()
+                : await readFileArrayBuffer(packBannerPath!)
+              zip.file(bannerName, bannerBytes)
             }
           }
 
@@ -2107,7 +2150,8 @@ export default function ConverterPage() {
               difficultyIndices: null,
               separateSongs: null,
               packSettings: {
-                mode: settings.mode as 'osz' | 'folder',
+                mode: 'osz',
+                title_mode: settings.title_mode,
                 creator: settings.creator,
                 hp_drain: settings.hp_drain,
                 overall_difficulty: settings.overall_difficulty,
@@ -2153,43 +2197,32 @@ export default function ConverterPage() {
             )
             const cfg = {
               ...baseCfg,
+              title: packTitleMode ? packFolderName : baseCfg.title,
               output_format: 'folder' as const,
               creator: settings.creator || baseCfg.creator,
               hp_drain: settings.hp_drain,
               overall_difficulty: settings.overall_difficulty,
               diff_name_template: settings.diff_name_template || null,
             }
-            if (packType === 'osu') {
-              // Osu pack: each entry is a single .osu file, convert directly to .sm
-              const bm = await parseFile(entry.source_file, 'osu-to-etterna')
-              const parsedCfg = {
-                ...cfg,
-                ...normalizeParsedOsuPackMetadata(bm, packEntries, cfg),
-              }
-              const osuCfg = settings.diff_name_template
-                ? {
-                    ...parsedCfg,
-                    difficulty_name: await expandDiffName(
-                      settings.diff_name_template,
-                      bm,
-                      { ...parsedCfg, creator: bm.creator || parsedCfg.creator },
-                      parsedCfg.conversion_rate,
-                    ),
-                  }
-                : parsedCfg
-              const smContent = await convertBeatmap(bm, osuCfg)
-              const result = await exportBeatmap(bm, osuCfg, smContent, workDir, bm.difficulty_name, false)
-              allPaths.push(result)
-            } else {
-              const paths = await exportAllBeatmaps(entry.source_file, cfg, workDir, undefined, packFolderName)
-              allPaths.push(...paths)
+            const bm = await parseFile(entry.source_file, 'osu-to-etterna')
+            const parsedCfg = {
+              ...cfg,
+              ...normalizeParsedOsuPackMetadata(bm, packEntries, cfg),
             }
-          }
-
-          if (packType !== 'osu') {
-            const firstEntry = packEntries[indices[0]]
-            const firstCfg = packConfigsRef.current.get(indices[0]) || configFromEntry(firstEntry, usePackDifficultyTitles)
-            await createDummyDiff(packFolderName, settings.creator || firstCfg.creator, packBannerPath, workDir)
+            const osuCfg = settings.diff_name_template
+              ? {
+                  ...parsedCfg,
+                  difficulty_name: await expandDiffName(
+                    settings.diff_name_template,
+                    bm,
+                    { ...parsedCfg, creator: bm.creator || parsedCfg.creator },
+                    parsedCfg.conversion_rate,
+                  ),
+                }
+              : parsedCfg
+            const smContent = await convertBeatmap(bm, osuCfg)
+            const result = await exportBeatmap(bm, osuCfg, smContent, workDir, bm.difficulty_name, false)
+            allPaths.push(result)
           }
 
           if (useOsz) {
@@ -2215,7 +2248,8 @@ export default function ConverterPage() {
                 difficultyIndices: null,
                 separateSongs: null,
                 packSettings: {
-                  mode: settings.mode as 'osz' | 'folder',
+                  mode: outputMode as 'osz' | 'folder',
+                  title_mode: settings.title_mode,
                   creator: settings.creator,
                   hp_drain: settings.hp_drain,
                   overall_difficulty: settings.overall_difficulty,
@@ -2250,7 +2284,8 @@ export default function ConverterPage() {
                 difficultyIndices: null,
                 separateSongs: null,
                 packSettings: {
-                  mode: settings.mode as 'osz' | 'folder',
+                  mode: outputMode as 'osz' | 'folder',
+                  title_mode: settings.title_mode,
                   creator: settings.creator,
                   hp_drain: settings.hp_drain,
                   overall_difficulty: settings.overall_difficulty,
@@ -2265,7 +2300,7 @@ export default function ConverterPage() {
             setLastExportWasDirect(false)
             setExportPath(exportDir)
           }
-          trackEvent('pack_conversion_completed', { count: String(indices.length), mode: settings.mode })
+          trackEvent('pack_conversion_completed', { count: String(indices.length), mode: outputMode })
         }
 
       } catch (e: unknown) {
@@ -2910,14 +2945,17 @@ export default function ConverterPage() {
               : 'pack'
           }
           isConverting={isConverting}
+          showEtternaTitleMode={packType === 'sm'}
           defaultSettings={{
             ...(reconvertPackSettings || {
               mode: 'osz' as const,
+              title_mode: 'song' as const,
               creator: useConverterStore.getState().config.creator,
               hp_drain: useConverterStore.getState().config.hp_drain,
               overall_difficulty: useConverterStore.getState().config.overall_difficulty,
               diff_name_template: diffNameTemplate,
             }),
+            title_mode: reconvertPackSettings?.title_mode ?? 'song',
           }}
           onConfirm={(settings) => {
             setReconvertPackSettings(null)

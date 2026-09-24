@@ -485,6 +485,24 @@ fn resolve_audio_fallback(source_dir: String) -> Result<String, String> {
 
 /// Try to find a media file by exact match, then alternate extensions, then case-insensitive,
 /// then heuristic scan for plausible files.
+fn sorted_source_files(source_dir: &str) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = fs::read_dir(source_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .collect();
+    files.sort_by_cached_key(|path| {
+        let name = path.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        (name.to_lowercase(), name)
+    });
+    files
+}
+
 pub fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&str]) -> Option<PathBuf> {
     if filename.is_empty() {
         return scan_source_dir_for_bg(source_dir);
@@ -494,12 +512,10 @@ pub fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&s
     let exact = Path::new(source_dir).join(filename);
     if exact.exists() { return Some(exact); }
 
-    // 2. Exact match relative to CWD
-    let cwd = PathBuf::from(filename);
-    if cwd.exists() { return Some(cwd); }
-
     let path = Path::new(filename);
     let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or(filename);
+    let requested_name = path.file_name().and_then(|name| name.to_str()).unwrap_or(filename);
+    let lower = requested_name.to_lowercase();
 
     // 3. Try alternative extensions
     for ext in alt_extensions {
@@ -507,43 +523,32 @@ pub fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&s
         if candidate.exists() { return Some(candidate); }
     }
 
+    let files = sorted_source_files(source_dir);
+
     // 4. Case-insensitive scan of source dir
-    if let Ok(entries) = fs::read_dir(source_dir) {
-        let lower = filename.to_lowercase();
-        for entry in entries.flatten() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.to_lowercase() == lower {
-                    return Some(entry.path());
-                }
-            }
-        }
+    if let Some(found) = files.iter().find(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case(&lower))
+    }) {
+        return Some(found.clone());
     }
 
     // Some packs contain double extensions such as "decode.png.jpg" while
     // still declaring "decode.png" in the SM header. Match that declared name
     // as the candidate's stem, but keep the requested media category.
-    if let Ok(entries) = fs::read_dir(source_dir) {
-        let lower = filename.to_lowercase();
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let extension = path
-                .extension()
+    for ext in alt_extensions {
+        if let Some(found) = files.iter().find(|path| {
+            let extension = path.extension()
                 .and_then(|value| value.to_str())
                 .map(|value| format!(".{}", value.to_lowercase()));
-            if !extension
-                .as_deref()
-                .is_some_and(|ext| alt_extensions.contains(&ext))
-            {
-                continue;
-            }
-            let candidate_stem = path
-                .file_stem()
+            let candidate_stem = path.file_stem()
                 .and_then(|value| value.to_str())
                 .unwrap_or_default()
                 .to_lowercase();
-            if candidate_stem == lower {
-                return Some(path);
-            }
+            extension.as_deref() == Some(*ext) && candidate_stem == lower
+        }) {
+            return Some(found.clone());
         }
     }
 
@@ -560,39 +565,38 @@ pub fn resolve_media_file(source_dir: &str, filename: &str, alt_extensions: &[&s
 /// Scan source_dir for plausible background images, preferring files named
 /// "bg"/"background" and falling back to the largest remaining image.
 pub fn scan_source_dir_for_bg(source_dir: &str) -> Option<PathBuf> {
-    if let Ok(entries) = fs::read_dir(source_dir) {
-        let mut candidates: Vec<(u64, PathBuf)> = Vec::new();
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if !p.is_file() { continue; }
-            let ext = p.extension().and_then(|e| e.to_str().map(|s| s.to_lowercase())).unwrap_or_default();
-            if !IMAGE_EXTS.contains(&format!(".{}", ext).as_str()) { continue; }
-            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-            // Skip files that are clearly not backgrounds (CD titles, banners)
-            if stem.contains("cdtitle")
-                || stem == "cd"
-                || stem == "bn"
-                || stem.contains("banner")
-                || stem.ends_with(" bn")
-                || stem.ends_with("_bn")
-                || stem.ends_with("-bn")
-            {
-                continue;
-            }
-            // Prefer files with "bg" or "background" in the name
-            if stem.contains("bg") || stem.contains("background") {
-                return Some(p);
-            }
-            if let Ok(meta) = p.metadata() {
-                candidates.push((meta.len(), p));
-            }
+    let mut candidates: Vec<(u64, PathBuf)> = Vec::new();
+    for path in sorted_source_files(source_dir) {
+        let ext = path.extension().and_then(|e| e.to_str().map(|s| s.to_lowercase())).unwrap_or_default();
+        if !IMAGE_EXTS.contains(&format!(".{}", ext).as_str()) { continue; }
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+        // Skip files that are clearly not backgrounds (CD titles, banners)
+        if stem.contains("cdtitle")
+            || stem == "cd"
+            || stem == "bn"
+            || stem.contains("banner")
+            || stem.ends_with(" bn")
+            || stem.ends_with("_bn")
+            || stem.ends_with("-bn")
+        {
+            continue;
         }
-        // No file matched "bg"/"background" – pick the largest remaining
-        if let Some((_, biggest)) = candidates.into_iter().max_by_key(|(size, _)| *size) {
-            return Some(biggest);
+        // Prefer files with "bg" or "background" in the name
+        if stem.contains("bg") || stem.contains("background") {
+            return Some(path);
+        }
+        if let Ok(metadata) = path.metadata() {
+            candidates.push((metadata.len(), path));
         }
     }
-    None
+    candidates.sort_by(|(left_size, left_path), (right_size, right_path)| {
+        right_size.cmp(left_size).then_with(|| {
+            let left = left_path.file_name().unwrap_or_default().to_string_lossy();
+            let right = right_path.file_name().unwrap_or_default().to_string_lossy();
+            left.to_lowercase().cmp(&right.to_lowercase()).then(left.cmp(&right))
+        })
+    });
+    candidates.first().map(|(_, path)| path.clone())
 }
 
 pub const IMAGE_EXTS: &[&str] = &[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"];
@@ -1288,52 +1292,37 @@ fn export_beatmap(
     }
 }
 
-/// Recursively scan a folder for .sm files and return basic metadata for each.
+/// List .sm files for the frontend's shared WASM scanner.
 #[tauri::command]
 fn scan_pack(folder: String) -> Result<Vec<PackEntry>, String> {
-    fn walk(dir: &Path, results: &mut Vec<PackEntry>, depth: usize) {
-        if depth > 5 { return; }
+    fn walk(dir: &Path, results: &mut Vec<PackEntry>) {
         if let Ok(entries) = fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
-                    walk(&path, results, depth + 1);
-                } else if path.extension().and_then(|e| e.to_str()) == Some("sm") {
-                    if let Ok(content) = fs::read_to_string(&path) {
-                        if let Ok(bm) = parsers::etterna::parse_sm(&content) {
-                        // Extract raw #BACKGROUND: from content (parsed beatmap may have
-                        // fallbacked to #BANNER when #BACKGROUND is empty)
-                        let raw_bg = {
-                            // ASCII-only uppercasing keeps byte indices valid for
-                            // slicing the original string (to_uppercase can change length)
-                            let upper = content.to_ascii_uppercase();
-                            let tag = "#BACKGROUND";
-                            upper.find(tag).and_then(|pos| {
-                                let after_tag = &content[pos + tag.len()..];
-                                let colon = after_tag.find(':');
-                                let start = colon.map(|c| c + 1).unwrap_or(0);
-                                let val = after_tag[start..].trim_start();
-                                let end = val.find(|c| c == ';' || c == '\n' || c == '\r')
-                                    .unwrap_or(val.len());
-                                let s = val[..end].trim();
-                                if s.is_empty() { None } else { Some(s.to_string()) }
-                            })
-                        };
-                        let source_dir = path.parent()
-                            .unwrap_or(Path::new(""))
-                            .to_string_lossy()
-                            .to_string();
-                        results.push(PackEntry {
-                            source_file: path.to_string_lossy().to_string(),
-                            source_dir,
-                            title: bm.title,
-                            artist: bm.artist,
-                            background_filename: raw_bg,
-                            banner_filename: bm.banner_filename,
-                            available_difficulties: bm.available_difficulties,
-                        });
-                    }
-                    }
+                let Ok(metadata) = fs::symlink_metadata(&path) else { continue };
+                if metadata.file_type().is_symlink() {
+                    continue;
+                }
+                if metadata.is_dir() {
+                    walk(&path, results);
+                } else if path.extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("sm"))
+                {
+                    let source_file = path.to_string_lossy().to_string();
+                    let source_dir = path.parent()
+                        .unwrap_or(Path::new(""))
+                        .to_string_lossy()
+                        .to_string();
+                    results.push(PackEntry {
+                        source_file,
+                        source_dir,
+                        title: String::new(),
+                        artist: String::new(),
+                        background_filename: None,
+                        banner_filename: None,
+                        available_difficulties: Vec::new(),
+                    });
                 }
             }
         }
@@ -1345,7 +1334,11 @@ fn scan_pack(folder: String) -> Result<Vec<PackEntry>, String> {
     }
 
     let mut results = Vec::new();
-    walk(dir, &mut results, 0);
+    walk(dir, &mut results);
+    results.sort_by_cached_key(|entry| {
+        let name = entry.source_file.clone();
+        (name.to_lowercase(), name)
+    });
     Ok(results)
 }
 
@@ -1410,20 +1403,36 @@ fn scan_songs_folder(folder: String) -> Result<Vec<PackEntry>, String> {
 fn find_pack_banner(folder: String) -> Result<Option<String>, String> {
     let dir = std::path::Path::new(&folder);
     let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
+        Ok(entries) => entries,
         Err(_) => return Ok(None),
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_file() { continue; }
+    let mut images: Vec<PathBuf> = entries.flatten().map(|entry| entry.path()).filter(|path| {
+        if !path.is_file() { return false; }
         let ext = path.extension()
-            .and_then(|e| e.to_str())
+            .and_then(|value| value.to_str())
             .unwrap_or("")
             .to_lowercase();
-        if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp") {
-            return Ok(Some(path.to_string_lossy().to_string()));
-        }
+        matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp")
+    }).collect();
+    images.sort_by_cached_key(|path| {
+        let name = path.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        (name.to_lowercase(), name)
+    });
+
+    let preferred = images.iter().find(|path| {
+        let stem = path.file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        stem == "banner" || stem == "bn"
+    });
+    if let Some(path) = preferred.or_else(|| images.first()) {
+        return Ok(Some(path.to_string_lossy().to_string()));
     }
+
     Ok(None)
 }
 

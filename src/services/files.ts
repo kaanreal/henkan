@@ -108,7 +108,21 @@ export async function readFileArrayBuffer(pathOrFile: string | File): Promise<Ar
 }
 
 function isInSourceDir(w: string, dir: string): boolean {
-  return w.startsWith(dir + '/') || w.includes('/' + dir + '/')
+  const path = w.replace(/\\/g, '/').replace(/^\.\//, '')
+  const sourceDir = dir.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '')
+  const parent = path.split('/').slice(0, -1).join('/')
+  if (!sourceDir || sourceDir === '.') return parent === ''
+  return parent === sourceDir || parent.endsWith('/' + sourceDir)
+}
+
+function normalizeRelativePath(value: string): string {
+  const parts: string[] = []
+  for (const part of value.replace(/\\/g, '/').split('/')) {
+    if (!part || part === '.') continue
+    if (part === '..') parts.pop()
+    else parts.push(part)
+  }
+  return parts.join('/')
 }
 
 export async function resolveMediaFile(
@@ -125,10 +139,14 @@ export async function resolveMediaFile(
   }
 
   function doAutoDiscovery() {
-    if (!sourceDir) return null
     // Exclude video formats from auto-discovery since web uses CSS backgrounds, matching desktop IMAGE_EXTS
-    const files = getCachedFiles().filter(f => /\.(png|jpg|jpeg|gif|bmp|webp)$/i.test(f.name) &&
-      (!f.webkitRelativePath || isInSourceDir(f.webkitRelativePath, sourceDir)))
+    const files = getCachedFiles().filter(f => /\.(png|jpg|jpeg|gif|bmp|webp|tif|tiff)$/i.test(f.name) &&
+      (!f.webkitRelativePath || isInSourceDir(f.webkitRelativePath, sourceDir))).sort((left, right) => {
+      const a = left.name.toLowerCase()
+      const b = right.name.toLowerCase()
+      if (a !== b) return a < b ? -1 : 1
+      return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+    })
     // Skip files that are clearly not backgrounds (banners, cd titles)
     const candidates = files.filter(f => {
       const stem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
@@ -157,34 +175,55 @@ export async function resolveMediaFile(
   const baseName = filename.split(/[/\\]+/).pop() || filename
   const baseLower = baseName.toLowerCase()
 
+  const requestedPath = normalizeRelativePath(`${sourceDir}/${filename}`).toLowerCase()
+  const pathMatch = getCachedFiles().find(file => {
+    const filePath = normalizeRelativePath(file.webkitRelativePath || file.name).toLowerCase()
+    return filePath === requestedPath || (requestedPath.includes('/') && filePath.endsWith('/' + requestedPath))
+  })
+  if (pathMatch) return pathMatch.webkitRelativePath || pathMatch.name
+
   // Case-insensitive search in sourceDir: match by name or stem
   const files = getCachedFiles()
   const inDir = files.filter(f =>
-    !sourceDir || !f.webkitRelativePath || isInSourceDir(f.webkitRelativePath, sourceDir)
-  )
+    !f.webkitRelativePath || isInSourceDir(f.webkitRelativePath, sourceDir)
+  ).sort((left, right) => {
+    const a = left.name.toLowerCase()
+    const b = right.name.toLowerCase()
+    if (a !== b) return a < b ? -1 : 1
+    return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+  })
   // 1. Exact filename match (case-insensitive)
   const exact = inDir.find(f => f.name.toLowerCase() === baseLower)
   if (exact) return exact.webkitRelativePath || exact.name
 
   // 2. Stem match (same base name, different extension)
   const stem = baseLower.replace(/\.[^.]+$/, '')
-  const isImageOrVideoReq = /\.(png|jpg|jpeg|gif|bmp|webp|avi|mpg|mpeg|webm|mp4)$/i.test(filename) || stem.includes('bg') || stem.includes('background')
   const isAudioReq = /\.(mp3|ogg|wav|flac|m4a|wma)$/i.test(filename)
 
-  const byStem = inDir.find(f => {
-    const fStem = f.name.replace(/\.[^.]+$/, '').toLowerCase()
-    // Match either the base stem or the full filename as stem (for .png.jpg double extensions)
-    const matchesStem = fStem === stem || fStem === baseLower || fStem.startsWith(baseLower)
-    if (!matchesStem) return false
+  const extensions = isAudioReq
+    ? ['.mp3', '.ogg', '.wav', '.m4a', '.flac', '.wma']
+    : ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.tif']
+  const requestedStemPath = requestedPath.replace(/\.[^/.]+$/, '')
+  for (const extension of extensions) {
+    const alternatePath = `${requestedStemPath}${extension}`
+    const alternate = files.find(file => {
+      const filePath = normalizeRelativePath(file.webkitRelativePath || file.name).toLowerCase()
+      return filePath === alternatePath || (alternatePath.includes('/') && filePath.endsWith('/' + alternatePath))
+    })
+    if (alternate) return alternate.webkitRelativePath || alternate.name
+  }
 
-    // Ensure the matched file is of the same media category as the requested file
-    const fIsImageOrVideo = /\.(png|jpg|jpeg|gif|bmp|webp|avi|mpg|mpeg|webm|mp4)$/i.test(f.name)
-    const fIsAudio = /\.(mp3|ogg|wav|flac|m4a|wma)$/i.test(f.name)
-    
-    if (isImageOrVideoReq && !fIsImageOrVideo) return false
-    if (isAudioReq && !fIsAudio) return false
-    return true
-  })
+  let byStem: File | undefined
+  for (const extension of extensions) {
+    byStem = inDir.find(f => {
+      const fName = f.name.toLowerCase()
+      const fExt = fName.includes('.') ? `.${fName.split('.').pop()}` : ''
+      const fStem = fName.replace(/\.[^.]+$/, '')
+      // Match a different media extension or a double extension such as .png.jpg.
+      return fExt === extension && (fStem === stem || fStem === baseLower)
+    })
+    if (byStem) break
+  }
   if (byStem) {
     return byStem.webkitRelativePath || byStem.name
   }
@@ -198,7 +237,7 @@ export async function resolveMediaFile(
 
   // 4. Fallback for backgrounds: if the requested file was a media file
   // but wasn't found, try scanning for a plausible background image.
-  const isImageOrVideo = /\.(png|jpg|jpeg|gif|bmp|webp|avi|mpg|mpeg|webm|mp4)$/i.test(filename) || stem.includes('bg') || stem.includes('background')
+  const isImageOrVideo = /\.(png|jpg|jpeg|gif|bmp|webp|tif|tiff|avi|mpg|mpeg|webm|mp4)$/i.test(filename) || stem.includes('bg') || stem.includes('background')
   if (isImageOrVideo) {
     return doAutoDiscovery()
   }
