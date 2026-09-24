@@ -76,10 +76,14 @@ jobs:
           checksum() { curl -fsSL "$1" | sha256sum | cut -d' ' -f1; }
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "source=$(checksum "https://github.com/${{ github.repository }}/archive/refs/tags/$TAG.tar.gz")" >> "$GITHUB_OUTPUT"
-          echo "dmg=$(checksum "$release/Henkan-v$version-macos.dmg")" >> "$GITHUB_OUTPUT"
-          echo "installer=$(checksum "$release/Henkan-v$version-windows-setup.exe")" >> "$GITHUB_OUTPUT"
-          echo "appimage=$(checksum "$release/Henkan-v$version-linux.AppImage")" >> "$GITHUB_OUTPUT"
+          source_sha="$(checksum "https://github.com/${{ github.repository }}/archive/refs/tags/$TAG.tar.gz")"
+          dmg_sha="$(checksum "$release/Henkan-v$version-macos.dmg")"
+          installer_sha="$(checksum "$release/Henkan-v$version-windows-setup.exe")"
+          appimage_sha="$(checksum "$release/Henkan-v$version-linux.AppImage")"
+          echo "source=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "dmg=$dmg_sha" >> "$GITHUB_OUTPUT"
+          echo "installer=$installer_sha" >> "$GITHUB_OUTPUT"
+          echo "appimage=$appimage_sha" >> "$GITHUB_OUTPUT"
 
       - name: Publish Homebrew tap
         if: matrix.manager == 'homebrew' && env.HOMEBREW_TAP_TOKEN != '' && (inputs.target == 'all' || inputs.target == 'homebrew')
