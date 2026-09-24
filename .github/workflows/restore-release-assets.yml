@@ -11,6 +11,10 @@ on:
         description: Validate artifacts without uploading
         default: true
         type: boolean
+      publish_draft:
+        description: Publish the draft after all uploaded checksums are verified
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -40,3 +44,11 @@ jobs:
         with:
           name: recovery-${{ matrix.source.tag }}
           path: recovery-report.json
+      - name: Publish verified draft
+        if: inputs.publish_draft && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ matrix.source.tag }}
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          gh release edit "$RELEASE_TAG" --draft=false --latest
