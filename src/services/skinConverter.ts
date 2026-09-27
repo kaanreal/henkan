@@ -942,14 +942,19 @@ async function visibleBounds(asset: RasterAsset): Promise<{ minX: number; minY: 
     : { minX: 0, minY: 0, width: asset.width, height: asset.height }
 }
 
-async function fitReceptorToNote(receptor: RasterAsset, note: RasterAsset): Promise<RasterAsset> {
+async function fitReceptorToNote(
+  receptor: RasterAsset,
+  note: RasterAsset,
+  targetSize = Math.max(note.width, note.height),
+): Promise<RasterAsset> {
   const receptorBounds = await visibleBounds(receptor)
   const noteBounds = await visibleBounds(note)
   const image = await decodeImage(receptor.blob)
+  const referenceSize = Math.max(note.width, note.height)
+  const scale = targetSize / referenceSize
   const canvas = document.createElement('canvas')
-  const canvasSize = Math.max(note.width, note.height)
-  canvas.width = canvasSize
-  canvas.height = canvasSize
+  canvas.width = targetSize
+  canvas.height = targetSize
   const context = canvas.getContext('2d')
   if (!context) throw new Error(t('services.skin.canvasUnavailable'))
   // osu! uses a square note footprint for the falling note and receptor. Fit
@@ -958,10 +963,10 @@ async function fitReceptorToNote(receptor: RasterAsset, note: RasterAsset): Prom
   context.drawImage(
     image.source,
     receptorBounds.minX, receptorBounds.minY, receptorBounds.width, receptorBounds.height,
-    noteBounds.minX + Math.floor((canvasSize - note.width) / 2),
-    noteBounds.minY + Math.floor((canvasSize - note.height) / 2),
-    noteBounds.width,
-    noteBounds.height,
+    Math.round((noteBounds.minX + Math.floor((referenceSize - note.width) / 2)) * scale),
+    Math.round((noteBounds.minY + Math.floor((referenceSize - note.height) / 2)) * scale),
+    Math.max(1, Math.round(noteBounds.width * scale)),
+    Math.max(1, Math.round(noteBounds.height * scale)),
   )
   image.close()
   const blob = await new Promise<Blob>((resolve, reject) => {
@@ -1515,7 +1520,17 @@ async function convertOsuToEtterna(input: File | string): Promise<SkinConversion
       let image: RasterAsset
       if (label === 'Receptor') {
         const cacheKey = `${entry.name.toLowerCase()}|${tap.name.toLowerCase()}`
-        if (!receptorCache.has(cacheKey)) receptorCache.set(cacheKey, receptorFromOsuKey(entry, tap))
+        if (!receptorCache.has(cacheKey)) {
+          const noteKey = `${tap.name.toLowerCase()}|note`
+          if (!noteCache.has(noteKey)) noteCache.set(noteKey, noteFromOsuImage(tap, 'note', bodyStyle))
+          receptorCache.set(cacheKey, (async () => {
+            const [receptorImage, tapImage] = await Promise.all([
+              receptorFromOsuKey(entry, tap),
+              noteCache.get(noteKey)!,
+            ])
+            return fitReceptorToNote(receptorImage, tapImage, 128)
+          })())
+        }
         image = await receptorCache.get(cacheKey)!
       } else {
         const kind = label.includes('Body')
