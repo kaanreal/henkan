@@ -1,4 +1,5 @@
 ﻿import type { Beatmap, ExportConfig } from '../types/beatmap'
+import type JSZip from 'jszip'
 import { isTauri } from './environment'
 import { saveContentToFile, saveBlobToFile, resolveMediaFile } from './files'
 import { convertBeatmap, oszContentCache } from './convert'
@@ -16,17 +17,26 @@ async function defaultCdtitleBlob(): Promise<Blob> {
 
 const _avatarCacheExport = new Map<string, Blob>()
 
-// Shared zip-entry name for a converted beatmap (used by both export paths)
-function beatmapZipName(bm: Beatmap, config: ExportConfig): string {
-  const ext = bm.source_format === 'OsuMania' ? '.sm' : '.osu'
+function beatmapExportBase(bm: Beatmap, config: ExportConfig): string {
   const safeTitle = (config.title || bm.title).replace(/[/\\?%*:|"<>]/g, '_')
   const safeCreator = (config.creator || bm.creator).replace(/[/\\?%*:|"<>]/g, '_')
-  const safeDiff = (bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
-  const baseName = bm.source_format === 'OsuMania'
+  return bm.source_format === 'OsuMania'
     ? `${safeTitle} [${safeCreator}]`
     : `${(config.artist || bm.artist).replace(/[/\\?%*:|"<>]/g, '_')} - ${safeTitle}`
+}
+
+function beatmapZipName(bm: Beatmap, config: ExportConfig): string {
+  const ext = bm.source_format === 'OsuMania' ? '.sm' : '.osu'
+  const baseName = beatmapExportBase(bm, config)
+  const safeDiff = (bm.difficulty_name || '').replace(/[/\\?%*:|"<>]/g, '_')
   return safeDiff ? `${baseName} [${safeDiff}]${ext}` : `${baseName}${ext}`
 }
+
+function songArchiveFolder(zip: JSZip, beatmap: Beatmap, base: string): JSZip {
+  if (beatmap.source_format !== 'OsuMania') return zip
+  return zip.folder(base)!
+}
+
 async function avatarFromApi(creator: string): Promise<Blob | null> {
   const cached = _avatarCacheExport.get(creator)
   if (cached) return cached
@@ -92,12 +102,8 @@ export async function exportBeatmap(
   }
 
   const ext = beatmap.source_format === 'OsuMania' ? '.sm' : '.osu'
-  const safeTitle = (config.title || beatmap.title).replace(/[/\\?%*:|"<>]/g, '_')
-  const safeCreator = (config.creator || beatmap.creator).replace(/[/\\?%*:|"<>]/g, '_')
-  const base = beatmap.source_format === 'OsuMania'
-    ? `${safeTitle} [${safeCreator}]`
-    : `${(config.artist || beatmap.artist).replace(/[/\\?%*:|"<>]/g, '_')} - ${safeTitle}`
-  const suffix = filenameSuffix ? ` ${filenameSuffix}` : ''
+  const base = beatmapExportBase(beatmap, config)
+  const suffix = filenameSuffix ? ` ${filenameSuffix.replace(/[/\\?%*:|"<>]/g, '_')}` : ''
   const filename = `${base}${suffix}${ext}`
 
   const hasMedia = await resolveMediaFile(beatmap.source_dir, config.audio_filename || beatmap.audio_filename)
@@ -106,7 +112,8 @@ export async function exportBeatmap(
   if (bundleMedia) {
     const JSZip = (await import('jszip')).default
     const zip = new JSZip()
-    zip.file(filename, convertedContent)
+    const songFolder = songArchiveFolder(zip, beatmap, base)
+    songFolder.file(filename, convertedContent)
 
     const added = new Set<string>()
     const fields: string[] = [config.audio_filename || beatmap.audio_filename]
@@ -129,10 +136,10 @@ export async function exportBeatmap(
         : isBn
           ? 'banner.png'
           : originalName
-      zip.file(zipName, await file.arrayBuffer())
+      songFolder.file(zipName, await file.arrayBuffer())
     }
     if (beatmap.source_format === 'OsuMania') {
-      await addCdtitleToZip(zip, beatmap.source_dir, config.cdtitle_filename || beatmap.cdtitle_filename, 'cdtitle.png', config.creator || beatmap.creator)
+      await addCdtitleToZip(songFolder, beatmap.source_dir, config.cdtitle_filename || beatmap.cdtitle_filename, 'cdtitle.png', config.creator || beatmap.creator)
     }
 
     const blob = await zip.generateAsync({ type: 'blob' })
@@ -200,6 +207,7 @@ export async function exportAllBeatmaps(
     if (hasMedia) {
       const JSZip = (await import('jszip')).default
       const zip = new JSZip()
+      const songFolder = songArchiveFolder(zip, beatmaps[0], beatmapExportBase(beatmaps[0], config))
       const addedMedia = new Set<string>()
       const packTitle = packName || beatmaps[0]?.title || 'export'
 
@@ -207,7 +215,7 @@ export async function exportAllBeatmaps(
         if (!bm) continue
         const content = await convertBeatmap(bm, config)
         const filename = beatmapZipName(bm, config)
-        zip.file(filename, content)
+        songFolder.file(filename, content)
         paths.push(filename)
 
         const mediaFields: string[] = [bm.audio_filename]
@@ -226,10 +234,10 @@ export async function exportAllBeatmaps(
             ? (bm.source_format === 'OsuMania' ? 'bg.png' : 'bg.jpg')
             : isBn ? 'banner.png' : originalName
           addedMedia.add(name)
-          zip.file(name, await file.arrayBuffer())
+          songFolder.file(name, await file.arrayBuffer())
         }
         if (bm.source_format === 'OsuMania') {
-          await addCdtitleToZip(zip, bm.source_dir, bm.cdtitle_filename, 'cdtitle.png', bm.creator)
+          await addCdtitleToZip(songFolder, bm.source_dir, bm.cdtitle_filename, 'cdtitle.png', bm.creator)
         }
       }
 
